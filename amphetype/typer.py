@@ -44,8 +44,8 @@ def text_style(*args, **kwargs):
 
 def block_style(*args, **kwargs):
   b = QTextBlockFormat()
-  b.setTopMargin(6.0)
-  b.setBottomMargin(6.0)
+  b.setTopMargin(20.0)
+  b.setBottomMargin(20.0)
   return b
 
 
@@ -125,6 +125,7 @@ class LessonDocument(QTextDocument):
     # f = QFontDatabase.systemFont(QFontDatabase.FixedFont)
     # f.setPointSize(16)
     self.setDefaultFont(font)
+    self.setDocumentMargin(28)  # breathing room now that the editor frame is gone
     self.set_text('default text')
 
   def set_text(self, text, prologue='', epilogue=''):
@@ -294,6 +295,7 @@ class TyperWidget(QTextEdit):
                      objectName='TyperWidget',
                      undoRedoEnabled=False,
                      cursorWidth=3,
+                     frameShape=QFrame.NoFrame,
                      **kwargs)
 
     self._settings = settings
@@ -301,8 +303,11 @@ class TyperWidget(QTextEdit):
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
     settings('overwrite_mode').bind_value(self.setOverwriteMode)
+    # The editor itself is transparent; the parent canvas provides the uniform background color.
+    # We still react to the setting so we can re-assert no border/chrome.
     settings('background_color').bind_value(
-      lambda v: self.setStyleSheet(f'QTextEdit {{ background-color: "{v.name()}"; }}'))
+      lambda v: self.setStyleSheet(
+        'QTextEdit { background-color: transparent; border: none; padding: 0; }'))
 
   def setLesson(self, lesson):
     if lesson == self._lesson:
@@ -423,15 +428,36 @@ class TyperWindow(QWidget):
     
     self._doc = doc
 
+    # Canvas wrapper: provides the uniform background color chosen by the user.
+    # The TyperWidget inside it is transparent + borderless, so there is no
+    # distinct "text entry box" — the styled lesson text just lives on the canvas.
+    self._canvas = QWidget()
+    self._canvas.setObjectName('TyperCanvas')
+    canvas_lay = FBoxLayout([self._typer])
+    self._canvas.setLayout(canvas_lay)
+
     self.setLayout(FBoxLayout([
       (self._prog_layout, 0),
        # QPushButton("test", clicked=self.XXX),
        # TyperOptions(self.S)],
-      (self._typer, 100),
+      (self._canvas, 100),
       ]))
+
+    # Apply the user's chosen canvas color (and keep typer transparent).
+    self.S('background_color').bind_value(self._applyBackground, call=True)
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
+
+  def _applyBackground(self, color):
+    """Set the uniform canvas color under the (transparent) typing widget."""
+    if hasattr(color, 'name'):
+      name = color.name()
+    else:
+      name = str(color)
+    self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ background-color: "{name}"; }}')
+    # Re-assert on the child editor (in case stylesheet order or theme interferes).
+    self._typer.setStyleSheet('QTextEdit { background-color: transparent; border: none; padding: 0; }')
 
   def showEvent(self, evt):
     self._typer.setFocus()
@@ -448,12 +474,13 @@ class TyperWindow(QWidget):
   def setText(self, txt):
     self._current_lesson = txt
     textid, _, _ = txt
-    pre,_,post = self.DB.getTextContext(textid)
+    pre, _, post = self.DB.getTextContext(textid)
 
-    pre = '[BEGIN]' if pre is None else pre[2]
-    post = '[END]' if post is None else post[2]
+    # Only show real surrounding context from the same source. Never insert ugly placeholder labels.
+    prologue = (pre[2] + '\n') if pre is not None else ''
+    epilogue = ('\n' + post[2]) if post is not None else ''
 
-    self._doc.set_text(txt[2], prologue=(pre + '\n'), epilogue=('\n' + post))
+    self._doc.set_text(txt[2], prologue=prologue, epilogue=epilogue)
     self._typer.setFocus()
     self._prog.setValue(0)
 
@@ -464,12 +491,7 @@ class TyperWindow(QWidget):
       text.append('<big><b>' + msg + '</b></big>')
       text.append('')
 
-    if self.S['require_space']:
-      text.append("Press SPACE to start typing the text.")
-    else:
-      text.append("Text ready for typing!")
     text.append("Press ESCAPE to cancel at any time.")
-    text.append("This input widget is BETA and uses a <d>different measure for viscosity</b> than the old one; for this reason it's recommended you use it with a fresh database!")
     self._label.setText('<br />'.join(text))
 
   def typingFailed(self, txt):

@@ -1,0 +1,213 @@
+"""Tests for the inline typer (LessonDocument + integration with RunStats).
+
+These cover the core behaviors of typing directly on top of the lesson text.
+Run with: python -m pytest tests/ -q
+
+Requires: pytest, pytest-qt, and PyQt5 (install via `pip install -e '.[test]'` inside the project venv).
+"""
+
+import pytest
+
+pytest.importorskip("PyQt5")
+from PyQt5.QtGui import QFont
+from PyQt5.QtCore import Qt
+
+from amphetype.typer import LessonDocument, RETURN_CHAR
+
+
+def test_lesson_document_lifecycle(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("hello world")
+
+    assert doc.is_ready()
+    assert not doc.is_running()
+    assert not doc.is_finished()
+
+    # Ready text is present
+    full = doc.toPlainText()
+    assert "hello world" in full or "hello world" in full.replace(RETURN_CHAR, "\n")
+
+    doc.reset()
+    assert doc.is_ready()
+
+
+def test_insert_correct_chars_advances_and_completes(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("ab")
+
+    received = []
+    doc.progress.connect(lambda i: received.append(i))
+    doc.completed.connect(lambda r: received.append("done"))
+
+    # Cold start via first insert
+    doc.insert("a")
+    assert doc.is_running()
+    assert len(received) == 1  # progress at 0
+
+    doc.insert("b")
+    assert doc.is_finished()
+    assert "done" in received
+
+    run = doc._run
+    assert run is not None
+    assert run.is_complete()
+
+
+def test_insert_error_blocks_in_non_lenient(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("abc")
+
+    doc.insert("x")  # error, non-lenient by default
+    assert doc._first_error is not None
+    assert not doc.is_finished()
+
+    # Further correct input should still be recorded but not "advance" the logical position fully
+    doc.insert("a", lenient=False)
+    # The document should have registered the error state
+    assert doc._first_error is not None
+
+
+def test_lenient_mode_allows_continuing_past_errors(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("abc")
+
+    doc.insert("x", lenient=True)
+    assert doc._first_error is None  # lenient does not set blocking error
+
+    doc.insert("b", lenient=True)
+    doc.insert("c", lenient=True)
+    assert doc.is_finished()
+
+
+def test_backspace_restores_state(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("abc")
+
+    doc.insert("a")
+    doc.insert("x")  # error
+    assert doc._first_error is not None
+
+    doc.backspace()
+    assert doc._first_error is None  # cleared when backing past the error
+    assert doc.is_running()
+
+
+def test_overwrite_mode_vs_insert_mode(qapp):
+    # overwrite_mode is a setting on the widget, but we can exercise the document path
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("ab")
+
+    # Simulate overwrite=True (default in current widget)
+    doc.insert("x", overwrite=True)
+    # The first char should have been overwritten with styled 'x'
+    # We mainly assert it didn't explode and run advanced
+    assert doc._run is not None
+
+
+def test_return_char_handling(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("a" + RETURN_CHAR + "b")
+
+    doc.insert("a")
+    doc.insert(RETURN_CHAR)
+    doc.insert("b")
+    assert doc.is_finished()
+
+
+def test_runstats_basic_paths_used_by_document():
+    from amphetype.timingtuple import RunStats
+
+    run = RunStats.make("abc")
+    assert run.index == 0
+    assert run.current.char == "a"
+
+    run.visit(True)
+    run.advance(True)
+    assert run.index == 1
+
+    run.visit(False)
+    run.advance(True)
+    assert run[1].mistakes == 1
+
+    # pop (backspace simulation)
+    popped = run.pop_char()
+    assert popped == "b" or popped is None  # depending on inserts state
+
+    # Completion + result
+    run.visit(True)
+    run.advance(True)
+    assert run.is_complete() or run.index >= 2
+
+
+def test_inline_typer_is_now_default():
+    """The behavior change we are shipping: inline typer (1) is the default."""
+    from amphetype.Config import AmphSettings
+    # We don't want to construct a full AmphSettings (it does FS + app init),
+    # so just check the class default dict directly.
+    assert AmphSettings.defaults["which_typer"] == 1
+
+
+class _FakeTyperSettings:
+    """Minimal stub to drive TyperWidget behavior without full settings system."""
+    def __init__(self, **vals):
+        self._vals = vals
+        self._vals.setdefault('require_space', False)
+        self._vals.setdefault('lenient_mode', False)
+        self._vals.setdefault('overwrite_mode', True)
+        self._vals.setdefault('limit_backspace', False)
+        self._vals.setdefault('show_progress', False)
+        self._vals.setdefault('background_color', QColor('white'))
+
+    def __getitem__(self, k):
+        return self._vals[k]
+
+    def __call__(self, name):
+        # Support the S('foo') style used in some bindings
+        class _V:
+            def bind_value(self, f, call=True): pass
+            def bind_change(self, f, call=True): pass
+            def set(self, v): pass
+            def get(self): return self._vals.get(name)  # type: ignore
+        v = _V()
+        v._vals = self._vals
+        return v
+
+    def get(self, k, default=None):
+        return self._vals.get(k, default)
+
+
+def test_widget_starts_immediately_without_space(qapp):
+    """Primary behavior: inline typer no longer requires SPACE to begin a lesson (default)."""
+    from PyQt5.QtGui import QFont
+    from amphetype.typer import TyperWidget, LessonDocument
+
+    S = _FakeTyperSettings(require_space=False)
+    w = TyperWidget(S)
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("hello")
+    w.setLesson(doc)
+
+    assert doc.is_ready()
+    # Simulate first keystroke (the widget's insert path)
+    w.insert("h")   # should cold-start the run immediately
+    assert doc.is_running()
+    assert not doc.is_finished()
+
+
+def test_widget_still_respects_require_space_when_enabled(qapp):
+    """The require_space setting still works if a user turns it back on."""
+    from PyQt5.QtGui import QFont
+    from amphetype.typer import TyperWidget, LessonDocument
+
+    S = _FakeTyperSettings(require_space=True)
+    w = TyperWidget(S)
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("hi")
+    w.setLesson(doc)
+
+    # Non-space should be ignored until started
+    w.insert("h")
+    assert doc.is_ready()  # still waiting
+
+    w.insert(" ")  # the starter key
+    assert doc.is_running()

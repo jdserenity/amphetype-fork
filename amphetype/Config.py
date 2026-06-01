@@ -42,7 +42,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
   # types provided here, so always set a default of the type the
   # setting will have.
   defaults = {
-    "typer_font": str(QFont("Arial", 14).toString()),
+    "typer_font": str(QFont("Arial", 18).toString()),
     "qt_style": "", # Will be set in __init__().
     "qt_css": "<none>",
 
@@ -100,18 +100,18 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "str_extra": 10,
     "str_what": 'e',
 
-    "which_typer": 0,
+    "which_typer": 1,
   }
 
   typer_defaults = {
     'lenient_mode': False,
-    'require_space': True,
+    'require_space': False,
     'overwrite_mode': True,
     'limit_backspace': False,
 
     'show_progress': True,
 
-    'para_margin': 6,
+    'para_margin': 40,
     'para_lineheight': 1.0,
     'background_color': QColor('white'),
   }
@@ -411,12 +411,8 @@ class TyperOptions(QWidget):
     S = Settings.typer_settings
     C = Settings.typer_colors
     self.setLayout(FBoxLayout([
-      "These options will only work if you've selected <b>Typer 2</b> as your input widget.",
-      "Note that most of the options under <i>General Options</i> will still continue to work for Typer 2.",
-      QLabel("<b>NB!</b> this is pretty beta stuff."
-             """ If you get any crashes or errors, <a href="https://gitlab.com/franksh/amphetype/-/issues">please report here</a>"""
-             " or send me an email (see About).",
-             wordWrap=True, openExternalLinks=True),
+      "These options apply to the inline typer (the default).",
+      "Most options under <i>General Options</i> also affect it.",
       QCheckBox('Show progress bar while typing',
                 checked=S['show_progress'], toggled=S('show_progress').set),
       ["Document background color", S('background_color').button(), None],
@@ -465,15 +461,15 @@ class GeneralOptions(QWidget):
     self.setLayout(AmphBoxLayout([
       ["Typer font is", self.font_lbl, AmphButton("Change...", self.setFont), None],
       None,
-      ["Input widget", SettingsCombo('which_typer', ['Typer 1.0: copy text', 'Typer 2.0 (beta): write in the text itself']), None],
+      ["Input widget", SettingsCombo('which_typer', ['Typer 1.0 (legacy): copy text above', 'Typer: write directly in the text']), None],
       None,
       [SettingsCheckBox("text_force_ascii", 'Force unicode to plain ASCII'), ('(‘fancy’ “quotes” → "normal" quotes, <code>æ</code> → <code>ae</code>, etc.)', 1)],
       SettingsCheckBox('auto_review', "Automatically review slow and mistyped words after texts.",
                        toolTip="""Automatically create post-lesson reviews if you didn't meet the WPM/accuracy criteria set on the <b>Sources</b> tab."""),
       SettingsCheckBox('show_last', "Show last result(s) above text in the Typer."),
       SettingsCheckBox('use_lesson_stats', "Save key/trigram/word statistics from generated lessons."),
-      SettingsCheckBox('req_space', "Make SPACE mandatory before each session (Typer 1 ONLY)",
-                        toolTip="""<b></b>This is generally recommended because otherwise the timing of the very first characer has to be inferred artificially."""),
+      SettingsCheckBox('req_space', "Make SPACE mandatory before each session",
+                        toolTip="""This is generally recommended because otherwise the timing of the very first character has to be inferred artificially (a median is used). Applies to both typers."""),
       None,
       [AmphGridLayout([
         ["TYPER 1 COLORS", "Text Color", "Background"],

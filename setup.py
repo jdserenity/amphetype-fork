@@ -42,6 +42,9 @@ setup(
 
   packages=['amphetype', 'amphetype.Widgets'],
   install_requires=['PyQt5', 'translitcodec', 'editdistance'],
+  extras_require={
+    'test': ['pytest', 'pytest-qt'],
+  },
   python_requires='>=3.6', # I use f-strings liberally, carelessly, and licentiously.
   zip_safe=False, # Because we need data/ to be regular files.
   # include_package_data=True,
