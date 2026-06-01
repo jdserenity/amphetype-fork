@@ -1,24 +1,31 @@
-"""Compose readable practice lines from weak characters, trigrams, and words."""
+"""Compose dense, readable practice lines from weak characters, trigrams, and words.
+
+Ground truth: a trigram (or character, or word) is "practiced" iff its exact
+surface form appears in the rendered lesson text. A trigram is just any 3-char
+window of real typing, including spaces and punctuation, so we satisfy it by
+constructing word/biword tokens whose joined text literally contains it.
+"""
 
 import random
-import sqlite3
+import re
 import time
 from collections import defaultdict
 
-# type tag, data, weight (higher = prioritize)
-Target = tuple
-
-WEAK_SQL = """select data, total*time*time*(1.0+cast(misses as real)/total) as damage
-  from (
-    select data, agg_median(time) as time, sum(count) as total, sum(mistakes) as misses
-    from statistic where w >= ? and type = ? group by data)
-  where total >= ?
-  order by damage desc limit ?"""
-
+# A target is (kind, data, weight); kind in {'char','trigram','word'}.
 TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}
 
 _dict_cache = {}
-_TRAIL_PUNCT = '.,!?;:'
+_TRAIL_PUNCT = '.,!?;:'   # punctuation that naturally trails a word
+_OPEN_PUNCT = '"(\''       # punctuation that naturally leads a word
+CAND_CAP = 150             # cap dictionary candidates considered per slot
+
+# Raw aggregates per item; scoring done in Python (sqlite lacks log()).
+# Exclude stats from generated-lesson sources (discount set), e.g. <Weakspot>.
+RAW_SQL = """select data, agg_median(time) as t, sum(count) as total, sum(mistakes) as misses
+  from statistic as st
+  left join source as src on st.source = src.rowid
+  where st.w >= ? and st.type = ? and (st.source is null or src.discount is null)
+  group by data having sum(count) >= ?"""
 
 
 def is_practice_word(w):
@@ -27,27 +34,41 @@ def is_practice_word(w):
   return w.isalpha()
 
 
-def _cross_word(trigram):
-  return len(trigram) == 3 and trigram[1] == ' '
+def _alpha_runs(text):
+  return re.findall(r"[A-Za-z]+", text)
 
 
-def _ends_with_surface(form, ch):
-  return len(form) > 0 and form[-1] == ch
+def target_key(t):
+  return (t[0], t[1])
 
 
-def _starts_with_surface(form, ch):
-  return len(form) > 0 and form[0] == ch
+def covered_targets(text, targets):
+  """Return the set of target keys whose surface form literally appears in text."""
+  res = set()
+  if not text:
+    return res
+  runs = {r.lower() for r in _alpha_runs(text)}
+  for t in targets:
+    kind, data = t[0], t[1]
+    if kind == 'word':
+      if data.lower() in runs: res.add((kind, data))
+    elif kind == 'char':
+      if data in text: res.add((kind, data))
+    elif kind == 'trigram':
+      if data in text: res.add((kind, data))
+  return res
 
 
-def _surface_end(word, ch):
-  """Render word so its last character is ch (quotes, periods, or natural letter)."""
-  if ch == '"':
-    return f'"{word[0].upper() + word[1:]}"'
-  if ch in _TRAIL_PUNCT:
-    return word + ch
-  if word.endswith(ch):
+def _cap_first(w):
+  return w[0].upper() + w[1:] if w else w
+
+
+def _capitalize_for_char(word, ch):
+  if not word:
     return word
-  return None
+  if ch.isupper():
+    return _cap_first(word)
+  return word
 
 
 def _pick_by_damage(candidates, dmg):
@@ -56,34 +77,25 @@ def _pick_by_damage(candidates, dmg):
   return max(candidates, key=lambda w: (dmg.get(w.lower(), 0.0), w))
 
 
-def word_pairs_for_trigram(trigram, words):
-  """Test helper: pairs from a flat word list."""
-  out = []
-  if _cross_word(trigram):
-    a, _, b = trigram
-    for w1 in words:
-      for w2 in words:
-        f1 = _surface_end(w1, a) if not w1.endswith(a) else w1
-        if f1 is None and not w1.endswith(a):
-          f1 = _surface_end(w1, a)
-        if f1 is None:
-          continue
-        if w2.startswith(b):
-          out.append((f1, w2))
-  else:
-    for w in words:
-      if trigram in w:
-        out.append((w,))
-  return out
+def score_target(time, count, misses):
+  """Importance ("damage") score for selection.
+
+  This is the total cost an item imposes on the user: it scales with how slow it
+  is (quadratic in seconds-per-char), how *often* it is typed (linear in count),
+  and how error-prone it is. So a merely-slow item typed once is unimportant,
+  while a moderately-slow item typed constantly dominates — that is the point.
+  """
+  if time is None or count is None or count <= 0:
+    return 0.0
+  return (time * time) * (count + (misses or 0))
 
 
-def words_containing_char(ch, words):
-  cl = ch.lower()
-  return [w for w in words if cl in w.lower()]
-
+# ---------------------------------------------------------------------------
+# Dictionary / weak-word index
+# ---------------------------------------------------------------------------
 
 class LessonIndex:
-  """Weak DB words first; bundled dictionary for fill and fallback."""
+  """Weak DB words first, bundled dictionary for completing trigram boundaries."""
 
   def __init__(self, weak_words, dict_words, weak_damage=None):
     self.weak_damage = weak_damage or {}
@@ -91,85 +103,76 @@ class LessonIndex:
     seen = set()
     for w in weak_words:
       wl = w.lower()
-      if wl not in seen and (is_practice_word(w) or wl.isalpha()):
-        seen.add(wl)
-        self.weak.append(wl)
+      if wl not in seen and wl.isalpha() and len(wl) >= 1:
+        seen.add(wl); self.weak.append(wl)
     self.dict = sorted({w.lower() for w in dict_words if is_practice_word(w)} - seen)
+    self.weak_set = set(self.weak)
+    self._all = self.weak + self.dict
     self._ends = defaultdict(list)
     self._starts = defaultdict(list)
-    for w in self.weak + self.dict:
+    for w in self._all:
       self._ends[w[-1]].append(w)
       self._starts[w[0]].append(w)
-    self.weak_set = set(self.weak)
+    self._contains_cache = {}
+    self._prefix_cache = {}
+    self._suffix_cache = {}
 
   @property
   def words(self):
-    return self.weak + self.dict
+    return self._all
 
-  def _weak_first(self, weak_pool, dict_pool):
-    return weak_pool if weak_pool else dict_pool
+  def all_words(self):
+    return self._all
 
-  def best_in_word(self, tri, rng):
-    weak = [w for w in self.weak if tri in w]
-    if weak:
-      return _pick_by_damage(weak, self.weak_damage), True
-    d = [w for w in self.dict if tri in w]
-    return (rng.choice(d) if d else ''), False
+  def words_ending(self, ch):
+    return self._ends.get(ch, [])
 
-  def cross_word_pairs(self, tri):
-    a, _, b = tri
-    pairs = []
-    seen = set()
-    for from_weak in (True, False):
-      words = self.weak if from_weak else self.dict
-      for w in words:
-        if w.endswith(a):
-          f1 = w
-        else:
-          f1 = _surface_end(w, a)
-        if f1 is None:
-          continue
-        w2_weak = [x for x in self.weak if x.startswith(b)]
-        w2_dict = [x for x in self.dict if x.startswith(b)]
-        for w2 in self._weak_first(w2_weak, w2_dict):
-          key = (f1, w2)
-          if key in seen:
-            continue
-          seen.add(key)
-          pairs.append((f1, w2, w in self.weak_set, w2 in self.weak_set))
-    return pairs
+  def words_starting(self, ch):
+    return self._starts.get(ch, [])
 
-  def best_cross_pair(self, tri, rng):
-    pairs = self.cross_word_pairs(tri)
-    if not pairs:
-      return None
-    def rank(p):
-      form1, w2, w1_weak, w2_weak = p
-      pri = (2 if w1_weak else 0) + (2 if w2_weak else 0)
-      raw1 = form1.strip('"').rstrip(_TRAIL_PUNCT).lower()
-      d = self.weak_damage.get(w2.lower(), 0) + self.weak_damage.get(raw1, 0)
-      return (pri, d, rng.random())
-    form1, w2, _, _ = max(pairs, key=rank)
-    return form1, w2
+  def words_with_prefix(self, p):
+    p = p.lower()
+    if p not in self._prefix_cache:
+      weak = [w for w in self.weak if w.startswith(p)]
+      dct = [w for w in self.dict if w.startswith(p)]
+      self._prefix_cache[p] = weak + dct[:CAND_CAP]
+    return self._prefix_cache[p]
 
-  def random_word(self, rng, prefer_weak=False):
-    if prefer_weak and self.weak:
-      return _pick_by_damage(self.weak, self.weak_damage)
-    pool = self.dict or self.weak
-    return rng.choice(pool) if pool else ''
+  def words_with_suffix(self, s):
+    s = s.lower()
+    if s not in self._suffix_cache:
+      weak = [w for w in self.weak if w.endswith(s)]
+      dct = [w for w in self.dict if w.endswith(s)]
+      self._suffix_cache[s] = weak + dct[:CAND_CAP]
+    return self._suffix_cache[s]
 
-  def word_for_char(self, ch, rng):
-    weak = words_containing_char(ch, self.weak)
-    if weak:
-      return _capitalize_for_char(_pick_by_damage(weak, self.weak_damage), ch)
-    d = words_containing_char(ch, self.dict)
-    if d:
-      return _capitalize_for_char(rng.choice(d), ch)
-    w = self.random_word(rng)
-    return _capitalize_for_char(w, ch) if w else ''
+  def words_containing(self, sub):
+    sub = sub.lower()
+    if sub in self._contains_cache:
+      return self._contains_cache[sub]
+    weak = [w for w in self.weak if sub in w]
+    dct = [w for w in self.dict if sub in w]
+    out = weak + dct[:CAND_CAP]
+    self._contains_cache[sub] = out
+    return out
+
+  def word_for_char(self, ch, rng, remaining=None, targets=None):
+    """A real word rendered so it contains ch (exact case)."""
+    low = ch.lower()
+    if ch.isupper():
+      cands = self.words_starting(low)
+      if cands:
+        return _cap_first(_best_word(cands[:CAND_CAP], _cap_first, self, remaining, targets, rng))
+      return ''
+    cands = [w for w in self._all if low in w]
+    if not cands:
+      return ''
+    weak = [w for w in cands if w in self.weak_set]
+    pool = (weak + cands[:CAND_CAP]) if weak else cands[:CAND_CAP]
+    return _decorate(_best_word(pool, lambda x: x, self, remaining, targets, rng), remaining, targets)
 
 
-DictIndex = LessonIndex  # compat
+DictIndex = LessonIndex   # back-compat alias
 CorpusIndex = LessonIndex
 
 
@@ -187,175 +190,473 @@ def get_dict_index(wordlist_path):
   return _dict_cache[wordlist_path]
 
 
-def _capitalize_for_char(word, ch):
-  if not word:
+# ---------------------------------------------------------------------------
+# Token rendering / candidate scoring
+# ---------------------------------------------------------------------------
+
+def _decorate(word, remaining, targets):
+  """Capitalize first letter if that covers an uncovered uppercase char target."""
+  if not word or not targets:
     return word
-  if ch.isupper():
-    return word[0].upper() + word[1:]
+  rem = remaining if remaining is not None else _keys(targets)
+  for t in targets:
+    if t[0] == 'char' and t[1].isupper() and (t[0], t[1]) in rem:
+      if word[0].lower() == t[1].lower():
+        return _cap_first(word)
   return word
 
 
-def _weak_damage_map(targets):
-  return {t[1].lower(): t[2] for t in targets if t[0] == 'word'}
+def _keys(targets):
+  return {(t[0], t[1]) for t in targets}
 
 
-def _weak_word_list(targets):
-  return [t[1] for t in targets if t[0] == 'word']
+def _best_word(cands, render, index, remaining, targets, rng):
+  """Pick the candidate whose rendered form covers the most uncovered targets,
+  preferring weak words and higher damage. Ties broken by rng for variety."""
+  if not cands:
+    return None
+  rng = rng or random.Random()
+  rem_targets = []
+  if targets is not None:
+    rem = remaining if remaining is not None else _keys(targets)
+    rem_targets = [t for t in targets if (t[0], t[1]) in rem]
+  best = None; best_key = None
+  for w in cands:
+    extra = len(covered_targets(render(w), rem_targets)) if rem_targets else 0
+    key = (extra, 1 if w in index.weak_set else 0, index.weak_damage.get(w, 0.0), rng.random())
+    if best_key is None or key > best_key:
+      best_key = key; best = w
+  return best
 
 
-def _apply_targets_to_tokens(w1, w2, targets):
-  chars = [t for t in targets if t[0] == 'char']
-  words_only = [t for t in targets if t[0] == 'word']
-  dmg = _weak_damage_map(targets)
-  for _, data, _ in words_only:
-    dl = data.lower()
-    if w2 and w2.lower() == dl:
-      w2 = data
-    if w1 and w1.strip('"').lower() == dl:
-      if w1.startswith('"'):
-        w1 = f'"{data[0].upper() + data[1:]}"'
-      else:
-        w1 = data
-  for _, ch, _ in chars:
-    if w1 and ch.lower() in w1.lower():
-      if w1.startswith('"'):
-        inner = w1.strip('"')
-        w1 = f'"{_capitalize_for_char(inner, ch)}"'
-      else:
-        w1 = _capitalize_for_char(w1.rstrip(_TRAIL_PUNCT), ch) + (w1[-1] if w1[-1] in _TRAIL_PUNCT else '')
-    if w2 and ch.lower() in w2.lower():
-      w2 = _capitalize_for_char(w2, ch)
-  # prefer weak word for char when listed
-  for _, ch, _ in chars:
-    for _, data, _ in words_only:
-      if ch.lower() in data.lower():
-        w = _capitalize_for_char(data, ch)
-        if w2 and w2.lower() == data.lower():
-          w2 = w
-        elif w1 and w1.strip('"').lower() == data.lower():
-          w1 = f'"{w}"' if w1.startswith('"') else w
-  return w1, w2
+def _split_segments(tri):
+  """Classify a no-space trigram into (leading_alpha, mid, trailing) pieces."""
+  la = 0
+  while la < 3 and tri[la].isalpha(): la += 1   # leading alpha length
+  ta = 3
+  while ta > 0 and tri[ta-1].isalpha(): ta -= 1  # index where trailing alpha begins
+  return la, ta
 
 
-def _target_weights(targets):
-  return {t[1]: t[2] for t in targets}
-
-
-def _pick_weak_word_fallback(words_only, chars, dmg, rng):
-  if words_only:
-    w = _pick_by_damage([t[1] for t in words_only], dmg)
-    for _, ch, _ in chars:
-      w = _capitalize_for_char(w, ch)
-    return w
+def _left_token(ch, index, remaining, targets, rng):
+  """Render a token whose last visible char is ch."""
+  if ch == '"':
+    cands = index.all_words()
+    w = _best_word(cands[:CAND_CAP] if not index.weak else index.weak + index.dict[:CAND_CAP],
+                   lambda x: '"' + _cap_first(x) + '"', index, remaining, targets, rng)
+    return '"' + _cap_first(w) + '"' if w else ''
+  if ch in _TRAIL_PUNCT or ch == ')':
+    cands = index.weak + index.dict[:CAND_CAP]
+    w = _best_word(cands, lambda x: _decorate(x, remaining, targets) + ch, index, remaining, targets, rng)
+    return _decorate(w, remaining, targets) + ch if w else ''
+  if ch == "'":
+    cands = index.weak + index.dict[:CAND_CAP]
+    w = _best_word(cands, lambda x: _decorate(x, remaining, targets) + "'", index, remaining, targets, rng)
+    return _decorate(w, remaining, targets) + "'" if w else ''
+  if ch.isalpha():
+    cands = index.words_ending(ch.lower())
+    if not cands:
+      return ''
+    cands = cands[:CAND_CAP] if len(cands) > CAND_CAP else cands
+    w = _best_word(cands, lambda x: _decorate(x, remaining, targets), index, remaining, targets, rng)
+    return _decorate(w, remaining, targets) if w else ''
   return ''
 
 
+def _right_token(ch, index, remaining, targets, rng):
+  """Render a token whose first visible char is ch."""
+  if ch in _OPEN_PUNCT:
+    cands = index.weak + index.dict[:CAND_CAP]
+    w = _best_word(cands, lambda x: ch + _decorate(x, remaining, targets), index, remaining, targets, rng)
+    return ch + _decorate(w, remaining, targets) if w else ''
+  if ch.isalpha():
+    cands = index.words_starting(ch.lower())
+    if not cands:
+      return ''
+    cands = cands[:CAND_CAP] if len(cands) > CAND_CAP else cands
+    if ch.isupper():
+      w = _best_word(cands, _cap_first, index, remaining, targets, rng)
+      return _cap_first(w) if w else ''
+    w = _best_word(cands, lambda x: _decorate(x, remaining, targets), index, remaining, targets, rng)
+    return _decorate(w, remaining, targets) if w else ''
+  if ch in _TRAIL_PUNCT:   # rare: token starting with sentence punctuation
+    cands = index.weak + index.dict[:CAND_CAP]
+    w = _best_word(cands, lambda x: ch + _decorate(x, remaining, targets), index, remaining, targets, rng)
+    return ch + _decorate(w, remaining, targets) if w else ''
+  return ''
+
+
+def _neighbor_token(index, remaining, targets, rng):
+  """A productive neighbor: prefer an uncovered weak word, else any weak/dict word.
+
+  Used only to realize a required space for edge-space trigrams; we still pick
+  something that covers an outstanding target when possible (never pure filler)."""
+  rem = remaining if remaining is not None else _keys(targets or [])
+  uncovered = [t[1].lower() for t in (targets or [])
+               if t[0] == 'word' and (t[0], t[1]) in rem and t[1].lower() in index.weak_set]
+  if uncovered:
+    return _decorate(_pick_by_damage(uncovered, index.weak_damage), remaining, targets)
+  if index.weak:
+    return _decorate(_pick_by_damage(index.weak, index.weak_damage), remaining, targets)
+  if index.dict:
+    return rng.choice(index.dict[:CAND_CAP])
+  return ''
+
+
+def _nospace_token(tri, index, remaining, targets, rng):
+  """Render a single token containing a 3-char trigram that has no spaces."""
+  if tri.isalpha():
+    if tri[0].isupper() and tri[1:].islower():
+      cands = index.words_with_prefix(tri.lower())
+      cands = (cands[:CAND_CAP]) if len(cands) > CAND_CAP else cands
+      w = _best_word(cands, _cap_first, index, remaining, targets, rng)
+      return _cap_first(w) if w else ''
+    if tri.islower():
+      cands = index.words_containing(tri)
+      w = _best_word(cands, lambda x: x, index, remaining, targets, rng)
+      return _decorate(w, remaining, targets) if w else ''
+    # mixed case mid-word: place lower match then restore uppercase positions
+    cands = index.words_containing(tri.lower())
+    w = _best_word(cands, lambda x: _casematch(x, tri), index, remaining, targets, rng)
+    return _casematch(w, tri) if w else ''
+
+  la, ta = _split_segments(tri)
+  # letters then trailing punctuation: 'ol,', 'o,"', 'ed.'
+  if 1 <= la < 3 and all(not c.isalpha() for c in tri[la:]):
+    suffix = tri[:la]; tail = tri[la:]
+    cands = index.words_with_suffix(suffix)
+    cands = cands[:CAND_CAP] if len(cands) > CAND_CAP else cands
+    w = _best_word(cands, lambda x: _decorate(x, remaining, targets) + tail, index, remaining, targets, rng)
+    if w:
+      return _decorate(w, remaining, targets) + tail
+  # leading punctuation then letters: '-fe', '"fe', '(ab'
+  if ta < 3 and tri[0] in (_OPEN_PUNCT + '-'):
+    lead = tri[0]; rest = tri[1:]
+    if lead == '-':
+      cands = index.words_with_prefix(rest)
+      cands = cands[:CAND_CAP] if len(cands) > CAND_CAP else cands
+      right = _best_word(cands, lambda x: x, index, remaining, targets, rng)
+      left = _neighbor_token(index, remaining, targets, rng)
+      if right and left:
+        token = f'{left}-{_decorate(right, remaining, targets)}'
+        if tri in token:
+          return token
+    else:
+      cands = index.words_with_prefix(rest)
+      cands = cands[:CAND_CAP] if len(cands) > CAND_CAP else cands
+      w = _best_word(cands, lambda x: lead + x, index, remaining, targets, rng)
+      if w:
+        return lead + _decorate(w, remaining, targets)
+  # letter, internal punct, letter: 'e-m', "o'c", 'a.b'
+  if tri[0].isalpha() and not tri[1].isalpha() and tri[2].isalpha():
+    mid = tri[1]
+    lefts = index.words_ending(tri[0].lower())
+    rights = index.words_starting(tri[2].lower())
+    if lefts and rights:
+      lw = _best_word(lefts[:CAND_CAP], lambda x: x, index, remaining, targets, rng)
+      rw = _best_word(rights[:CAND_CAP], lambda x: x, index, remaining, targets, rng)
+      token = f'{_decorate(lw, remaining, targets)}{mid}{rw}'
+      if tri in token:
+        return token
+  return ''
+
+
+def _casematch(w, tri):
+  if not w:
+    return ''
+  idx = w.find(tri.lower())
+  if idx < 0:
+    return ''
+  lst = list(w)
+  for k, ch in enumerate(tri):
+    if ch.isupper():
+      lst[idx + k] = ch
+  return ''.join(lst)
+
+
+def _suffix_casematch(word, suf):
+  """Render word (which ends with suf.lower()) with suf's uppercase positions applied."""
+  if not word or not word.endswith(suf.lower()):
+    return word
+  start = len(word) - len(suf)
+  lst = list(word)
+  for k, ch in enumerate(suf):
+    if ch.isupper():
+      lst[start + k] = ch
+  return ''.join(lst)
+
+
+def trigram_tokens(tri, index, remaining, targets, rng):
+  """Return a list of token strings whose join contains tri, or [] if impossible."""
+  if len(tri) != 3:
+    return []
+  sp = tuple(i for i, c in enumerate(tri) if c == ' ')
+  c0, c1, c2 = tri[0], tri[1], tri[2]
+
+  if sp == ():
+    t = _nospace_token(tri, index, remaining, targets, rng)
+    return [t] if t else []
+
+  if sp == (1,):   # cross-word: left ends c0, right starts c2
+    left = _left_token(c0, index, remaining, targets, rng)
+    right = _right_token(c2, index, remaining, targets, rng)
+    return [left, right] if left and right else []
+
+  if sp == (0,):   # ' XY': token starting with c1c2, preceded by a space
+    tok = _right_token(c1, index, remaining, targets, rng) if not c2.isalpha() else None
+    if c1.isalpha():
+      cands = index.words_with_prefix((c1 + c2).lower())
+      cands = cands[:CAND_CAP] if len(cands) > CAND_CAP else cands
+      render = _cap_first if c1.isupper() else (lambda x: _decorate(x, remaining, targets))
+      w = _best_word(cands, render, index, remaining, targets, rng)
+      tok = render(w) if w else ''
+    elif c1 in _OPEN_PUNCT:
+      inner = _right_token(c2, index, remaining, targets, rng)
+      tok = (c1 + inner) if inner else ''
+    if not tok:
+      return []
+    left = _neighbor_token(index, remaining, targets, rng)
+    return [left, tok] if left else [tok]
+
+  if sp == (2,):   # 'XY ': token ending with c0c1, followed by a space
+    tok = ''
+    if c0.isalpha() and c1.isalpha():
+      suf = c0 + c1
+      cands = index.words_with_suffix(suf.lower())
+      if any(c.isupper() for c in suf):
+        # uppercase only reads naturally at a word start, so prefer the exact short word
+        exact = [w for w in cands if len(w) == len(suf)]
+        cands = exact or cands
+      cands = cands[:CAND_CAP] if len(cands) > CAND_CAP else cands
+      render = (lambda x: _suffix_casematch(x, suf))
+      w = _best_word(cands, render, index, remaining, targets, rng)
+      tok = render(w) if w else ''
+    elif c0.isalpha() and not c1.isalpha():   # word ending c0, then trailing punct c1
+      base = _left_token(c0, index, remaining, targets, rng)
+      tok = (base + c1) if base else ''
+    elif not c0.isalpha() and not c1.isalpha():   # word + both punct, e.g. ',"'
+      anyw = _neighbor_token(index, remaining, targets, rng)
+      tok = (anyw + c0 + c1) if anyw else ''
+    if not tok:
+      return []
+    right = _neighbor_token(index, remaining, targets, rng)
+    return [tok, right] if right else [tok]
+
+  if sp == (0, 2):   # ' X ': single-char token
+    if c1.lower() in ('a', 'i'):
+      mid = c1 if c1.isupper() else c1
+      left = _neighbor_token(index, remaining, targets, rng)
+      right = _neighbor_token(index, remaining, targets, rng)
+      toks = [t for t in [left, mid, right] if t]
+      return toks if len(toks) >= 3 else []
+    return []
+
+  return []
+
+
+def phrase_for_trigram(tri, index, rng=None):
+  """Convenience: a single rendered phrase string that contains tri."""
+  rng = rng or random.Random()
+  toks = trigram_tokens(tri, index, None, [("trigram", tri, 1.0)], rng)
+  return ' '.join(t for t in toks if t).strip()
+
+
+def word_pairs_for_trigram(trigram, words):
+  """Test helper: simple word pairs whose boundary forms a cross-word trigram."""
+  out = []
+  if len(trigram) == 3 and trigram[1] == ' ':
+    a, _, b = trigram
+    for w1 in words:
+      if not w1.endswith(a):
+        continue
+      for w2 in words:
+        if w2.startswith(b):
+          out.append((w1, w2))
+  else:
+    for w in words:
+      if trigram in w:
+        out.append((w,))
+  return out
+
+
+# ---------------------------------------------------------------------------
+# Phrase / lesson assembly
+# ---------------------------------------------------------------------------
+
+def _word_token(data, remaining, targets):
+  """Render a weak word, capitalized only if needed for an uncovered upper char."""
+  base = data if any(c.isupper() for c in data) else data.lower()
+  return _decorate(base, remaining, targets)
+
+
+def _make_index(targets, dict_words):
+  weak = [t[1] for t in targets if t[0] == 'word']
+  dmg = {t[1].lower(): t[2] for t in targets if t[0] == 'word'}
+  return LessonIndex(weak, dict_words, dmg)
+
+
 def compose_phrase(targets, index, rng=None):
+  """Build one dense phrase covering as many of these targets as possible."""
   rng = rng or random.Random()
   targets = [t for t in targets if t]
   if not targets:
     return ''
-
-  dmg = _target_weights(targets)
-  words_only = [t for t in targets if t[0] == 'word']
+  remaining = _keys(targets)
   tris = [t for t in targets if t[0] == 'trigram']
+  words = [t for t in targets if t[0] == 'word']
   chars = [t for t in targets if t[0] == 'char']
 
-  if len(tris) == 0 and words_only:
-    return _pick_weak_word_fallback(words_only, chars, dmg, rng)
+  if tris:
+    tri = max(tris, key=lambda t: t[2])[1]
+    toks = trigram_tokens(tri, index, remaining, targets, rng)
+    if toks:
+      return ' '.join(t for t in toks if t).strip()
 
-  for _, tri, _ in sorted(tris, key=lambda t: t[2], reverse=True):
-    if not _cross_word(tri):
-      w, _ = index.best_in_word(tri, rng)
-      if w:
-        w1, _ = _apply_targets_to_tokens(w, None, targets)
-        return w1
-
-  for _, tri, tw in sorted(tris, key=lambda t: t[2], reverse=True):
-    if _cross_word(tri):
-      pair = index.best_cross_pair(tri, rng)
-      if pair:
-        w1, w2 = _apply_targets_to_tokens(pair[0], pair[1], targets)
-        return f'{w1} {w2}'
+  if words:
+    dmg = {t[1].lower(): t[2] for t in words}
+    w = _pick_by_damage([t[1].lower() for t in words], dmg)
+    return _decorate(w, remaining, targets)
 
   if chars:
-    return index.word_for_char(chars[0][1], rng)
+    return index.word_for_char(chars[0][1], rng, remaining, targets)
 
-  return _pick_weak_word_fallback(words_only, chars, dmg, rng)
-
-
-def _make_index(targets, dict_words):
-  return LessonIndex(_weak_word_list(targets), dict_words, _weak_damage_map(targets))
+  return ''
 
 
-def generate_lesson_lines(targets, dict_words, n_lines=5, rng=None):
-  rng = rng or random.Random()
-  index = _make_index(targets, dict_words)
-  lines = []
-  pool = list(targets)
-  if not pool:
-    return lines
-  for _ in range(n_lines):
-    rng.shuffle(pool)
-    batch = pool[: min(4, len(pool))]
-    line = compose_phrase(batch, index, rng)
-    if line and line not in lines:
-      lines.append(line)
-  return lines
+def _kind_rank(kind):
+  return {'trigram': 0, 'word': 1, 'char': 2}.get(kind, 3)
 
 
-def _batch_for_uncovered(pool, covered, rng, n=6):
-  """Prefer high-weight targets not yet covered in this lesson."""
-  uncovered = [t for t in pool if t[1] not in covered]
-  if not uncovered:
-    uncovered = list(pool)
-  uncovered.sort(key=lambda t: t[2], reverse=True)
-  top = uncovered[:n]
-  rng.shuffle(top)
-  return top
+def _tokens_for_target(t, index, remaining, targets, rng):
+  """Render token(s) that practise a single target. `remaining` steers slot
+  fillers toward still-uncovered targets; when empty they vary for freshness."""
+  if t[0] == 'trigram':
+    return [x for x in trigram_tokens(t[1], index, remaining, targets, rng) if x]
+  if t[0] == 'word':
+    w = _word_token(t[1], remaining, targets)
+    return [w] if w else []
+  w = index.word_for_char(t[1], rng, remaining, targets)
+  return [w] if w else []
 
 
-def build_lesson(targets, dict_words, min_chars=220, max_chars=600, rng=None):
-  """Assemble lesson from weak targets only; dict used for pair lookup, not filler."""
+def allocate_repeats(targets, budget, cap=6):
+  """How many times each target should appear, ∝ importance (weight).
+
+  Every target gets at least one (coverage). The rest of `budget` is shared by
+  largest-remainder on weight, so important items recur more, capped so a single
+  item can't swamp the lesson."""
+  n = len(targets)
+  if n == 0:
+    return {}
+  budget = max(budget, n)
+  counts = {target_key(t): 1 for t in targets}
+  remaining = budget - n
+  total_w = sum(max(t[2], 0.0) for t in targets) or 1.0
+  fracs = []
+  for t in targets:
+    share = remaining * max(t[2], 0.0) / total_w
+    whole = int(share)
+    counts[target_key(t)] += whole
+    fracs.append((share - whole, target_key(t)))
+  leftover = remaining - sum(int(remaining * max(t[2], 0.0) / total_w) for t in targets)
+  fracs.sort(reverse=True)
+  i = 0
+  while leftover > 0 and fracs:
+    counts[fracs[i % len(fracs)][1]] += 1
+    leftover -= 1; i += 1
+  return {k: min(cap, v) for k, v in counts.items()}
+
+
+def _interleave(instances, rng):
+  """Shuffle, then nudge apart adjacent instances of the same target."""
+  rng.shuffle(instances)
+  for i in range(1, len(instances)):
+    if instances[i][1] == instances[i-1][1]:
+      for j in range(i+1, len(instances)):
+        if instances[j][1] != instances[i-1][1]:
+          instances[i], instances[j] = instances[j], instances[i]
+          break
+  return instances
+
+
+def build_lesson(targets, dict_words, min_chars=220, max_chars=600, rng=None, recent=None):
+  """Assemble a lesson from weak targets only — no random filler.
+
+  Importance drives everything: targets are repeated proportionally to weight so
+  high-impact error spaces get real practice, never just one token. Freshness
+  comes from a fresh RNG per build (varied word realizations and ordering),
+  weighted repetition, and `recent` (keys to de-emphasize so consecutive lessons
+  rotate emphasis rather than feeling identical).
+  """
   rng = rng or random.Random()
   if not targets:
     return ''
+  if recent:
+    targets = [(k, d, (w * 0.5 if (k, d) in recent else w)) for (k, d, w) in targets]
   index = _make_index(targets, dict_words)
+  all_keys = _keys(targets)
+
+  budget = max(len(targets), (min_chars // 8) + 1)
+  counts = allocate_repeats(targets, budget)
+  instances = []
+  for t in targets:
+    instances.extend([t] * counts[target_key(t)])
+  _interleave(instances, rng)
+
   phrases = []
-  covered = set()
   text = ''
-  pool = list(targets)
-  attempts = 0
-  max_attempts = max(len(pool) * 6, 12)
-
-  while len(text) < min_chars and attempts < max_attempts:
-    attempts += 1
-    batch = _batch_for_uncovered(pool, covered, rng)
-    phrase = compose_phrase(batch, index, rng)
-    if not phrase:
-      continue
-    for t in batch:
-      covered.add(t[1])
-    phrases.append(phrase)
-    text = ' '.join(phrases)
-    if len(text) >= max_chars:
+  covered = set()
+  for t in instances:
+    if text and len(text) >= max_chars:
       break
+    remaining = all_keys - covered
+    toks = _tokens_for_target(t, index, remaining, targets, rng)
+    if not toks:
+      continue
+    phrase = ' '.join(toks)
+    if not covered_targets(phrase, targets):
+      continue   # never emit a phrase that practises nothing
+    cand = (text + ' ' + phrase).strip() if text else phrase
+    if text and len(cand) > max_chars:
+      break
+    phrases.append(phrase); text = cand
+    covered = covered_targets(text, targets)
 
-  if not text:
-    batch = sorted(pool, key=lambda t: t[2], reverse=True)[:6]
-    text = compose_phrase(batch, index, rng)
+  # Guarantee at least one appearance of every composable target.
+  for t in sorted(targets, key=lambda x: -x[2]):
+    if target_key(t) in covered or (text and len(text) >= max_chars):
+      continue
+    toks = _tokens_for_target(t, index, all_keys - covered, targets, rng)
+    if not toks:
+      continue
+    phrase = ' '.join(toks)
+    cand = (text + ' ' + phrase).strip() if text else phrase
+    if text and len(cand) > max_chars:
+      break
+    phrases.append(phrase); text = cand
+    covered = covered_targets(text, targets)
 
-  return text[:max_chars] if len(text) > max_chars else text
+  return text
 
+
+# ---------------------------------------------------------------------------
+# DB selection + caching
+# ---------------------------------------------------------------------------
 
 def fetch_weak_targets(conn, hist=None, min_count=1, per_type=15):
+  """Pull weak chars/trigrams/words, scored by slowness (dominant) and frequency."""
   if hist is None:
     hist = time.time() - 30 * 86400.0
   targets = []
   for tp, tag in TYPE_TAGS.items():
-    rows = conn.execute(WEAK_SQL, (hist, tp, min_count, per_type)).fetchall()
-    for data, damage in rows:
-      targets.append((tag, data, float(damage or 1.0)))
+    rows = conn.execute(RAW_SQL, (hist, tp, min_count)).fetchall()
+    scored = []
+    for data, t, total, misses in rows:
+      s = score_target(t, total, misses)
+      if s > 0:
+        scored.append((tag, data, s))
+    scored.sort(key=lambda x: x[2], reverse=True)
+    targets.extend(scored[:per_type])
   targets.sort(key=lambda t: t[2], reverse=True)
   return targets
 
@@ -369,7 +670,11 @@ def lesson_cache_valid(cached, db_marker):
 
 
 def build_lesson_from_db(conn, hist=None, min_count=1, per_type=15,
-                         min_chars=220, max_chars=600, wordlist_path=None, rng=None):
+                         min_chars=220, max_chars=600, wordlist_path=None, rng=None,
+                         recent=None):
   targets = fetch_weak_targets(conn, hist, min_count, per_type)
   dict_words = load_wordlist(wordlist_path) if wordlist_path else []
-  return build_lesson(targets, dict_words, min_chars, max_chars, rng)
+  lesson = build_lesson(targets, dict_words, min_chars, max_chars, rng, recent=recent)
+  # The keys most likely emphasized this lesson, for cross-lesson rotation.
+  emphasized = [target_key(t) for t in targets[:max(3, len(targets) // 3)]]
+  return lesson, emphasized

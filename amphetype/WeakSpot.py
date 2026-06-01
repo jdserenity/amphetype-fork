@@ -1,5 +1,6 @@
 
 import time
+from collections import deque
 
 from amphetype.Data import DB
 from amphetype.Config import Settings
@@ -12,9 +13,9 @@ from PyQt5.QtWidgets import *
 
 
 class _LessonWorker(QThread):
-  done = pyqtSignal(str)
+  done = pyqtSignal(str, 'PyQt_PyObject')
 
-  def __init__(self, hist, min_count, per_type, min_chars, max_chars, wordlist_path):
+  def __init__(self, hist, min_count, per_type, min_chars, max_chars, wordlist_path, recent):
     super(_LessonWorker, self).__init__()
     self.hist = hist
     self.min_count = min_count
@@ -22,13 +23,14 @@ class _LessonWorker(QThread):
     self.min_chars = min_chars
     self.max_chars = max_chars
     self.wordlist_path = wordlist_path
+    self.recent = recent
 
   def run(self):
     import sqlite3
     from amphetype.Data import AmphDatabase
     conn = sqlite3.connect(Settings.get('db_name'), 5, 0, "DEFERRED", False, AmphDatabase)
     try:
-      lesson = build_lesson_from_db(
+      lesson, emphasized = build_lesson_from_db(
         conn,
         hist=self.hist,
         min_count=self.min_count,
@@ -36,10 +38,11 @@ class _LessonWorker(QThread):
         min_chars=self.min_chars,
         max_chars=self.max_chars,
         wordlist_path=self.wordlist_path,
+        recent=self.recent,
       )
     finally:
       conn.close()
-    self.done.emit(lesson)
+    self.done.emit(lesson, emphasized)
 
 
 class WeakSpotWidget(QWidget):
@@ -52,6 +55,7 @@ class WeakSpotWidget(QWidget):
     self._worker = None
     self._cache = None  # (lesson text, db_marker)
     self._gen_marker = None
+    self._recent = deque(maxlen=2)  # sets of emphasized keys from recent lessons
     self.preview = QTextEdit()
     self.preview.setWordWrapMode(QTextOption.WordWrap)
     self.preview.setAcceptRichText(False)
@@ -108,14 +112,17 @@ class WeakSpotWidget(QWidget):
     self.preview.setPlainText('Generating lesson…')
     self.status.setText('')
     hist = time.time() - Settings.get('history') * 86400.0
+    recent = set().union(*self._recent) if self._recent else set()
     self._worker = _LessonWorker(
       hist, Settings.get('ana_count'), Settings.get('ana_many'),
-      Settings.get('min_chars'), Settings.get('max_chars'), self._wordlist_path())
+      Settings.get('min_chars'), Settings.get('max_chars'), self._wordlist_path(), recent)
     self._worker.done.connect(self._on_lesson)
     self._worker.start()
 
-  def _on_lesson(self, lesson):
+  def _on_lesson(self, lesson, emphasized):
     self._cache = (lesson, self._gen_marker)
+    if emphasized:
+      self._recent.append(set(emphasized))
     self._show_lesson(lesson)
 
   def startTyping(self):

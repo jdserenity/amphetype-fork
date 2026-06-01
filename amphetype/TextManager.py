@@ -199,7 +199,7 @@ Good luck!""")
       self.nextText()
 
   def newWeakspot(self, lesson):
-    sid = DB.getSource("<Weakspot>", None)
+    sid = DB.getSource("<Weakspot>", 1)
     h = hashlib.sha1()
     h.update(lesson.encode('utf-8'))
     txt_id = h.hexdigest()

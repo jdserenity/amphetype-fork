@@ -4,7 +4,7 @@
 
 Requires Python 3.11 (PyQt5 does not install reliably on 3.12+).
 
-From repo root:
+From repo root, either run `./run-dev.sh` or:
 
 ```sh
 uv venv venv --python 3.11

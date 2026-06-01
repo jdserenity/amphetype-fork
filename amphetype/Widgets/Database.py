@@ -112,16 +112,16 @@ Analysis data: %d (%d keys, %d trigrams, %d words)
       w = now - day*lim
       g = grp * day
       q.extend( DB.fetchall('''
-        select avg(w),data,type,agg_mean(time,count),sum(count),sum(mistakes),agg_median(viscosity)
+        select avg(w),data,type,agg_mean(time,count),sum(count),sum(mistakes),agg_median(viscosity),source
         from statistic where w <= %f
-        group by data,type,cast(w/%f as int)''' % (w, g)) )
+        group by data,type,cast(w/%f as int),source''' % (w, g)) )
       self.progress_.inc()
 
       DB.execute('''delete from statistic where w <= ?''', (w, ))
       self.progress_.inc()
 
-    DB.executemany('''insert into statistic (w,data,type,time,count,mistakes,viscosity)
-      VALUES (?,?,?,?,?,?,?)''', q)
+    DB.executemany('''insert into statistic (w,data,type,time,count,mistakes,viscosity,source)
+      VALUES (?,?,?,?,?,?,?,?)''', q)
     self.progress_.inc()
     DB.commit()
     DB.execute('vacuum')

@@ -123,6 +123,18 @@ class AmphDatabase(sqlite3.Connection):
       self.fetchall("select * from result,source,statistic,text,mistake limit 1")
     except:
       self.newDB()
+    self._ensure_migrations()
+
+  def _ensure_migrations(self):
+    cols = {r[1] for r in self.execute("pragma table_info(statistic)").fetchall()}
+    if 'source' not in cols:
+      self.execute('alter table statistic add column source integer')
+      self.execute('''update statistic set source = (
+        select r.source from result r where r.w = statistic.w limit 1
+      ) where source is null''')
+    # Weakspot (and other generated lessons) must not feed back into weakspot selection.
+    self.execute("update source set discount = 1 where name = '<Weakspot>' and discount is null")
+    self.commit()
 
   def resetTimeGroup(self):
     self.lasttime_ = 0.0
@@ -158,7 +170,7 @@ class AmphDatabase(sqlite3.Connection):
 create table source (name text, disabled integer, discount integer);
 create table text (id text primary key, source integer, text text, disabled integer);
 create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real);
-create table statistic (w real, data text, type integer, time real, count integer, mistakes integer, viscosity real);
+create table statistic (w real, data text, type integer, time real, count integer, mistakes integer, viscosity real, source integer);
 create table mistake (w real, target text, mistake text, count integer);
 create view text_source as
   select id,s.name,text,coalesce(t.disabled,s.disabled)
@@ -183,11 +195,14 @@ create view text_source as
     return g
 
   def getSource(self, source, lesson=None):
-    v = self.fetchall('select rowid from source where name = ? limit 1', (source, ))
+    v = self.fetchall('select rowid,discount from source where name = ? limit 1', (source, ))
     if len(v) > 0:
-      self.execute('update source set disabled = NULL where rowid = ?', v[0])
+      rid, disc = v[0]
+      self.execute('update source set disabled = NULL where rowid = ?', (rid,))
+      if lesson is not None and disc is None:
+        self.execute('update source set discount = ? where rowid = ?', (lesson, rid))
       self.commit()
-      return v[0][0]
+      return rid
     self.execute('insert into source (name,discount) values (?,?)', (source, lesson))
     return self.getSource(source)
 
