@@ -575,7 +575,7 @@ class TyperWindow(QWidget):
         tp = 1
       elif len(k) == 1:
         tp = 0
-      vals.append( (s.median(), v, now, len(s), s.flawed(), tp, k) )
+      vals.append( (s.median(), v, now, len(s), s.flawed(), tp, k, srcid) )
 
     # print(vals)
 
@@ -584,8 +584,8 @@ class TyperWindow(QWidget):
     if not is_lesson or self._settings.get('use_lesson_stats'):
       self.DB.executemany_('''
       insert into statistic
-      (time,viscosity,w,count,mistakes,type,data)
-      values (?,?,?,?,?,?,?)
+      (time,viscosity,w,count,mistakes,type,data,source)
+      values (?,?,?,?,?,?,?,?)
       ''', vals)
 
       mistakes = Counter((c.char, e) for c in run if c.mistakes > 0 for e in c.errors)
