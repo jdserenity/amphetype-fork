@@ -244,13 +244,13 @@ class Quizzer(QWidget):
     vals = []
     for k, s in stats.items():
       v = visc[k].median()
-      vals.append( (s.median(), v*100.0, now, len(s), s.flawed(), type(k), k) )
+      vals.append( (s.median(), v*100.0, now, len(s), s.flawed(), type(k), k, self.text[1]) )
 
     is_lesson = DB.fetchone("select discount from source where rowid=?", (None,), (self.text[1], ))[0]
 
     if Settings.get('use_lesson_stats') or not is_lesson:
       DB.executemany_('''insert into statistic
-        (time,viscosity,w,count,mistakes,type,data) values (?,?,?,?,?,?,?)''', vals)
+        (time,viscosity,w,count,mistakes,type,data,source) values (?,?,?,?,?,?,?,?)''', vals)
       DB.executemany_('insert into mistake (w,target,mistake,count) values (?,?,?,?)',
           [(now, k[0], k[1], v) for k, v in mistakes.items()])
 

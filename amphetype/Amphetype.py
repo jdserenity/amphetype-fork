@@ -36,6 +36,7 @@ from amphetype.TextManager import TextManager
 from amphetype.Performance import PerformanceHistory
 from amphetype.Config import GeneralOptions, TyperOptions
 from amphetype.Lesson import LessonGenerator
+from amphetype.WeakSpot import WeakSpotWidget
 from amphetype.Widgets.Database import DatabaseWidget
 
 from amphetype.fwidgets import FStackedWidget
@@ -77,8 +78,15 @@ class AmphetypeWindow(QMainWindow):
     tabs.addTab(ph, "Performance")
 
     st = StringStats()
-    st.lessonStrings.connect(lambda x: tabs.setCurrentIndex(4))
+    st.lessonStrings.connect(lambda x: tabs.setCurrentIndex(5))
     tabs.addTab(st, "Analysis")
+
+    ws = WeakSpotWidget()
+    ws.startLesson.connect(tm.newWeakspot)
+    ws.gotoTyper.connect(lambda: tabs.setCurrentIndex(0))
+    quiz.statsChanged.connect(ws.on_stats_changed)
+    tw.statsChanged.connect(ws.on_stats_changed)
+    tabs.addTab(ws, "Weakspot")
 
     lg = LessonGenerator()
     st.lessonStrings.connect(lg.addStrings)
