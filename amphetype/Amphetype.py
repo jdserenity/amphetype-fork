@@ -107,7 +107,7 @@ class AmphetypeWindow(QMainWindow):
 
     pw = QTabWidget()
     pw.addTab(GeneralOptions(), "General Options")
-    pw.addTab(TyperOptions(), "Typer 2 Options (BETA)")
+    pw.addTab(TyperOptions(), "Typer Options")
     tabs.addTab(pw, "Preferences")
 
     ab = AboutWidget()
