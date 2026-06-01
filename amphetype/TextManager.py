@@ -198,6 +198,20 @@ Good luck!""")
     else:
       self.nextText()
 
+  def newWeakspot(self, lesson):
+    sid = DB.getSource("<Weakspot>", None)
+    h = hashlib.sha1()
+    h.update(lesson.encode('utf-8'))
+    txt_id = h.hexdigest()
+    try:
+      DB.execute("insert into text (id,text,source,disabled) values (?,?,?,?)",
+                 (txt_id, lesson, sid, 1))
+      DB.commit()
+    except Exception:
+      pass
+    v = DB.fetchone("select id,source,text from text where id = ?", self.defaultText, (txt_id,))
+    self.emit_text(v)
+
   def update(self):
     self.refreshSources.emit()
     self.model.reset()
