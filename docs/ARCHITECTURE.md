@@ -4,6 +4,7 @@
 
 - Python 3.6+ (local dev: 3.11 — see `docs/DEPLOY.md`), PyQt5 GUI, SQLite (`statistic`, `text`, `source`, `result`) via `amphetype.Data.DB`.
 - Typing stats: `type` 0 = character, 1 = trigram (3 chars, including spaces/punctuation), 2 = word (`amphetype/typer.py`).
+- Main window tabs (`amphetype/Amphetype.py`): Typer, Sources, Performance, Analysis, Preferences. Lesson Generator (off-tab, for `auto_review`), Database, About/Help, and the old Weakspot tab are not shown; weakspot runs from the Typer tab mode switch.
 
 ## Typing practice (Typer)
 
@@ -15,6 +16,9 @@ Two runtime-selectable implementations, controlled by `which_typer` (0 = legacy 
 - Target text is rendered in the editable document with per-character styling (untyped, correct, error, blocking errors).
 - Keystrokes mutate the document in place; timing and statistics via `RunStats` (`amphetype/timingtuple.py`).
 - Supports overwrite/lenient modes, word-aware protected backspacing, progress, and full result recording.
+- Footer: faint **normal** / **weakspot** mode toggles (persisted as `practice_mode`); novel attribution (`— Title`) in normal mode only.
+- Completing a lesson in **normal** mode advances via `TextManager.nextText`; in **weakspot** mode builds the next weakspot lesson (`WeakSpotLessonBuilder` in `amphetype/WeakSpot.py`).
+- Page background uses `typer/background_color` (defaults to Qt window grey); lesson text defaults to light foreground on clear glyph backgrounds (errors still highlighted).
 
 ### Legacy (split view)
 
@@ -35,7 +39,7 @@ Two runtime-selectable implementations, controlled by `which_typer` (0 = legacy 
 
 ## Weakspot intelligent lessons
 
-Auto-build practice text from ranked weak **characters**, **trigrams**, and **words** so the user types real words/phrases, not raw n-grams. UI: **Weakspot** tab (`amphetype/WeakSpot.py`); Lesson Generator tab kept for dev, hide later (see `docs/TODO.md`).
+Auto-build practice text from ranked weak **characters**, **trigrams**, and **words** so the user types real words/phrases, not raw n-grams. Started from Typer tab **weakspot** mode (`amphetype/WeakSpot.py` builder + `WeakSpotLessons.py`).
 
 ### Rules
 

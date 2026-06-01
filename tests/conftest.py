@@ -7,5 +7,5 @@ def qapp():
     """Ensure a QApplication exists for the test session."""
     app = QApplication.instance()
     if app is None:
-        app = QApplication(sys.argv)
+        app = QApplication(sys.argv)  # must keep reference; else GC drops the app
     yield app

@@ -8,8 +8,7 @@ def median(lst):
     return None
   res = lst[n//2]
   if n % 2 == 0:
-    res += lst[n//2+1]
-    res /= 2.0
+    res = (lst[n // 2 - 1] + lst[n // 2]) / 2.0
   return res
 
 
