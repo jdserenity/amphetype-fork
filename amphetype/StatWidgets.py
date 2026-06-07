@@ -3,7 +3,7 @@
 
 import time
 
-from amphetype.Data import DB
+from amphetype.Data import DB, STAT_OMIT_DISCOUNTED
 from amphetype.QtUtil import *
 from amphetype.Text import LessonGeneratorPlain
 from amphetype.Config import *
@@ -90,9 +90,12 @@ class StringStats(QWidget):
         from
           (select data,agg_median(time) as time,agg_median(viscosity) as viscosity,
           sum(count) as total,sum(mistakes) as misses
-          from statistic where w >= ? and type = ? group by data)
+          from statistic as st
+          left join source as src on st.source = src.rowid
+          where st.w >= ? and st.type = ? and %s
+          group by data)
         where total >= ?
-        order by %s limit %d""" % (ord, limit)
+        order by %s limit %d""" % (STAT_OMIT_DISCOUNTED, ord, limit)
 
     self.model.setData(DB.fetchall(sql, (hist, cat, count)))
 

@@ -6,6 +6,7 @@ from amphetype.settings import *
 from amphetype.layout import FBoxLayout
 from amphetype.fwidgets import FStackedWidget
 from amphetype.timingtuple import RunStats
+from amphetype.WeakSpot import WeakSpotLessonBuilder
 
 from amphetype.Data import Statistic
 from collections import defaultdict, Counter
@@ -19,6 +20,41 @@ import logging as log
 RETURN_CHAR = '⏎' # '↵'
 PARA_SEP = '\u2029'
 LINE_SEP = '\u2028'
+
+# Lesson text backgrounds only for error highlighting; untyped/correct/inactive stay clear.
+_NO_FILL_STYLE_ATTRS = frozenset({'untyped', 'correct', 'inactive'})
+
+MODE_NORMAL = 'normal'
+MODE_WEAKSPOT = 'weakspot'
+
+
+def lesson_completion_action(mode, met_threshold, is_lesson, auto_review, has_review_words):
+  """What to do after a typing session ends (threshold = met min wpm/accuracy)."""
+  if not met_threshold:
+    return 'repeat'
+  if mode == MODE_WEAKSPOT:
+    return 'weakspot_next'
+  if not is_lesson and auto_review and has_review_words:
+    return 'review'
+  return 'normal_next'
+
+
+def format_source_attribution(source_name):
+  """Footer line for novel sources, e.g. '— Pride and Prejudice'. Empty for system sources."""
+  if not source_name:
+    return ''
+  name = source_name.strip()
+  if not name or (name.startswith('<') and name.endswith('>')):
+    return ''
+  return f'— {name}'
+
+
+def configure_transparent_typer(typer):
+  """QTextEdit + viewport must both be transparent; stylesheet on the edit alone is not enough."""
+  typer.setStyleSheet('QTextEdit { background: transparent; border: none; padding: 0; }')
+  vp = typer.viewport()
+  vp.setAutoFillBackground(False)
+  vp.setStyleSheet('background: transparent;')
 # DIAMOND = '◈'
 # VIS_SPACE = '␣'
 
@@ -72,17 +108,14 @@ class Cursor(QTextCursor):
 
 
 class LessonDocument(QTextDocument):
-  style_untyped = text_style(kerning=False,
-                             background=QBrush(QColor('antiquewhite')))
+  style_untyped = text_style(kerning=False, color=QBrush(QColor('#ffffff')))
   style_error = text_style(kerning=False,
                            background=QBrush(QColor('firebrick')),
                            color=QBrush(QColor('white')))
   style_anyerror = text_style(kerning=False,
                               background=QBrush(QColor('darksalmon')))
-  style_correct = text_style(kerning=False,
-                             color=QBrush(QColor('dimgrey')),
-                             background=QBrush(QColor('antiquewhite')))
-  style_inactive = text_style(color=QBrush(QColor('grey')))
+  style_correct = text_style(kerning=False, color=QBrush(QColor('#e8e8e8')))
+  style_inactive = text_style(color=QBrush(QColor('#888888')))
 
   style_block = block_style()
 
@@ -104,7 +137,10 @@ class LessonDocument(QTextDocument):
       style = getattr(self, f'style_{attr}')
       assert style is not None
       if fgbg == 'bg':
-        style.setBackground(QBrush(var.get()))
+        if attr in _NO_FILL_STYLE_ATTRS:
+          style.setBackground(QBrush(Qt.NoBrush))
+        else:
+          style.setBackground(QBrush(var.get()))
       else:
         style.setForeground(QBrush(var.get()))
 
@@ -303,11 +339,8 @@ class TyperWidget(QTextEdit):
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
     settings('overwrite_mode').bind_value(self.setOverwriteMode)
-    # The editor itself is transparent; the parent canvas provides the uniform background color.
-    # We still react to the setting so we can re-assert no border/chrome.
-    settings('background_color').bind_value(
-      lambda v: self.setStyleSheet(
-        'QTextEdit { background-color: transparent; border: none; padding: 0; }'))
+    configure_transparent_typer(self)
+    settings('background_color').bind_value(lambda v: configure_transparent_typer(self))
 
   def setLesson(self, lesson):
     if lesson == self._lesson:
@@ -385,10 +418,12 @@ class TyperWidget(QTextEdit):
 class TyperWindow(QWidget):
   wantReview = pyqtSignal('PyQt_PyObject')
   wantText = pyqtSignal()
+  needWeakspotLesson = pyqtSignal(str)
   statsChanged = pyqtSignal()
   
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
+    self.setObjectName('TyperWindow')
 
     app = QApplication.instance()
     self._settings = app.settings
@@ -396,6 +431,10 @@ class TyperWindow(QWidget):
     self.DB = app.DB
 
     self._current_lesson = None
+    self._mode = MODE_NORMAL
+    self._weakspot = WeakSpotLessonBuilder(self)
+    self._weakspot.lessonReady.connect(self._on_weakspot_lesson)
+    self._weakspot.busyChanged.connect(self._on_weakspot_busy)
     self._typer = TyperWidget(self.S)
     hack = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Ignored)
     self._label = QLabel(wordWrap=True, sizePolicy=hack)
@@ -436,28 +475,54 @@ class TyperWindow(QWidget):
     canvas_lay = FBoxLayout([self._typer])
     self._canvas.setLayout(canvas_lay)
 
+    self._source_lbl = QLabel(wordWrap=True)
+    self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+    self._btn_normal = QPushButton('normal', flat=True)
+    self._btn_weakspot = QPushButton('weakspot', flat=True)
+    for b in (self._btn_normal, self._btn_weakspot):
+      b.setCursor(Qt.PointingHandCursor)
+      b.setFocusPolicy(Qt.NoFocus)
+    self._btn_normal.clicked.connect(lambda: self.set_practice_mode(MODE_NORMAL))
+    self._btn_weakspot.clicked.connect(lambda: self.set_practice_mode(MODE_WEAKSPOT))
+    self._mode_status = QLabel('')
+    self._mode_status.setStyleSheet('color: #666; font-size: 11px;')
+    mode_row = QWidget()
+    mode_lay = QHBoxLayout(mode_row)
+    mode_lay.setContentsMargins(0, 0, 0, 0)
+    mode_lay.addWidget(self._btn_normal)
+    mode_lay.addWidget(self._btn_weakspot)
+    mode_lay.addWidget(self._mode_status)
+    mode_lay.addStretch(1)
+    mode_lay.addWidget(self._source_lbl)
+
     self.setLayout(FBoxLayout([
       (self._prog_layout, 0),
-       # QPushButton("test", clicked=self.XXX),
-       # TyperOptions(self.S)],
       (self._canvas, 100),
+      (mode_row, 0),
       ]))
 
-    # Apply the user's chosen canvas color (and keep typer transparent).
     self.S('background_color').bind_value(self._applyBackground, call=True)
+    self.statsChanged.connect(self._weakspot.on_stats_changed)
+    self._mode_btn_style = (
+      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 6px; }'
+      'QPushButton:hover { color: #888; }'
+      'QPushButton[activeMode="true"] { color: #ccc; }')
+    self._apply_practice_mode_from_settings()
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
 
   def _applyBackground(self, color):
-    """Set the uniform canvas color under the (transparent) typing widget."""
+    """Uniform fill under the lesson; per-char formats stay clear except errors."""
     if hasattr(color, 'name'):
       name = color.name()
     else:
       name = str(color)
-    self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ background-color: "{name}"; }}')
-    # Re-assert on the child editor (in case stylesheet order or theme interferes).
-    self._typer.setStyleSheet('QTextEdit { background-color: transparent; border: none; padding: 0; }')
+    sheet = f'background-color: "{name}";'
+    self.setStyleSheet(f'TyperWindow {{ {sheet} }}')
+    self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
+    configure_transparent_typer(self._typer)
 
   def showEvent(self, evt):
     self._typer.setFocus()
@@ -473,7 +538,8 @@ class TyperWindow(QWidget):
 
   def setText(self, txt):
     self._current_lesson = txt
-    textid, _, _ = txt
+    textid, srcid, _ = txt
+    self._update_source_label(srcid)
     pre, _, post = self.DB.getTextContext(textid)
 
     # Only show real surrounding context from the same source. Never insert ugly placeholder labels.
@@ -483,6 +549,57 @@ class TyperWindow(QWidget):
     self._doc.set_text(txt[2], prologue=prologue, epilogue=epilogue)
     self._typer.setFocus()
     self._prog.setValue(0)
+
+  def _update_source_label(self, srcid):
+    row = self.DB.fetchone('select name from source where rowid=?', (None,), (srcid,))
+    text = format_source_attribution(row[0] if row else '')
+    self._source_lbl.setText(text)
+    self._source_lbl.setVisible(bool(text) and self._mode == MODE_NORMAL)
+
+  def _apply_practice_mode_from_settings(self):
+    mode = MODE_WEAKSPOT if self._settings.get('practice_mode') else MODE_NORMAL
+    self._set_mode_ui(mode, load=False)
+    if mode == MODE_WEAKSPOT:
+      self._weakspot.request_next_lesson(force=True)
+
+  def set_practice_mode(self, mode):
+    if mode == self._mode:
+      return
+    self._settings.set('practice_mode', 1 if mode == MODE_WEAKSPOT else 0)
+    self._set_mode_ui(mode, load=True)
+
+  def _set_mode_ui(self, mode, load):
+    self._mode = mode
+    self._btn_normal.setStyleSheet(self._mode_btn_style)
+    self._btn_weakspot.setStyleSheet(self._mode_btn_style)
+    self._btn_normal.setProperty('activeMode', mode == MODE_NORMAL)
+    self._btn_weakspot.setProperty('activeMode', mode == MODE_WEAKSPOT)
+    for b in (self._btn_normal, self._btn_weakspot):
+      b.style().unpolish(b)
+      b.style().polish(b)
+    if self._current_lesson:
+      self._update_source_label(self._current_lesson[1])
+    else:
+      self._source_lbl.setVisible(False)
+    if not load:
+      return
+    if mode == MODE_WEAKSPOT:
+      self._weakspot.request_next_lesson(force=True)
+    else:
+      self._mode_status.setText('')
+      self.wantText.emit()
+
+  def _on_weakspot_busy(self, busy):
+    self._mode_status.setText('generating…' if busy else '')
+
+  def _on_weakspot_lesson(self, lesson):
+    if self._mode != MODE_WEAKSPOT:
+      return
+    if not lesson:
+      self.updateLabel('No statistics yet — practice on normal mode first.')
+      return
+    self._mode_status.setText('')
+    self.needWeakspotLesson.emit(lesson)
 
   def updateLabel(self, msg=None):
     text = []
@@ -580,8 +697,10 @@ class TyperWindow(QWidget):
     # print(vals)
 
     is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
+    # Never record weakspot drills (or other discounted lessons unless opted in).
+    write_stats = self._mode != MODE_WEAKSPOT and (not is_lesson or self._settings.get('use_lesson_stats'))
 
-    if not is_lesson or self._settings.get('use_lesson_stats'):
+    if write_stats:
       self.DB.executemany_('''
       insert into statistic
       (time,viscosity,w,count,mistakes,type,data,source)
@@ -603,19 +722,21 @@ class TyperWindow(QWidget):
     else:
       mins = self._settings.get('min_wpm'), self._settings.get('min_acc')
 
-    if wpm < mins[0] or acc < mins[1]/100.0:
+    met = wpm >= mins[0] and acc >= mins[1] / 100.0
+    review_words = [x for x in vals if x[5] == 2] if not is_lesson else []
+    action = lesson_completion_action(
+      self._mode, met, bool(is_lesson), self._settings.get('auto_review'), bool(review_words))
+
+    if action == 'repeat':
       self.setText(self._current_lesson)
-    elif not is_lesson and self._settings.get('auto_review'):
-      ws = [x for x in vals if x[5] == 2]
-      if len(ws) == 0:
-        self.wantText.emit()
-        return
-      ws.sort(key=lambda x: (x[4],x[0]), reverse=True)
-
-      u = sum(x[4] != 0 for x in ws)
-      u += (len(ws) - u) // 4
-
-      self.wantReview.emit([x[6] for x in ws[:u]])
+    elif action == 'weakspot_next':
+      self._weakspot.invalidate_cache()
+      self._weakspot.request_next_lesson(force=True)
+    elif action == 'review':
+      review_words.sort(key=lambda x: (x[4], x[0]), reverse=True)
+      u = sum(x[4] != 0 for x in review_words)
+      u += (len(review_words) - u) // 4
+      self.wantReview.emit([x[6] for x in review_words[:u]])
     else:
       self.wantText.emit()
 

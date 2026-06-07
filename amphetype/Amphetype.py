@@ -36,8 +36,6 @@ from amphetype.TextManager import TextManager
 from amphetype.Performance import PerformanceHistory
 from amphetype.Config import GeneralOptions, TyperOptions
 from amphetype.Lesson import LessonGenerator
-from amphetype.WeakSpot import WeakSpotWidget
-from amphetype.Widgets.Database import DatabaseWidget
 
 from amphetype.fwidgets import FStackedWidget
 from amphetype.typer import TyperWindow
@@ -78,44 +76,32 @@ class AmphetypeWindow(QMainWindow):
     tabs.addTab(ph, "Performance")
 
     st = StringStats()
-    st.lessonStrings.connect(lambda x: tabs.setCurrentIndex(5))
     tabs.addTab(st, "Analysis")
 
-    ws = WeakSpotWidget()
-    ws.startLesson.connect(tm.newWeakspot)
-    ws.gotoTyper.connect(lambda: tabs.setCurrentIndex(0))
-    quiz.statsChanged.connect(ws.on_stats_changed)
-    tw.statsChanged.connect(ws.on_stats_changed)
-    tabs.addTab(ws, "Weakspot")
-
+    # LessonGenerator not shown as a tab; kept for auto_review (wantReview → newReview).
     lg = LessonGenerator()
     st.lessonStrings.connect(lg.addStrings)
     lg.newLessons.connect(lambda: tabs.setCurrentIndex(1))
     lg.newLessons.connect(tm.addTexts)
     quiz.wantReview.connect(lg.wantReview)
     lg.newReview.connect(tm.newReview)
-    tabs.addTab(lg, "Lesson Generator")
 
     ph.setText.connect(tm.emit_text)
     tm.setText.connect(tw.setText)
     tw.wantText.connect(tm.nextText)
+    tw.needWeakspotLesson.connect(tm.newWeakspot)
     tw.wantReview.connect(lg.wantReview)
     tw.statsChanged.connect(ph.updateData)
-
-    dw = DatabaseWidget()
-    tabs.addTab(dw, "Database")
 
     pw = QTabWidget()
     pw.addTab(GeneralOptions(), "General Options")
     pw.addTab(TyperOptions(), "Typer Options")
     tabs.addTab(pw, "Preferences")
 
-    ab = AboutWidget()
-    tabs.addTab(ab, "About/Help")
-
     self.setCentralWidget(tabs)
 
-    tm.nextText()
+    if not Settings.get('practice_mode'):
+      tm.nextText()
 
   def sizeHint(self):
     return QSize(650, 400)

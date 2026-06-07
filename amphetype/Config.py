@@ -101,6 +101,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "str_what": 'e',
 
     "which_typer": 1,
+    "practice_mode": 0,  # 0 = normal sources, 1 = weakspot lessons on Typer tab
   }
 
   typer_defaults = {
@@ -118,14 +119,14 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
   typer_color_defaults = {
     'inactive_bg': QColor('white'),
-    'inactive_fg': QColor('grey'),
+    'inactive_fg': QColor('#888888'),
     'untyped_bg': QColor('#ffefdc'),
-    'untyped_fg': QColor('black'),
+    'untyped_fg': QColor('#ffffff'),
     'correct_bg': QColor('#fff6eb'),
-    'correct_fg': QColor('dimgrey'),
+    'correct_fg': QColor('#e8e8e8'),
 
     'anyerror_bg': QColor('darksalmon'),
-    'anyerror_fg': QColor('black'),
+    'anyerror_fg': QColor('#ffffff'),
     'error_bg': QColor('firebrick'),
     'error_fg': QColor('white'),
   }
@@ -158,7 +159,9 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     assert QApplication.instance()
     self.defaults['qt_style'] = QApplication.instance().style().objectName().lower()
 
-    self.typer_settings = self.makeSettings('typer', self.typer_defaults)
+    typer_defs = dict(self.typer_defaults)
+    typer_defs['background_color'] = QApplication.palette().color(QPalette.Window)
+    self.typer_settings = self.makeSettings('typer', typer_defs)
     self.typer_colors = self.makeSettings('colors', self.typer_color_defaults)
 
   def get(self, k):
@@ -415,7 +418,7 @@ class TyperOptions(QWidget):
       "Most options under <i>General Options</i> also affect it.",
       QCheckBox('Show progress bar while typing',
                 checked=S['show_progress'], toggled=S('show_progress').set),
-      ["Document background color", S('background_color').button(), None],
+      ["Page background (behind lesson)", S('background_color').button(), None],
       ['Paragraph margin (px)', S('para_margin').spin_box(0, 100), None],
       ['Line spacing', S('para_lineheight').spin_box(0.6, 4.0, 0.05), None],
       TyperInputOptions(S),

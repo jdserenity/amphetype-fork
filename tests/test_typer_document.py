@@ -6,13 +6,49 @@ Run with: python -m pytest tests/ -q
 Requires: pytest, pytest-qt, and PyQt5 (install via `pip install -e '.[test]'` inside the project venv).
 """
 
+import sys
+
 import pytest
 
 pytest.importorskip("PyQt5")
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QColor
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication
 
-from amphetype.typer import LessonDocument, RETURN_CHAR
+_qt_app = QApplication.instance()
+if _qt_app is None:
+  _qt_app = QApplication(sys.argv)
+
+from amphetype.typer import (
+  LessonDocument, RETURN_CHAR, MODE_NORMAL, MODE_WEAKSPOT,
+  format_source_attribution, lesson_completion_action, _NO_FILL_STYLE_ATTRS,
+)
+
+
+def test_lesson_completion_action():
+    assert lesson_completion_action(MODE_NORMAL, False, False, False, False) == 'repeat'
+    assert lesson_completion_action(MODE_WEAKSPOT, True, True, False, False) == 'weakspot_next'
+    assert lesson_completion_action(MODE_NORMAL, True, True, False, False) == 'normal_next'
+    assert lesson_completion_action(MODE_NORMAL, True, False, True, True) == 'review'
+    assert lesson_completion_action(MODE_WEAKSPOT, True, False, True, True) == 'weakspot_next'
+
+
+def test_format_source_attribution():
+    assert format_source_attribution('Pride and Prejudice') == '— Pride and Prejudice'
+    assert format_source_attribution('  Moby Dick  ') == '— Moby Dick'
+    assert format_source_attribution('<Weakspot>') == ''
+    assert format_source_attribution('<Reviews>') == ''
+    assert format_source_attribution('') == ''
+    assert format_source_attribution(None) == ''
+
+
+def test_untyped_style_has_no_background_fill(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_text("hi")
+    doc.reset()
+    assert doc.style_untyped.background().style() == Qt.NoBrush
+    assert doc.style_correct.background().style() == Qt.NoBrush
+    assert 'untyped' in _NO_FILL_STYLE_ATTRS
 
 
 def test_lesson_document_lifecycle(qapp):

@@ -4,12 +4,9 @@ from collections import deque
 
 from amphetype.Data import DB
 from amphetype.Config import Settings
-from amphetype.QtUtil import *
 from amphetype.WeakSpotLessons import build_lesson_from_db, fetch_db_marker, lesson_cache_valid
 
 from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
 
 
 class _LessonWorker(QThread):
@@ -45,72 +42,47 @@ class _LessonWorker(QThread):
     self.done.emit(lesson, emphasized)
 
 
-class WeakSpotWidget(QWidget):
-  startLesson = pyqtSignal(str)
-  gotoTyper = pyqtSignal()
+class WeakSpotLessonBuilder(QObject):
+  """Build weakspot lessons on a background thread; cache until stats change or forced."""
 
-  def __init__(self, *args):
-    super(WeakSpotWidget, self).__init__(*args)
-    self._lesson = ''
+  lessonReady = pyqtSignal(str)
+  busyChanged = pyqtSignal(bool)
+
+  def __init__(self, parent=None):
+    super(WeakSpotLessonBuilder, self).__init__(parent)
     self._worker = None
     self._cache = None  # (lesson text, db_marker)
     self._gen_marker = None
-    self._recent = deque(maxlen=2)  # sets of emphasized keys from recent lessons
-    self.preview = QTextEdit()
-    self.preview.setWordWrapMode(QTextOption.WordWrap)
-    self.preview.setAcceptRichText(False)
-    self.preview.setReadOnly(True)
-    self.status = QLabel('')
+    self._recent = deque(maxlen=2)
 
-    self.setLayout(AmphBoxLayout([
-      ["Weakspot lessons are built automatically from your slowest characters, trigrams, and words."],
-      ["Reuses the current lesson until you type it or your stats change.", None],
-      10,
-      ["Lesson preview:", (self.preview, 1)],
-      [self.status, None,
-        AmphButton("New lesson", lambda: self.regenerate(force=True)),
-        AmphButton("Start typing", self.startTyping)],
-    ]))
+    Settings.signal_for('history').connect(lambda *a: self.invalidate_cache())
+    Settings.signal_for('min_chars').connect(lambda *a: self.invalidate_cache())
+    Settings.signal_for('max_chars').connect(lambda *a: self.invalidate_cache())
 
-    Settings.signal_for('history').connect(self._on_settings)
-    Settings.signal_for('min_chars').connect(self._on_settings)
-    Settings.signal_for('max_chars').connect(self._on_settings)
+  def invalidate_cache(self):
+    self._cache = None
 
   def _db_marker(self):
     return fetch_db_marker(DB)
 
-  def _show_lesson(self, lesson):
-    self._lesson = lesson
-    self.preview.setPlainText(lesson or '(No statistics yet — type some texts first, then come back.)')
-    n = len(lesson.split()) if lesson else 0
-    self.status.setText(f'{len(lesson)} chars, {n} words' if lesson else '')
-
-  def _on_settings(self, *args):
-    if self.isVisible():
-      self.regenerate(force=True)
+  def _wordlist_path(self):
+    return str(Settings.DATA_DIR / 'wordlists' / 'words-20.txt')
 
   def on_stats_changed(self):
     if self._cache and self._db_marker() != self._cache[1]:
       self._cache = None
-      if self.isVisible() and not (self._worker and self._worker.isRunning()):
-        self.regenerate()
 
-  def showEvent(self, event):
-    super(WeakSpotWidget, self).showEvent(event)
-    self.regenerate()
-
-  def _wordlist_path(self):
-    return str(Settings.DATA_DIR / 'wordlists' / 'words-20.txt')
+  def request_next_lesson(self, force=False):
+    self.regenerate(force=force)
 
   def regenerate(self, force=False):
     if self._worker and self._worker.isRunning():
       return
     if not force and lesson_cache_valid(self._cache, self._db_marker()):
-      self._show_lesson(self._cache[0])
+      self.lessonReady.emit(self._cache[0])
       return
     self._gen_marker = self._db_marker()
-    self.preview.setPlainText('Generating lesson…')
-    self.status.setText('')
+    self.busyChanged.emit(True)
     hist = time.time() - Settings.get('history') * 86400.0
     recent = set().union(*self._recent) if self._recent else set()
     self._worker = _LessonWorker(
@@ -120,16 +92,8 @@ class WeakSpotWidget(QWidget):
     self._worker.start()
 
   def _on_lesson(self, lesson, emphasized):
+    self.busyChanged.emit(False)
     self._cache = (lesson, self._gen_marker)
     if emphasized:
       self._recent.append(set(emphasized))
-    self._show_lesson(lesson)
-
-  def startTyping(self):
-    if self._worker and self._worker.isRunning():
-      return
-    if not self._lesson:
-      QMessageBox.information(self, "No lesson", "Nothing to type yet. Import a book and practice a bit first.")
-      return
-    self.startLesson.emit(self._lesson)
-    self.gotoTyper.emit()
+    self.lessonReady.emit(lesson or '')

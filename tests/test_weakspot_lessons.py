@@ -329,6 +329,25 @@ class TestDbIntegration(unittest.TestCase):
     words = [t[1] for t in targets if t[0] == 'word']
     self.assertEqual(words[0], 'fast')
 
+  def test_discounted_source_stats_excluded_from_analysis_aggregate(self):
+    conn = _test_db(); now = 1e9
+    from amphetype.Data import STAT_OMIT_DISCOUNTED
+    book = _add_source(conn, 'My Book')
+    weak = _add_source(conn, '<Weakspot>', 1)
+    conn.executemany(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      [
+        (now, 'realword', 2, 0.4, 20, 1, 1.0, book),
+        (now, 'drillword', 2, 1.0, 500, 0, 1.0, weak),
+      ])
+    sql = """select data, sum(count) as total from statistic as st
+      left join source as src on st.source = src.rowid
+      where st.type = 2 and %s group by data""" % STAT_OMIT_DISCOUNTED
+    rows = conn.execute(sql).fetchall()
+    words = [r[0] for r in rows]
+    self.assertEqual(words, ['realword'])
+    self.assertNotIn('drillword', words)
+
   def test_weakspot_stats_excluded_from_selection(self):
     conn = _test_db(); now = 1e9
     book = _add_source(conn, 'My Book')
