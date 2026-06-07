@@ -102,6 +102,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     "which_typer": 1,
     "practice_mode": 0,  # 0 = normal sources, 1 = weakspot lessons on Typer tab
+    "read_ahead_enabled": False,
   }
 
   typer_defaults = {
@@ -111,6 +112,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     'limit_backspace': False,
 
     'show_progress': True,
+    'read_ahead_level': 0,  # 0 = normal, 1 = hard, 2 = easy (when read_ahead_enabled)
 
     'para_margin': 40,
     'para_lineheight': 1.0,

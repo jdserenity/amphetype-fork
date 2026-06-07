@@ -250,6 +250,100 @@ def test_speed_heatmap_disabled_restores_default_foreground(qapp):
   assert doc._start.charFormat().foreground().color() == doc.style_untyped.foreground().color()
 
 
+def test_read_ahead_preview_then_hides(qapp):
+  from amphetype.read_ahead import READ_AHEAD_NORMAL
+
+  page = QColor('#2a2a2a')
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_page_background(page)
+  doc.set_read_ahead_mode(READ_AHEAD_NORMAL)
+  doc.set_text("hello world foo")
+
+  def fg_at(doc_pos):
+    c = Cursor(doc, position=doc_pos)
+    c.movePosition(c.NextCharacter, c.KeepAnchor)
+    return c.charFormat().foreground().color()
+
+  hidden_fg = page
+  visible_fg = doc.style_untyped.foreground().color()
+  base = doc._start.position()
+  assert doc.read_ahead_preview_pending()
+  assert fg_at(base + 0) == visible_fg
+  assert fg_at(base + 6) == visible_fg
+
+  doc.insert('h')
+  assert not doc.read_ahead_preview_pending()
+  assert fg_at(base + 6) == hidden_fg
+  assert fg_at(base + 12) == visible_fg
+
+  for ch in "ello ":
+    doc.insert(ch)
+  assert fg_at(base + 6) == hidden_fg
+  assert fg_at(base + 12) == hidden_fg
+
+
+def test_read_ahead_mistake_reveals_only_current_hidden_word(qapp):
+  from amphetype.read_ahead import READ_AHEAD_HARD
+  from amphetype.typer import TyperWidget
+
+  page = QColor('#2a2a2a')
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_page_background(page)
+  doc.set_read_ahead_mode(READ_AHEAD_HARD)
+  doc.set_text("one two three four")
+
+  def fg_at(doc_pos):
+    c = Cursor(doc, position=doc_pos)
+    c.movePosition(c.NextCharacter, c.KeepAnchor)
+    return c.charFormat().foreground().color()
+
+  hidden_fg = page
+  base = doc._start.position()
+  doc.dismiss_read_ahead_preview()
+  # hard: hide one, two, three
+  doc.insert('x')  # mistake on "one"
+  assert fg_at(base + 0) != hidden_fg
+  assert fg_at(base + 4) == hidden_fg   # two still hidden
+  assert fg_at(base + 8) == hidden_fg   # three still hidden
+  assert fg_at(base + 14) != hidden_fg  # four was never hidden
+
+
+def test_read_ahead_off_shows_untyped_foreground(qapp):
+  from amphetype.read_ahead import READ_AHEAD_OFF
+
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_page_background(QColor('#2a2a2a'))
+  doc.set_read_ahead_mode(READ_AHEAD_OFF)
+  doc.set_text("hello world")
+  c = Cursor(doc, position=doc._start.position() + 6)
+  c.movePosition(c.NextCharacter, c.KeepAnchor)
+  assert c.charFormat().foreground().color() == doc.style_untyped.foreground().color()
+
+
+def test_read_ahead_with_heatmap_colors_visible_words(qapp):
+  from amphetype.read_ahead import READ_AHEAD_NORMAL
+  from amphetype.speed_heatmap import MODE_CHAR, wpm_color_q
+
+  page = QColor('#2a2a2a')
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_page_background(page)
+  doc.set_read_ahead_mode(READ_AHEAD_NORMAL)
+  doc.set_text("aa bb cc")
+  doc.set_speed_heatmap(True, MODE_CHAR, {'c': 50.0})
+  doc.dismiss_read_ahead_preview()
+
+  def fg_at(doc_pos):
+    c = Cursor(doc, position=doc_pos)
+    c.movePosition(c.NextCharacter, c.KeepAnchor)
+    return c.charFormat().foreground().color()
+
+  hidden_fg = page
+  base = doc._start.position()
+  assert fg_at(base + 0) == hidden_fg          # aa hidden
+  assert fg_at(base + 3) == hidden_fg          # bb hidden
+  assert fg_at(base + 6) == wpm_color_q(50)    # cc visible + heatmap
+
+
 def test_widget_starts_immediately_without_space(qapp):
     """Primary behavior: inline typer no longer requires SPACE to begin a lesson (default)."""
     from PyQt5.QtGui import QFont

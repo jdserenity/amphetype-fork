@@ -7,6 +7,10 @@ from amphetype.layout import FBoxLayout
 from amphetype.fwidgets import FStackedWidget
 from amphetype.timingtuple import RunStats
 from amphetype.WeakSpot import WeakSpotLessonBuilder
+from amphetype.read_ahead import (
+  hidden_char_indices, hidden_word_indices, word_index_at,
+  READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
+)
 
 from amphetype.Data import Statistic
 from amphetype.speed_heatmap import (
@@ -168,6 +172,13 @@ class LessonDocument(QTextDocument):
     self._speed_heatmap_enabled = False
     self._speed_heatmap_mode = 0
     self._speed_heatmap_stats = {}
+    self._heatmap_colors_cache = None
+    self._heatmap_colors_cache_key = None
+    self._read_ahead_mode = READ_AHEAD_OFF
+    self._read_ahead_preview = False
+    self._read_ahead_revealed = set()
+    self._page_bg = QColor('#f0f0f0')
+    self.style_hidden = text_style(kerning=False, color=QBrush(self._page_bg))
     self.set_text('default text')
 
   def set_text(self, text, prologue='', epilogue=''):
@@ -198,7 +209,6 @@ class LessonDocument(QTextDocument):
     assert self._match_text and self._display_text
 
     self.active_region().insertText(self._display_text, self.style_untyped)
-    self._apply_speed_heatmap()
 
     if self.cursor != self._start:
       self.cursor.setPosition(self._start.position())
@@ -206,7 +216,88 @@ class LessonDocument(QTextDocument):
 
     self._run = None
     self._first_error = None
+    self._read_ahead_preview = bool(self._read_ahead_mode)
+    self._read_ahead_revealed = set()
+    self._refresh_read_ahead()
     self.ready.emit(self._match_text)
+
+  def _reveal_read_ahead_word_at(self, match_index):
+    if not self._read_ahead_mode or self.read_ahead_preview_pending():
+      return
+    wi = word_index_at(self._match_text, match_index)
+    if wi in hidden_word_indices(self._match_text, match_index, self._read_ahead_mode):
+      self._read_ahead_revealed.add(wi)
+
+  def read_ahead_preview_pending(self):
+    return bool(self._read_ahead_mode) and self.is_ready() and self._read_ahead_preview
+
+  def dismiss_read_ahead_preview(self):
+    if not self.read_ahead_preview_pending():
+      return False
+    self._read_ahead_preview = False
+    self._refresh_read_ahead()
+    return True
+
+  def set_page_background(self, color):
+    self._page_bg = QColor(color)
+    self.style_hidden.setForeground(QBrush(self._page_bg))
+    self._refresh_read_ahead()
+
+  def set_read_ahead_mode(self, mode):
+    self._read_ahead_mode = mode
+    if self.is_ready() and mode:
+      self._read_ahead_preview = True
+    elif not mode:
+      self._read_ahead_preview = False
+    self._refresh_read_ahead()
+
+  def _read_ahead_hidden_indices(self):
+    if self._match_text is None or self.read_ahead_preview_pending():
+      return set()
+    pos = self._run.index if self._run is not None else 0
+    return hidden_char_indices(self._match_text, pos, self._read_ahead_mode, self._read_ahead_revealed)
+
+  def _heatmap_colors(self):
+    if not self._speed_heatmap_enabled or not self._display_text:
+      return []
+    key = (self._display_text, self._speed_heatmap_mode, id(self._speed_heatmap_stats))
+    if self._heatmap_colors_cache_key != key:
+      self._heatmap_colors_cache_key = key
+      self._heatmap_colors_cache = char_heatmap_colors(
+        self._display_text, self._speed_heatmap_mode, self._speed_heatmap_stats, self._match_text)
+    return self._heatmap_colors_cache
+
+  def _needs_untyped_style_refresh(self):
+    return bool(self._read_ahead_mode)
+
+  def _refresh_untyped_styles(self):
+    if not self._needs_untyped_style_refresh():
+      return
+    self._refresh_read_ahead()
+
+  def _refresh_read_ahead(self):
+    if self._match_text is None or (not self._read_ahead_mode and not self._speed_heatmap_enabled):
+      return
+    pos = self._run.index if self._run is not None else 0
+    hidden = self._read_ahead_hidden_indices()
+    colors = self._heatmap_colors()
+    base = self._start.position()
+    mi = 0; di = base
+    while mi < len(self._match_text):
+      n = 2 if self._match_text[mi] == RETURN_CHAR else 1
+      if mi >= pos:
+        for j in range(n):
+          disp_i = di + j - base
+          if self._read_ahead_mode and mi in hidden:
+            style = self.style_hidden
+          else:
+            style = QTextCharFormat(self.style_untyped)
+            if colors and disp_i < len(colors) and colors[disp_i] is not None:
+              style.setForeground(QBrush(colors[disp_i]))
+          c = Cursor(self, position=di + j)
+          c.movePosition(c.NextCharacter, c.KeepAnchor)
+          c.setCharFormat(style)
+      di += n; mi += 1
 
   def active_region(self):
     c = Cursor(self, position=self._start.position())
@@ -239,6 +330,8 @@ class LessonDocument(QTextDocument):
     self.started.emit()
 
   def insert(self, char, overwrite=True, lenient=False):
+    if self.read_ahead_preview_pending():
+      self.dismiss_read_ahead_preview()
     if self._run is None:
       # Cold start.
       self._run = RunStats.make(self._match_text)
@@ -252,9 +345,12 @@ class LessonDocument(QTextDocument):
 
     if self._first_error is not None:
       # Previous error blocking us.
+      if not correct:
+        self._reveal_read_ahead_word_at(self._run.index)
       self._run.advance(should_advance)
       style = self.style_anyerror if correct else self.style_error
       self.actual_insert(char, style, overwrite=should_advance)
+      self._refresh_read_ahead()
       return
 
     # Update timing data.
@@ -263,6 +359,7 @@ class LessonDocument(QTextDocument):
     if correct:
       self.progress.emit(self._run.index)
     else:
+      self._reveal_read_ahead_word_at(self._run.index)
       self._run.current.errors += char
       if not lenient:
         self._first_error = Cursor(self.cursor, fixed=True)
@@ -276,6 +373,7 @@ class LessonDocument(QTextDocument):
     if self.is_finished():
       self.completed.emit(self._run)
     else:
+      self._refresh_read_ahead()
       self.sig_position.emit(self.cursor)
 
   def actual_insert(self, char, style, overwrite=True):
@@ -319,42 +417,14 @@ class LessonDocument(QTextDocument):
     if self._first_error and self.cursor <= self._first_error:
       self._first_error = None
 
+    self._refresh_read_ahead()
     self.sig_position.emit(self.cursor)
-    self._apply_speed_heatmap(from_pos=mark.position())
 
   def set_speed_heatmap(self, enabled, mode, stats):
     self._speed_heatmap_enabled = enabled
     self._speed_heatmap_mode = mode
     self._speed_heatmap_stats = stats or {}
-    self._apply_speed_heatmap(from_pos=self._heatmap_apply_from())
-
-  def _heatmap_apply_from(self):
-    start = self._start.position()
-    if self._run is not None:
-      return max(start, self.cursor.position())
-    return start
-
-  def _apply_speed_heatmap(self, from_pos=None):
-    if not self._display_text or self._start is None:
-      return
-    start = self._start.position()
-    if from_pos is None or from_pos < start:
-      from_pos = start
-    colors = []
-    if self._speed_heatmap_enabled:
-      colors = char_heatmap_colors(
-        self._display_text, self._speed_heatmap_mode, self._speed_heatmap_stats, self._match_text)
-    offset = from_pos - start
-    c = Cursor(self, position=from_pos)
-    for i in range(offset, len(self._display_text)):
-      fmt = QTextCharFormat(self.style_untyped)
-      if colors and colors[i] is not None:
-        fmt.setForeground(QBrush(colors[i]))
-      else:
-        fmt.setForeground(self.style_untyped.foreground())
-      c.setPosition(start + i)
-      c.movePosition(c.NextCharacter, c.KeepAnchor)
-      c.setCharFormat(fmt)
+    self._refresh_read_ahead()
 
 
 ### WIDGET
@@ -440,7 +510,7 @@ class TyperWidget(QTextEdit):
   def insert(self, char):
     if self._lesson is None or self._lesson.is_finished():
       return
-    
+
     if not self._lesson.is_running() and self._settings['require_space']:
       if char == ' ':
         self._lesson.start()
@@ -471,6 +541,8 @@ class TyperWindow(QWidget):
     self.DB = app.DB
 
     self._current_lesson = None
+    self._read_ahead_on = False
+    self._read_ahead_level = 0
     self._mode = MODE_NORMAL
     self._weakspot = WeakSpotLessonBuilder(self)
     self._weakspot.lessonReady.connect(self._on_weakspot_lesson)
@@ -525,19 +597,23 @@ class TyperWindow(QWidget):
 
     self._btn_normal = QPushButton('normal', flat=True)
     self._btn_weakspot = QPushButton('weakspot', flat=True)
+    self._btn_read_ahead = QPushButton('read ahead', flat=True)
+    self._btn_read_ahead_level = QPushButton('normal', flat=True)
     self._btn_heatmap = QPushButton('heatmap', flat=True)
     self._btn_heatmap.clicked.connect(self._toggleHeatmap)
     self._btn_heatmap_kind = QPushButton(flat=True)
     self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
-    for b in (self._btn_normal, self._btn_weakspot):
-      b.setStyleSheet(self._mode_btn_style)
+    for b in (self._btn_normal, self._btn_weakspot, self._btn_read_ahead, self._btn_read_ahead_level):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
+      b.setStyleSheet(self._mode_btn_style)
     for b in (self._btn_heatmap, self._btn_heatmap_kind):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
     self._btn_normal.clicked.connect(lambda: self.set_practice_mode(MODE_NORMAL))
     self._btn_weakspot.clicked.connect(lambda: self.set_practice_mode(MODE_WEAKSPOT))
+    self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
+    self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
     self._mode_status = QLabel('')
     self._mode_status.setStyleSheet('color: #666; font-size: 11px;')
 
@@ -555,6 +631,8 @@ class TyperWindow(QWidget):
     mode_lay.setSpacing(0)
     mode_lay.addWidget(self._btn_normal)
     mode_lay.addWidget(self._btn_weakspot)
+    mode_lay.addWidget(self._btn_read_ahead)
+    mode_lay.addWidget(self._btn_read_ahead_level)
     mode_lay.addWidget(self._mode_status)
     mode_lay.addWidget(self._btn_heatmap)
     mode_lay.addWidget(self._heatmap_panel)
@@ -572,6 +650,43 @@ class TyperWindow(QWidget):
     self.S('background_color').bind_value(self._applyBackground, call=True)
     self.statsChanged.connect(self._weakspot.on_stats_changed)
     self._apply_practice_mode_from_settings()
+    self._apply_read_ahead_from_settings()
+
+  def _polish_mode_btn(self, btn):
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+
+  def _apply_read_ahead_from_settings(self):
+    enabled = bool(self._settings.get('read_ahead_enabled'))
+    level = self.S['read_ahead_level']
+    self._set_read_ahead_ui(enabled, level, refresh_doc=True)
+
+  def toggle_read_ahead(self):
+    enabled = not self._read_ahead_on
+    self._settings.set('read_ahead_enabled', enabled)
+    self._set_read_ahead_ui(enabled, self._read_ahead_level, refresh_doc=True)
+
+  def cycle_read_ahead_level(self):
+    if not self._read_ahead_on:
+      return
+    level = (self._read_ahead_level + 1) % len(READ_AHEAD_LEVEL_LABELS)
+    self.S('read_ahead_level').set(level)
+    self._set_read_ahead_ui(True, level, refresh_doc=True)
+
+  def _set_read_ahead_ui(self, enabled, level, refresh_doc=False):
+    self._read_ahead_on = enabled
+    self._read_ahead_level = level
+    self._btn_read_ahead.setStyleSheet(self._mode_btn_style)
+    self._btn_read_ahead.setProperty('activeMode', enabled)
+    self._polish_mode_btn(self._btn_read_ahead)
+    self._btn_read_ahead_level.setText(READ_AHEAD_LEVEL_LABELS[level])
+    self._btn_read_ahead_level.setVisible(enabled)
+    if enabled:
+      self._btn_read_ahead_level.setStyleSheet(self._mode_btn_style)
+      self._btn_read_ahead_level.setProperty('activeMode', True)
+      self._polish_mode_btn(self._btn_read_ahead_level)
+    if refresh_doc:
+      self._doc.set_read_ahead_mode(document_read_ahead_mode(enabled, level))
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
@@ -582,10 +697,6 @@ class TyperWindow(QWidget):
   def _cycleHeatmapMode(self):
     mode = (self.S('speed_heatmap_mode').get() + 1) % len(MODE_LABELS)
     self.S('speed_heatmap_mode').set(mode)
-
-  def _polish_mode_btn(self, btn):
-    btn.style().unpolish(btn)
-    btn.style().polish(btn)
 
   def _style_heatmap_footer_btn(self, btn, on):
     # Direct color — QSS activeMode only matches bool true, not int 1 from settings.
@@ -618,12 +729,15 @@ class TyperWindow(QWidget):
     """Uniform fill under the lesson; per-char formats stay clear except errors."""
     if hasattr(color, 'name'):
       name = color.name()
+      qcolor = color
     else:
       name = str(color)
+      qcolor = QColor(color)
     sheet = f'background-color: "{name}";'
     self.setStyleSheet(f'TyperWindow {{ {sheet} }}')
     self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
     configure_transparent_typer(self._typer)
+    self._doc.set_page_background(qcolor)
 
   def showEvent(self, evt):
     self._typer.setFocus()
@@ -677,8 +791,7 @@ class TyperWindow(QWidget):
     self._btn_normal.setProperty('activeMode', mode == MODE_NORMAL)
     self._btn_weakspot.setProperty('activeMode', mode == MODE_WEAKSPOT)
     for b in (self._btn_normal, self._btn_weakspot):
-      b.style().unpolish(b)
-      b.style().polish(b)
+      self._polish_mode_btn(b)
     if self._current_lesson:
       self._update_source_label(self._current_lesson[1])
     else:
