@@ -275,14 +275,18 @@ class LessonDocument(QTextDocument):
       return
     self._refresh_read_ahead()
 
-  def _refresh_read_ahead(self):
-    if self._match_text is None or (not self._read_ahead_mode and not self._speed_heatmap_enabled):
+  def _refresh_read_ahead(self, force=False):
+    if self._match_text is None:
+      return
+    if not force and not self._read_ahead_mode and not self._speed_heatmap_enabled:
       return
     pos = self._run.index if self._run is not None else 0
     hidden = self._read_ahead_hidden_indices()
-    colors = self._heatmap_colors()
+    colors = self._heatmap_colors() if self._speed_heatmap_enabled else []
     base = self._start.position()
     mi = 0; di = base
+    c = Cursor(self)
+    c.beginEditBlock()
     while mi < len(self._match_text):
       n = 2 if self._match_text[mi] == RETURN_CHAR else 1
       if mi >= pos:
@@ -294,10 +298,11 @@ class LessonDocument(QTextDocument):
             style = QTextCharFormat(self.style_untyped)
             if colors and disp_i < len(colors) and colors[disp_i] is not None:
               style.setForeground(QBrush(colors[disp_i]))
-          c = Cursor(self, position=di + j)
+          c.setPosition(di + j)
           c.movePosition(c.NextCharacter, c.KeepAnchor)
           c.setCharFormat(style)
       di += n; mi += 1
+    c.endEditBlock()
 
   def active_region(self):
     c = Cursor(self, position=self._start.position())
@@ -350,7 +355,7 @@ class LessonDocument(QTextDocument):
       self._run.advance(should_advance)
       style = self.style_anyerror if correct else self.style_error
       self.actual_insert(char, style, overwrite=should_advance)
-      self._refresh_read_ahead()
+      self._refresh_untyped_styles()
       return
 
     # Update timing data.
@@ -373,7 +378,7 @@ class LessonDocument(QTextDocument):
     if self.is_finished():
       self.completed.emit(self._run)
     else:
-      self._refresh_read_ahead()
+      self._refresh_untyped_styles()
       self.sig_position.emit(self.cursor)
 
   def actual_insert(self, char, style, overwrite=True):
@@ -424,7 +429,8 @@ class LessonDocument(QTextDocument):
     self._speed_heatmap_enabled = enabled
     self._speed_heatmap_mode = mode
     self._speed_heatmap_stats = stats or {}
-    self._refresh_read_ahead()
+    self._heatmap_colors_cache_key = None
+    self._refresh_read_ahead(force=True)
 
 
 ### WIDGET
