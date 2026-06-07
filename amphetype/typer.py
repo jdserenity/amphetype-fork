@@ -9,6 +9,9 @@ from amphetype.timingtuple import RunStats
 from amphetype.WeakSpot import WeakSpotLessonBuilder
 
 from amphetype.Data import Statistic
+from amphetype.speed_heatmap import (
+  MODE_LABELS, char_heatmap_colors, fetch_speed_stats, make_heatmap_legend, mode_stat_type,
+)
 from collections import defaultdict, Counter
 
 from time import time
@@ -162,6 +165,9 @@ class LessonDocument(QTextDocument):
     # f.setPointSize(16)
     self.setDefaultFont(font)
     self.setDocumentMargin(28)  # breathing room now that the editor frame is gone
+    self._speed_heatmap_enabled = False
+    self._speed_heatmap_mode = 0
+    self._speed_heatmap_stats = {}
     self.set_text('default text')
 
   def set_text(self, text, prologue='', epilogue=''):
@@ -192,6 +198,7 @@ class LessonDocument(QTextDocument):
     assert self._match_text and self._display_text
 
     self.active_region().insertText(self._display_text, self.style_untyped)
+    self._apply_speed_heatmap()
 
     if self.cursor != self._start:
       self.cursor.setPosition(self._start.position())
@@ -313,8 +320,41 @@ class LessonDocument(QTextDocument):
       self._first_error = None
 
     self.sig_position.emit(self.cursor)
-    
-    
+    self._apply_speed_heatmap(from_pos=mark.position())
+
+  def set_speed_heatmap(self, enabled, mode, stats):
+    self._speed_heatmap_enabled = enabled
+    self._speed_heatmap_mode = mode
+    self._speed_heatmap_stats = stats or {}
+    self._apply_speed_heatmap(from_pos=self._heatmap_apply_from())
+
+  def _heatmap_apply_from(self):
+    start = self._start.position()
+    if self._run is not None:
+      return max(start, self.cursor.position())
+    return start
+
+  def _apply_speed_heatmap(self, from_pos=None):
+    if not self._display_text or self._start is None:
+      return
+    start = self._start.position()
+    if from_pos is None or from_pos < start:
+      from_pos = start
+    colors = []
+    if self._speed_heatmap_enabled:
+      colors = char_heatmap_colors(
+        self._display_text, self._speed_heatmap_mode, self._speed_heatmap_stats, self._match_text)
+    offset = from_pos - start
+    c = Cursor(self, position=from_pos)
+    for i in range(offset, len(self._display_text)):
+      fmt = QTextCharFormat(self.style_untyped)
+      if colors and colors[i] is not None:
+        fmt.setForeground(QBrush(colors[i]))
+      else:
+        fmt.setForeground(self.style_untyped.foreground())
+      c.setPosition(start + i)
+      c.movePosition(c.NextCharacter, c.KeepAnchor)
+      c.setCharFormat(fmt)
 
 
 ### WIDGET
@@ -478,23 +518,50 @@ class TyperWindow(QWidget):
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
+    self._mode_btn_style = (
+      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 6px; }'
+      'QPushButton:hover { color: #888; }'
+      'QPushButton[activeMode="true"] { color: #ffffff; }')
+
     self._btn_normal = QPushButton('normal', flat=True)
     self._btn_weakspot = QPushButton('weakspot', flat=True)
+    self._btn_heatmap = QPushButton('heatmap', flat=True)
+    self._btn_heatmap.clicked.connect(self._toggleHeatmap)
+    self._btn_heatmap_kind = QPushButton(flat=True)
+    self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
     for b in (self._btn_normal, self._btn_weakspot):
+      b.setStyleSheet(self._mode_btn_style)
+      b.setCursor(Qt.PointingHandCursor)
+      b.setFocusPolicy(Qt.NoFocus)
+    for b in (self._btn_heatmap, self._btn_heatmap_kind):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
     self._btn_normal.clicked.connect(lambda: self.set_practice_mode(MODE_NORMAL))
     self._btn_weakspot.clicked.connect(lambda: self.set_practice_mode(MODE_WEAKSPOT))
     self._mode_status = QLabel('')
     self._mode_status.setStyleSheet('color: #666; font-size: 11px;')
+
+    self._heatmap_legend = make_heatmap_legend()
+    self._heatmap_panel = QWidget()
+    hp_lay = QHBoxLayout(self._heatmap_panel)
+    hp_lay.setContentsMargins(0, 0, 0, 0)
+    hp_lay.setSpacing(8)
+    hp_lay.addWidget(self._btn_heatmap_kind, 0)
+    hp_lay.addWidget(self._heatmap_legend, 0)
+
     mode_row = QWidget()
     mode_lay = QHBoxLayout(mode_row)
     mode_lay.setContentsMargins(0, 0, 0, 0)
+    mode_lay.setSpacing(0)
     mode_lay.addWidget(self._btn_normal)
     mode_lay.addWidget(self._btn_weakspot)
     mode_lay.addWidget(self._mode_status)
+    mode_lay.addWidget(self._btn_heatmap)
+    mode_lay.addWidget(self._heatmap_panel)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
+    self.S('speed_heatmap').bind_value(self._onHeatmapSetting, call=True)
+    self.S('speed_heatmap_mode').bind_value(self._onHeatmapSetting, call=True)
 
     self.setLayout(FBoxLayout([
       (self._prog_layout, 0),
@@ -504,14 +571,48 @@ class TyperWindow(QWidget):
 
     self.S('background_color').bind_value(self._applyBackground, call=True)
     self.statsChanged.connect(self._weakspot.on_stats_changed)
-    self._mode_btn_style = (
-      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 6px; }'
-      'QPushButton:hover { color: #888; }'
-      'QPushButton[activeMode="true"] { color: #ccc; }')
     self._apply_practice_mode_from_settings()
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
+
+  def _toggleHeatmap(self):
+    self.S('speed_heatmap').set(not self.S('speed_heatmap').get())
+
+  def _cycleHeatmapMode(self):
+    mode = (self.S('speed_heatmap_mode').get() + 1) % len(MODE_LABELS)
+    self.S('speed_heatmap_mode').set(mode)
+
+  def _polish_mode_btn(self, btn):
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+
+  def _style_heatmap_footer_btn(self, btn, on):
+    # Direct color — QSS activeMode only matches bool true, not int 1 from settings.
+    color = '#ffffff' if on else '#555555'
+    btn.setStyleSheet(
+      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px; padding: 2px 6px; }'
+      'QPushButton:hover { color: #888888; }' % color)
+
+  def _onHeatmapSetting(self, *_):
+    on = bool(self.S('speed_heatmap').get())
+    mode = int(self.S('speed_heatmap_mode').get())
+    self._style_heatmap_footer_btn(self._btn_heatmap, on)
+    self._heatmap_panel.setVisible(on)
+    self._btn_heatmap_kind.setText(MODE_LABELS[mode])
+    self._style_heatmap_footer_btn(self._btn_heatmap_kind, on)
+    self._refreshHeatmap()
+
+  def _heatmapStats(self):
+    hist = time() - self._settings.get('history') * 86400.0
+    mode = self.S('speed_heatmap_mode').get()
+    return fetch_speed_stats(self.DB, hist, mode_stat_type(mode))
+
+  def _refreshHeatmap(self):
+    self._doc.set_speed_heatmap(
+      self.S('speed_heatmap').get(),
+      self.S('speed_heatmap_mode').get(),
+      self._heatmapStats())
 
   def _applyBackground(self, color):
     """Uniform fill under the lesson; per-char formats stay clear except errors."""
@@ -547,6 +648,7 @@ class TyperWindow(QWidget):
     epilogue = ('\n' + post[2]) if post is not None else ''
 
     self._doc.set_text(txt[2], prologue=prologue, epilogue=epilogue)
+    self._refreshHeatmap()
     self._typer.setFocus()
     self._prog.setValue(0)
 
@@ -716,6 +818,7 @@ class TyperWindow(QWidget):
 
     self.DB.commit()
     self.statsChanged.emit()
+    self._refreshHeatmap()
 
     if is_lesson:
       mins = self._settings.get('min_lesson_wpm'), self._settings.get('min_lesson_acc')

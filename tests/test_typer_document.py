@@ -11,7 +11,7 @@ import sys
 import pytest
 
 pytest.importorskip("PyQt5")
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtGui import QFont, QColor, QTextCharFormat
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 
@@ -20,7 +20,7 @@ if _qt_app is None:
   _qt_app = QApplication(sys.argv)
 
 from amphetype.typer import (
-  LessonDocument, RETURN_CHAR, MODE_NORMAL, MODE_WEAKSPOT,
+  LessonDocument, RETURN_CHAR, MODE_NORMAL, MODE_WEAKSPOT, Cursor,
   format_source_attribution, lesson_completion_action, _NO_FILL_STYLE_ATTRS,
 )
 
@@ -210,6 +210,44 @@ class _FakeTyperSettings:
 
     def get(self, k, default=None):
         return self._vals.get(k, default)
+
+
+def test_heatmap_mode_switch_leaves_typed_chars_alone(qapp):
+  from amphetype.speed_heatmap import MODE_WORD, MODE_TRIGRAM
+
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("abcd")
+  doc.insert("a")
+  doc.insert("b")
+  c = Cursor(doc, doc._start.position())
+  typed_fg = c.charFormat().foreground().color()
+  doc.set_speed_heatmap(True, MODE_WORD, {'abcd': 100.0})
+  doc.set_speed_heatmap(True, MODE_TRIGRAM, {'bcd': 80.0})
+  assert c.charFormat().foreground().color() == typed_fg
+  c.movePosition(c.NextCharacter)
+  assert c.charFormat().foreground().color() == typed_fg
+
+
+def test_speed_heatmap_colors_matching_letters(qapp):
+  from amphetype.speed_heatmap import MODE_CHAR, wpm_color_q
+
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("ab")
+  doc.set_speed_heatmap(True, MODE_CHAR, {'a': 130.0})
+  c = doc._start
+  assert c.charFormat().foreground().color().name() == wpm_color_q(130).name()
+  c.movePosition(c.NextCharacter)
+  assert c.charFormat().foreground().color() == doc.style_untyped.foreground().color()
+
+
+def test_speed_heatmap_disabled_restores_default_foreground(qapp):
+  from amphetype.speed_heatmap import MODE_CHAR
+
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("a")
+  doc.set_speed_heatmap(True, MODE_CHAR, {'a': 50.0})
+  doc.set_speed_heatmap(False, MODE_CHAR, {})
+  assert doc._start.charFormat().foreground().color() == doc.style_untyped.foreground().color()
 
 
 def test_widget_starts_immediately_without_space(qapp):

@@ -19,6 +19,7 @@ Two runtime-selectable implementations, controlled by `which_typer` (0 = legacy 
 - Footer: faint **normal** / **weakspot** mode toggles (persisted as `practice_mode`); novel attribution (`— Title`) in normal mode only.
 - Completing a lesson in **normal** mode advances via `TextManager.nextText`; in **weakspot** mode builds the next weakspot lesson (`WeakSpotLessonBuilder` in `amphetype/WeakSpot.py`).
 - Page background uses `typer/background_color` (defaults to Qt window grey); lesson text defaults to light foreground on clear glyph backgrounds (errors still highlighted).
+- **Speed heatmap** (off by default): footer **heatmap** click-toggle (white = on, grey = off); when on, one **words** / **trigrams** / **chars** label (click to cycle) plus single-line stoplight WPM legend appear to its right. Untyped text with stats gets bright stoplight foreground color from `statistic` (same history window and discounted-source omission as Analysis). Trigram mode paints non-overlapping 3-char blocks; contested spans use highest damage (`count·time²·(1+misses/count)`, same as Analysis). Logic: `amphetype/speed_heatmap.py`.
 
 ### Legacy (split view)
 
