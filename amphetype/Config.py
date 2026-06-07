@@ -115,6 +115,9 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     'para_margin': 40,
     'para_lineheight': 1.0,
     'background_color': QColor('white'),
+
+    'speed_heatmap': False,
+    'speed_heatmap_mode': 0,
   }
 
   typer_color_defaults = {

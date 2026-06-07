@@ -1,0 +1,171 @@
+"""Speed heatmap: map lesson text to WPM bucket colors from statistic DB."""
+
+import re
+import time
+
+MODE_WORD = 0
+MODE_TRIGRAM = 1
+MODE_CHAR = 2
+MODE_LABELS = ('words', 'trigrams', 'chars')
+_STAT_TYPE = {MODE_WORD: 2, MODE_TRIGRAM: 1, MODE_CHAR: 0}
+
+
+def mode_stat_type(mode):
+  return _STAT_TYPE[mode]
+
+# Stoplight buckets — bright, full saturation (legend + underlines).
+WPM_BUCKETS = (
+  (0, '#d64545'),    # <75 red (deeper — readable on dark canvas)
+  (75, '#ff8c00'),   # 75–99 orange
+  (100, '#ffd600'),  # 100–124 yellow
+  (125, '#00e676'),  # 125+ green
+)
+
+_WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
+
+
+def spc_to_wpm(spc):
+  return 12.0 / spc
+
+
+def wpm_color(wpm):
+  if wpm is None:
+    return None
+  color = WPM_BUCKETS[0][1]
+  for threshold, c in WPM_BUCKETS:
+    if wpm >= threshold:
+      color = c
+  return color
+
+
+def wpm_color_q(wpm):
+  from PyQt5.QtGui import QColor
+  hex_c = wpm_color(wpm)
+  return QColor(hex_c) if hex_c else None
+
+
+def _stat_wpm(entry):
+  if isinstance(entry, dict):
+    return entry['wpm']
+  return entry
+
+
+def _stat_damage(entry):
+  if isinstance(entry, dict):
+    return entry.get('damage') or 0.0
+  return 0.0
+
+
+def fetch_speed_stats(db, hist_cutoff=None, stat_type=MODE_CHAR):
+  from amphetype.Data import STAT_OMIT_DISCOUNTED
+  if hist_cutoff is None:
+    hist_cutoff = time.time() - 30 * 86400.0
+  rows = db.execute("""
+    select data,
+      12.0 / agg_median(time) as wpm,
+      sum(count) * agg_median(time) * agg_median(time)
+        * (1.0 + cast(sum(mistakes) as real) / sum(count)) as damage
+    from statistic as st
+    left join source as src on st.source = src.rowid
+    where st.w >= ? and st.type = ? and %s
+    group by data
+  """ % STAT_OMIT_DISCOUNTED, (hist_cutoff, stat_type)).fetchall()
+  return {data: {'wpm': wpm, 'damage': damage or 0.0} for data, wpm, damage in rows}
+
+
+def _trigram_colors_by_damage(text, stats):
+  """Non-overlapping 3-char blocks; highest damage wins contested spans."""
+  n = len(text)
+  colors = [None] * n
+  cands = []
+  for i in range(n - 2):
+    tri = text[i:i + 3]
+    if tri not in stats:
+      continue
+    cands.append((i, _stat_wpm(stats[tri]), _stat_damage(stats[tri])))
+  cands.sort(key=lambda x: (-x[2], -x[1], x[0]))
+  used = [False] * n
+  for i, wpm, _ in cands:
+    if any(used[i:i + 3]):
+      continue
+    col = wpm_color_q(wpm)
+    for j in range(i, i + 3):
+      colors[j] = col; used[j] = True
+  # Aligned triples left blank (e.g. tail gap) — still solid blocks, no overlap.
+  for i in range(0, n - 2, 3):
+    if any(colors[i:i + 3]):
+      continue
+    tri = text[i:i + 3]
+    if tri not in stats:
+      continue
+    col = wpm_color_q(_stat_wpm(stats[tri]))
+    for j in range(i, i + 3):
+      colors[j] = col
+  return colors
+
+
+def _word_spans(text):
+  for m in _WORD_RE.finditer(text):
+    yield m.start(), m.end(), m.group(0)
+
+
+def _colors_for_match_text(text, mode, stats):
+  n = len(text)
+  colors = [None] * n
+  if mode == MODE_CHAR:
+    for i, ch in enumerate(text):
+      if ch in stats:
+        colors[i] = wpm_color_q(_stat_wpm(stats[ch]))
+  elif mode == MODE_TRIGRAM:
+    return _trigram_colors_by_damage(text, stats)
+  else:
+    word_stats = {k.lower(): v for k, v in stats.items()}
+    for start, end, word in _word_spans(text):
+      entry = word_stats.get(word.lower())
+      if entry is not None:
+        c = wpm_color_q(_stat_wpm(entry))
+        for i in range(start, end):
+          colors[i] = c
+  return colors
+
+
+def _display_to_match_indices(display_text, match_text):
+  """Map each display char index to match_text index, or None for display-only."""
+  idxs = []
+  mi = 0
+  for ch in display_text:
+    if mi < len(match_text) and ch == match_text[mi]:
+      idxs.append(mi)
+      mi += 1
+    else:
+      idxs.append(None)
+  return idxs
+
+
+def make_heatmap_legend(parent=None):
+  """Widget legend — QLabel rich text ignores span margins; real layout spaces pills."""
+  from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel
+  w = QWidget(parent)
+  lay = QHBoxLayout(w)
+  lay.setContentsMargins(0, 0, 0, 0)
+  lay.setSpacing(10)
+  labels = ('<75', '75–99', '100–124', '125+')
+  for label, (_, color) in zip(labels, WPM_BUCKETS):
+    lbl = QLabel(label, parent=w)
+    lbl.setStyleSheet(
+      'QLabel { background: %s; color: #111; padding: 2px 8px; border-radius: 2px; font-size: 11px; }' % color)
+    lay.addWidget(lbl)
+  wpm = QLabel('wpm', parent=w)
+  wpm.setStyleSheet('color: #888; font-size: 11px;')
+  lay.addWidget(wpm)
+  return w
+
+
+def char_heatmap_colors(display_text, mode, stats, match_text=None):
+  if match_text is None:
+    match_text = display_text
+  match_colors = _colors_for_match_text(match_text, mode, stats)
+  if display_text == match_text:
+    return match_colors
+  idxs = _display_to_match_indices(display_text, match_text)
+  return [match_colors[i] if i is not None else None for i in idxs]
