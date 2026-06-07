@@ -7,6 +7,10 @@ import sqlite3
 import re
 from amphetype.Config import Settings
 
+# Omit generated-lesson stats (<Weakspot>, Lesson Generator, Reviews) from Analysis
+# and from weakspot target selection (see WeakSpotLessons.RAW_SQL).
+STAT_OMIT_DISCOUNTED = "(st.source is null or src.discount is null)"
+
 
 def trimmed_average(total, series):
   s = 0.0

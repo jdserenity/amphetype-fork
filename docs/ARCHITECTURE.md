@@ -58,7 +58,7 @@ Auto-build practice text from ranked weak **characters**, **trigrams**, and **wo
 13. **Importance-weighted repetition**: each target repeated proportional to score (`allocate_repeats`, every target ≥1, capped); high-impact items get real practice, not a single token.
 14. **Cross-lesson freshness**: fresh RNG per build (varied word realizations and order); weighted repetition differs run-to-run; widget passes a 2-lesson recency deque as `recent` keys (weights halved) so emphasis rotates.
 15. **No filler invariant**: every emitted phrase covers at least one target (new or repeat); dictionary only completes trigram-boundary slots.
-16. **Weakspot feedback loop guard**: `statistic.source` tags each stats row. Weakspot selection excludes rows whose source has `discount` set (generated-lesson sources, including `<Weakspot>`). New Weakspot sessions do not write stats by default (same as old Lesson Generator); optional `use_lesson_stats` still allows saving them, but they remain excluded from Weakspot target selection.
+16. **Weakspot feedback loop guard**: `statistic.source` tags each stats row. Generated-lesson sources (`<Weakspot>`, Lesson Generator, Reviews) have `source.discount` set. Inline typer does not write stats in **weakspot** mode; other discounted lessons only write if `use_lesson_stats` is on. Rows from discounted sources are omitted from **Analysis** rankings and weakspot target selection (`STAT_OMIT_DISCOUNTED` in `amphetype/Data.py`).
 
 ### Implementation
 

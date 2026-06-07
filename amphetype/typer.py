@@ -697,8 +697,10 @@ class TyperWindow(QWidget):
     # print(vals)
 
     is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
+    # Never record weakspot drills (or other discounted lessons unless opted in).
+    write_stats = self._mode != MODE_WEAKSPOT and (not is_lesson or self._settings.get('use_lesson_stats'))
 
-    if not is_lesson or self._settings.get('use_lesson_stats'):
+    if write_stats:
       self.DB.executemany_('''
       insert into statistic
       (time,viscosity,w,count,mistakes,type,data,source)

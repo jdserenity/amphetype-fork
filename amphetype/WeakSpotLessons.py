@@ -11,6 +11,8 @@ import re
 import time
 from collections import defaultdict
 
+from amphetype.Data import STAT_OMIT_DISCOUNTED
+
 # A target is (kind, data, weight); kind in {'char','trigram','word'}.
 TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}
 
@@ -21,10 +23,10 @@ CAND_CAP = 150             # cap dictionary candidates considered per slot
 
 # Raw aggregates per item; scoring done in Python (sqlite lacks log()).
 # Exclude stats from generated-lesson sources (discount set), e.g. <Weakspot>.
-RAW_SQL = """select data, agg_median(time) as t, sum(count) as total, sum(mistakes) as misses
+RAW_SQL = f"""select data, agg_median(time) as t, sum(count) as total, sum(mistakes) as misses
   from statistic as st
   left join source as src on st.source = src.rowid
-  where st.w >= ? and st.type = ? and (st.source is null or src.discount is null)
+  where st.w >= ? and st.type = ? and {STAT_OMIT_DISCOUNTED}
   group by data having sum(count) >= ?"""
 
 
