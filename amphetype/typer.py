@@ -7,6 +7,10 @@ from amphetype.layout import FBoxLayout
 from amphetype.fwidgets import FStackedWidget
 from amphetype.timingtuple import RunStats
 from amphetype.WeakSpot import WeakSpotLessonBuilder
+from amphetype.read_ahead import (
+  hidden_char_indices, hidden_word_indices, word_index_at,
+  READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
+)
 
 from amphetype.Data import Statistic
 from collections import defaultdict, Counter
@@ -162,6 +166,11 @@ class LessonDocument(QTextDocument):
     # f.setPointSize(16)
     self.setDefaultFont(font)
     self.setDocumentMargin(28)  # breathing room now that the editor frame is gone
+    self._read_ahead_mode = READ_AHEAD_OFF
+    self._read_ahead_preview = False
+    self._read_ahead_revealed = set()
+    self._page_bg = QColor('#f0f0f0')
+    self.style_hidden = text_style(kerning=False, color=QBrush(self._page_bg))
     self.set_text('default text')
 
   def set_text(self, text, prologue='', epilogue=''):
@@ -199,7 +208,60 @@ class LessonDocument(QTextDocument):
 
     self._run = None
     self._first_error = None
+    self._read_ahead_preview = bool(self._read_ahead_mode)
+    self._read_ahead_revealed = set()
+    self._refresh_read_ahead()
     self.ready.emit(self._match_text)
+
+  def _reveal_read_ahead_word_at(self, match_index):
+    if not self._read_ahead_mode or self.read_ahead_preview_pending():
+      return
+    wi = word_index_at(self._match_text, match_index)
+    if wi in hidden_word_indices(self._match_text, match_index, self._read_ahead_mode):
+      self._read_ahead_revealed.add(wi)
+
+  def read_ahead_preview_pending(self):
+    return bool(self._read_ahead_mode) and self.is_ready() and self._read_ahead_preview
+
+  def dismiss_read_ahead_preview(self):
+    if not self.read_ahead_preview_pending():
+      return False
+    self._read_ahead_preview = False
+    self._refresh_read_ahead()
+    return True
+
+  def set_page_background(self, color):
+    self._page_bg = QColor(color)
+    self.style_hidden.setForeground(QBrush(self._page_bg))
+    self._refresh_read_ahead()
+
+  def set_read_ahead_mode(self, mode):
+    self._read_ahead_mode = mode
+    if self.is_ready() and mode:
+      self._read_ahead_preview = True
+    elif not mode:
+      self._read_ahead_preview = False
+    self._refresh_read_ahead()
+
+  def _refresh_read_ahead(self):
+    if self._match_text is None:
+      return
+    pos = self._run.index if self._run is not None else 0
+    if self.read_ahead_preview_pending():
+      hidden = set()
+    else:
+      hidden = hidden_char_indices(self._match_text, pos, self._read_ahead_mode, self._read_ahead_revealed)
+    base = self._start.position()
+    mi = 0; di = base
+    while mi < len(self._match_text):
+      n = 2 if self._match_text[mi] == RETURN_CHAR else 1
+      if mi >= pos:
+        style = self.style_hidden if (self._read_ahead_mode and mi in hidden) else self.style_untyped
+        for j in range(n):
+          c = Cursor(self, position=di + j)
+          c.movePosition(c.NextCharacter, c.KeepAnchor)
+          c.setCharFormat(style)
+      di += n; mi += 1
 
   def active_region(self):
     c = Cursor(self, position=self._start.position())
@@ -232,6 +294,8 @@ class LessonDocument(QTextDocument):
     self.started.emit()
 
   def insert(self, char, overwrite=True, lenient=False):
+    if self.read_ahead_preview_pending():
+      self.dismiss_read_ahead_preview()
     if self._run is None:
       # Cold start.
       self._run = RunStats.make(self._match_text)
@@ -245,9 +309,12 @@ class LessonDocument(QTextDocument):
 
     if self._first_error is not None:
       # Previous error blocking us.
+      if not correct:
+        self._reveal_read_ahead_word_at(self._run.index)
       self._run.advance(should_advance)
       style = self.style_anyerror if correct else self.style_error
       self.actual_insert(char, style, overwrite=should_advance)
+      self._refresh_read_ahead()
       return
 
     # Update timing data.
@@ -256,6 +323,7 @@ class LessonDocument(QTextDocument):
     if correct:
       self.progress.emit(self._run.index)
     else:
+      self._reveal_read_ahead_word_at(self._run.index)
       self._run.current.errors += char
       if not lenient:
         self._first_error = Cursor(self.cursor, fixed=True)
@@ -269,6 +337,7 @@ class LessonDocument(QTextDocument):
     if self.is_finished():
       self.completed.emit(self._run)
     else:
+      self._refresh_read_ahead()
       self.sig_position.emit(self.cursor)
 
   def actual_insert(self, char, style, overwrite=True):
@@ -312,6 +381,7 @@ class LessonDocument(QTextDocument):
     if self._first_error and self.cursor <= self._first_error:
       self._first_error = None
 
+    self._refresh_read_ahead()
     self.sig_position.emit(self.cursor)
     
     
@@ -400,7 +470,7 @@ class TyperWidget(QTextEdit):
   def insert(self, char):
     if self._lesson is None or self._lesson.is_finished():
       return
-    
+
     if not self._lesson.is_running() and self._settings['require_space']:
       if char == ' ':
         self._lesson.start()
@@ -431,6 +501,8 @@ class TyperWindow(QWidget):
     self.DB = app.DB
 
     self._current_lesson = None
+    self._read_ahead_on = False
+    self._read_ahead_level = 0
     self._mode = MODE_NORMAL
     self._weakspot = WeakSpotLessonBuilder(self)
     self._weakspot.lessonReady.connect(self._on_weakspot_lesson)
@@ -478,20 +550,33 @@ class TyperWindow(QWidget):
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
+    self._mode_btn_style = (
+      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 6px; }'
+      'QPushButton:hover { color: #888; }'
+      'QPushButton[activeMode="true"] { color: #ccc; }')
+
     self._btn_normal = QPushButton('normal', flat=True)
     self._btn_weakspot = QPushButton('weakspot', flat=True)
-    for b in (self._btn_normal, self._btn_weakspot):
+    self._btn_read_ahead = QPushButton('read ahead', flat=True)
+    self._btn_read_ahead_level = QPushButton('normal', flat=True)
+    for b in (self._btn_normal, self._btn_weakspot, self._btn_read_ahead, self._btn_read_ahead_level):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
+      b.setStyleSheet(self._mode_btn_style)
     self._btn_normal.clicked.connect(lambda: self.set_practice_mode(MODE_NORMAL))
     self._btn_weakspot.clicked.connect(lambda: self.set_practice_mode(MODE_WEAKSPOT))
+    self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
+    self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
     self._mode_status = QLabel('')
     self._mode_status.setStyleSheet('color: #666; font-size: 11px;')
     mode_row = QWidget()
     mode_lay = QHBoxLayout(mode_row)
     mode_lay.setContentsMargins(0, 0, 0, 0)
+    mode_lay.setSpacing(0)
     mode_lay.addWidget(self._btn_normal)
     mode_lay.addWidget(self._btn_weakspot)
+    mode_lay.addWidget(self._btn_read_ahead)
+    mode_lay.addWidget(self._btn_read_ahead_level)
     mode_lay.addWidget(self._mode_status)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
@@ -504,11 +589,44 @@ class TyperWindow(QWidget):
 
     self.S('background_color').bind_value(self._applyBackground, call=True)
     self.statsChanged.connect(self._weakspot.on_stats_changed)
-    self._mode_btn_style = (
-      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 6px; }'
-      'QPushButton:hover { color: #888; }'
-      'QPushButton[activeMode="true"] { color: #ccc; }')
     self._apply_practice_mode_from_settings()
+    self._apply_read_ahead_from_settings()
+
+  def _polish_mode_btn(self, btn):
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+
+  def _apply_read_ahead_from_settings(self):
+    enabled = bool(self._settings.get('read_ahead_enabled'))
+    level = self.S['read_ahead_level']
+    self._set_read_ahead_ui(enabled, level, refresh_doc=True)
+
+  def toggle_read_ahead(self):
+    enabled = not self._read_ahead_on
+    self._settings.set('read_ahead_enabled', enabled)
+    self._set_read_ahead_ui(enabled, self._read_ahead_level, refresh_doc=True)
+
+  def cycle_read_ahead_level(self):
+    if not self._read_ahead_on:
+      return
+    level = (self._read_ahead_level + 1) % len(READ_AHEAD_LEVEL_LABELS)
+    self.S('read_ahead_level').set(level)
+    self._set_read_ahead_ui(True, level, refresh_doc=True)
+
+  def _set_read_ahead_ui(self, enabled, level, refresh_doc=False):
+    self._read_ahead_on = enabled
+    self._read_ahead_level = level
+    self._btn_read_ahead.setStyleSheet(self._mode_btn_style)
+    self._btn_read_ahead.setProperty('activeMode', enabled)
+    self._polish_mode_btn(self._btn_read_ahead)
+    self._btn_read_ahead_level.setText(READ_AHEAD_LEVEL_LABELS[level])
+    self._btn_read_ahead_level.setVisible(enabled)
+    if enabled:
+      self._btn_read_ahead_level.setStyleSheet(self._mode_btn_style)
+      self._btn_read_ahead_level.setProperty('activeMode', True)
+      self._polish_mode_btn(self._btn_read_ahead_level)
+    if refresh_doc:
+      self._doc.set_read_ahead_mode(document_read_ahead_mode(enabled, level))
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
@@ -517,12 +635,15 @@ class TyperWindow(QWidget):
     """Uniform fill under the lesson; per-char formats stay clear except errors."""
     if hasattr(color, 'name'):
       name = color.name()
+      qcolor = color
     else:
       name = str(color)
+      qcolor = QColor(color)
     sheet = f'background-color: "{name}";'
     self.setStyleSheet(f'TyperWindow {{ {sheet} }}')
     self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
     configure_transparent_typer(self._typer)
+    self._doc.set_page_background(qcolor)
 
   def showEvent(self, evt):
     self._typer.setFocus()
@@ -575,8 +696,7 @@ class TyperWindow(QWidget):
     self._btn_normal.setProperty('activeMode', mode == MODE_NORMAL)
     self._btn_weakspot.setProperty('activeMode', mode == MODE_WEAKSPOT)
     for b in (self._btn_normal, self._btn_weakspot):
-      b.style().unpolish(b)
-      b.style().polish(b)
+      self._polish_mode_btn(b)
     if self._current_lesson:
       self._update_source_label(self._current_lesson[1])
     else:

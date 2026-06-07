@@ -16,7 +16,8 @@ Two runtime-selectable implementations, controlled by `which_typer` (0 = legacy 
 - Target text is rendered in the editable document with per-character styling (untyped, correct, error, blocking errors).
 - Keystrokes mutate the document in place; timing and statistics via `RunStats` (`amphetype/timingtuple.py`).
 - Supports overwrite/lenient modes, word-aware protected backspacing, progress, and full result recording.
-- Footer: faint **normal** / **weakspot** mode toggles (persisted as `practice_mode`); novel attribution (`— Title`) in normal mode only.
+- Footer: faint **normal** / **weakspot** mode toggles (persisted as `practice_mode`); **read ahead** toggle + level button (`read_ahead_enabled`, `typer/read_ahead_level`: normal / hard / easy — applies in either practice mode); novel attribution (`— Title`) in normal mode only.
+- **Read ahead** (`amphetype/read_ahead.py`): off by default; when on, level cycles normal (hide current + next word) → hard (+ one more) → easy (current only). Before the lesson starts, full text is shown; the first keystroke applies hiding. Hidden letters use page `background_color` as foreground. Mistyping on a hidden word reveals that word only; other hidden words stay hidden.
 - Completing a lesson in **normal** mode advances via `TextManager.nextText`; in **weakspot** mode builds the next weakspot lesson (`WeakSpotLessonBuilder` in `amphetype/WeakSpot.py`).
 - Page background uses `typer/background_color` (defaults to Qt window grey); lesson text defaults to light foreground on clear glyph backgrounds (errors still highlighted).
 

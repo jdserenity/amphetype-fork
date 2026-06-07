@@ -20,7 +20,7 @@ if _qt_app is None:
   _qt_app = QApplication(sys.argv)
 
 from amphetype.typer import (
-  LessonDocument, RETURN_CHAR, MODE_NORMAL, MODE_WEAKSPOT,
+  LessonDocument, RETURN_CHAR, Cursor, MODE_NORMAL, MODE_WEAKSPOT,
   format_source_attribution, lesson_completion_action, _NO_FILL_STYLE_ATTRS,
 )
 
@@ -210,6 +210,76 @@ class _FakeTyperSettings:
 
     def get(self, k, default=None):
         return self._vals.get(k, default)
+
+
+def test_read_ahead_preview_then_hides(qapp):
+  from amphetype.read_ahead import READ_AHEAD_NORMAL
+
+  page = QColor('#2a2a2a')
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_page_background(page)
+  doc.set_read_ahead_mode(READ_AHEAD_NORMAL)
+  doc.set_text("hello world foo")
+
+  def fg_at(doc_pos):
+    c = Cursor(doc, position=doc_pos)
+    c.movePosition(c.NextCharacter, c.KeepAnchor)
+    return c.charFormat().foreground().color()
+
+  hidden_fg = page
+  visible_fg = doc.style_untyped.foreground().color()
+  base = doc._start.position()
+  assert doc.read_ahead_preview_pending()
+  assert fg_at(base + 0) == visible_fg
+  assert fg_at(base + 6) == visible_fg
+
+  doc.insert('h')
+  assert not doc.read_ahead_preview_pending()
+  assert fg_at(base + 6) == hidden_fg
+  assert fg_at(base + 12) == visible_fg
+
+  for ch in "ello ":
+    doc.insert(ch)
+  assert fg_at(base + 6) == hidden_fg
+  assert fg_at(base + 12) == hidden_fg
+
+
+def test_read_ahead_mistake_reveals_only_current_hidden_word(qapp):
+  from amphetype.read_ahead import READ_AHEAD_HARD
+  from amphetype.typer import TyperWidget
+
+  page = QColor('#2a2a2a')
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_page_background(page)
+  doc.set_read_ahead_mode(READ_AHEAD_HARD)
+  doc.set_text("one two three four")
+
+  def fg_at(doc_pos):
+    c = Cursor(doc, position=doc_pos)
+    c.movePosition(c.NextCharacter, c.KeepAnchor)
+    return c.charFormat().foreground().color()
+
+  hidden_fg = page
+  base = doc._start.position()
+  doc.dismiss_read_ahead_preview()
+  # hard: hide one, two, three
+  doc.insert('x')  # mistake on "one"
+  assert fg_at(base + 0) != hidden_fg
+  assert fg_at(base + 4) == hidden_fg   # two still hidden
+  assert fg_at(base + 8) == hidden_fg   # three still hidden
+  assert fg_at(base + 14) != hidden_fg  # four was never hidden
+
+
+def test_read_ahead_off_shows_untyped_foreground(qapp):
+  from amphetype.read_ahead import READ_AHEAD_OFF
+
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_page_background(QColor('#2a2a2a'))
+  doc.set_read_ahead_mode(READ_AHEAD_OFF)
+  doc.set_text("hello world")
+  c = Cursor(doc, position=doc._start.position() + 6)
+  c.movePosition(c.NextCharacter, c.KeepAnchor)
+  assert c.charFormat().foreground().color() == doc.style_untyped.foreground().color()
 
 
 def test_widget_starts_immediately_without_space(qapp):
