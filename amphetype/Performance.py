@@ -14,6 +14,12 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 
 
+def perf_hist_cutoff(now=None, history_days=None):
+  now = time.time() if now is None else now
+  days = Settings.get('history') if history_days is None else history_days
+  return now - days * 86400.0
+
+
 def dampen(x, n=10):
   ret = []
   s = sum(x[0:n])
@@ -72,6 +78,7 @@ class PerformanceHistory(QWidget):
 
     self.plotcol = 3
     self.plot = Plotters.Plotter()
+    self.plot.setMinimumHeight(200)
 
     self.editflag = False
     self.model = ResultModel()
@@ -84,6 +91,7 @@ class PerformanceHistory(QWidget):
     t.setUniformRowHeights(True)
     t.setRootIsDecorated(False)
     t.setIndentation(0)
+    t.setMinimumHeight(200)
     t.doubleClicked['QModelIndex'].connect(self.doubleClicked)
     Settings.signal_for('graph_what').connect(self.updateGraph)
     Settings.signal_for('show_xaxis').connect(self.updateGraph)
@@ -108,6 +116,7 @@ class PerformanceHistory(QWidget):
     Settings.signal_for("perf_items").connect(self.updateData)
     Settings.signal_for("perf_group_by").connect(self.updateData)
     Settings.signal_for("lesson_stats").connect(self.updateData)
+    Settings.signal_for("history").connect(self.updateData)
 
   def updateGraph(self):
     pc = Settings.get('graph_what')
@@ -141,7 +150,7 @@ class PerformanceHistory(QWidget):
   def updateData(self, *args):
     if self.editflag:
       return
-    where = []
+    where = ['r.w >= %f' % perf_hist_cutoff()]
     if self.cb_source.currentIndex() <= 0:
       pass
     elif self.cb_source.currentIndex() == 1: # last text
