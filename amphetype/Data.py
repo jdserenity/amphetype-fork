@@ -7,9 +7,8 @@ import sqlite3
 import re
 from amphetype.Config import Settings
 
-# Omit generated-lesson stats (<Weakspot>, Lesson Generator, Reviews) from Analysis
-# and from weakspot target selection (see WeakSpotLessons.RAW_SQL).
-STAT_OMIT_DISCOUNTED = "(st.source is null or src.discount is null)"
+# Omit generated-lesson stats from heatmap etc. Analysis/weakspot use stats_query.py.
+from amphetype.stats_query import STAT_OMIT_DISCOUNTED  # noqa: F401 — re-export
 
 
 def trimmed_average(total, series):

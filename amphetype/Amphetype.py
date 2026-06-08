@@ -65,7 +65,6 @@ class AmphetypeWindow(QMainWindow):
     quiz.wantText.connect(tm.nextText)
     tm.setText.connect(quiz.setText)
     tm.gotoText.connect(lambda: tabs.setCurrentIndex(0))
-    tabs.addTab(tm, "Sources")
 
     pa = PerformanceAnalysis()
     tm.refreshSources.connect(pa.refreshSources)
@@ -91,7 +90,13 @@ class AmphetypeWindow(QMainWindow):
     pw = QTabWidget()
     pw.addTab(GeneralOptions(), "General Options")
     pw.addTab(TyperOptions(), "Typer Options")
+    pw.addTab(tm, "Sources")
     tabs.addTab(pw, "Preferences")
+
+    def goto_sources():
+      tabs.setCurrentWidget(pw)
+      pw.setCurrentWidget(tm)
+    lg.newLessons.connect(goto_sources)
 
     self.setCentralWidget(tabs)
 

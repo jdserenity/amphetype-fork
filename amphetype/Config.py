@@ -473,7 +473,7 @@ class GeneralOptions(QWidget):
       None,
       [SettingsCheckBox("text_force_ascii", 'Force unicode to plain ASCII'), ('(‘fancy’ “quotes” → "normal" quotes, <code>æ</code> → <code>ae</code>, etc.)', 1)],
       SettingsCheckBox('auto_review', "Automatically review slow and mistyped words after texts.",
-                       toolTip="""Automatically create post-lesson reviews if you didn't meet the WPM/accuracy criteria set on the <b>Sources</b> tab."""),
+                       toolTip="""Automatically create post-lesson reviews if you didn't meet the WPM/accuracy criteria set under <b>Preferences → Sources</b>."""),
       SettingsCheckBox('show_last', "Show last result(s) above text in the Typer."),
       SettingsCheckBox('use_lesson_stats', "Save key/trigram/word statistics from generated lessons."),
       SettingsCheckBox('req_space', "Make SPACE mandatory before each session",

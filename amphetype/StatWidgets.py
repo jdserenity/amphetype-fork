@@ -3,7 +3,8 @@
 
 import time
 
-from amphetype.Data import DB, STAT_OMIT_DISCOUNTED
+from amphetype.Data import DB
+from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY
 from amphetype.QtUtil import *
 from amphetype.Text import LessonGeneratorPlain
 from amphetype.Config import *
@@ -16,8 +17,8 @@ from PyQt5.QtGui import *
 class WordModel(AmphModel):
   def signature(self):
     self.words = []
-    return (["Item", "Speed", "Accuracy", "Viscosity", "Count", "Mistakes", "Impact"],
-        [None, "%.1f wpm", "%.1f%%", "%.1f", None, None, "%.1f"])
+    return (["Type target", "Speed", "Accuracy", "Hesitation", "Count", "Mistakes", "Drilled", "Impact"],
+        [None, "%.1f wpm", "%.1f%%", "%.1f", None, None, None, "%.1f"])
 
   def populateData(self, idx):
     if len(idx) != 0:
@@ -48,8 +49,8 @@ class StringStats(QWidget):
     ob = SettingsCombo('ana_which', [
           ('wpm asc', 'slowest'),
           ('wpm desc', 'fastest'),
-          ('viscosity desc', 'least fluid'),
-          ('viscosity asc', 'most fluid'),
+          ('viscosity desc', 'most hesitation'),
+          ('viscosity asc', 'least hesitation'),
           ('accuracy asc', 'least accurate'),
           ('misses desc', 'most mistyped'),
           ('total desc', 'most common'),
@@ -80,19 +81,5 @@ class StringStats(QWidget):
     count = Settings.get('ana_count')
     hist = time.time() - Settings.get('history') * 86400.0
 
-    sql = """select data,12.0/time as wpm,
-      100.0-100.0*misses/cast(total as real) as accuracy,
-      viscosity,total,misses,
-      total*time*time*(1.0+misses/total) as damage
-        from
-          (select data,agg_median(time) as time,agg_median(viscosity) as viscosity,
-          sum(count) as total,sum(mistakes) as misses
-          from statistic as st
-          left join source as src on st.source = src.rowid
-          where st.w >= ? and st.type = ? and %s
-          group by data)
-        where total >= ?
-        order by %s limit %d""" % (STAT_OMIT_DISCOUNTED, ord, limit)
-
+    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, ord, limit)
     self.model.setData(DB.fetchall(sql, (hist, cat, count)))
-

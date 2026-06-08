@@ -26,7 +26,8 @@ from amphetype.typer import (
 
 
 def test_lesson_completion_action():
-    assert lesson_completion_action(MODE_NORMAL, False, False, False, False) == 'repeat'
+    assert lesson_completion_action(MODE_NORMAL, False, False, False, False) == 'normal_next'
+    assert lesson_completion_action(MODE_WEAKSPOT, False, False, False, False) == 'weakspot_next'
     assert lesson_completion_action(MODE_WEAKSPOT, True, True, False, False) == 'weakspot_next'
     assert lesson_completion_action(MODE_NORMAL, True, True, False, False) == 'normal_next'
     assert lesson_completion_action(MODE_NORMAL, True, False, True, True) == 'review'
@@ -36,6 +37,8 @@ def test_lesson_completion_action():
 def test_format_source_attribution():
     assert format_source_attribution('Pride and Prejudice') == '— Pride and Prejudice'
     assert format_source_attribution('  Moby Dick  ') == '— Moby Dick'
+    assert format_source_attribution('Moby Dick.txt') == '— Moby Dick'
+    assert format_source_attribution('notes.markdown') == '— notes'
     assert format_source_attribution('<Weakspot>') == ''
     assert format_source_attribution('<Reviews>') == ''
     assert format_source_attribution('') == ''

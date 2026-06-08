@@ -33,24 +33,34 @@ _NO_FILL_STYLE_ATTRS = frozenset({'untyped', 'correct', 'inactive'})
 
 MODE_NORMAL = 'normal'
 MODE_WEAKSPOT = 'weakspot'
+_WEAKSPOT_BTN_LABEL = 'weakspot'
+_GENERATING_BTN_LABEL = 'generating…'
 
 
 def lesson_completion_action(mode, met_threshold, is_lesson, auto_review, has_review_words):
-  """What to do after a typing session ends (threshold = met min wpm/accuracy)."""
-  if not met_threshold:
-    return 'repeat'
+  """What to do after a typing session ends."""
   if mode == MODE_WEAKSPOT:
     return 'weakspot_next'
-  if not is_lesson and auto_review and has_review_words:
+  if met_threshold and not is_lesson and auto_review and has_review_words:
     return 'review'
   return 'normal_next'
 
+
+_SOURCE_FILE_EXTS = ('.txt', '.text', '.md', '.markdown', '.epub', '.html', '.htm', '.rtf', '.pdf')
+
+def _display_source_name(source_name):
+  name = source_name.strip()
+  lower = name.lower()
+  for ext in _SOURCE_FILE_EXTS:
+    if lower.endswith(ext):
+      return name[: -len(ext)].rstrip()
+  return name
 
 def format_source_attribution(source_name):
   """Footer line for novel sources, e.g. '— Pride and Prejudice'. Empty for system sources."""
   if not source_name:
     return ''
-  name = source_name.strip()
+  name = _display_source_name(source_name)
   if not name or (name.startswith('<') and name.endswith('>')):
     return ''
   return f'— {name}'
@@ -620,8 +630,7 @@ class TyperWindow(QWidget):
     self._btn_weakspot.clicked.connect(lambda: self.set_practice_mode(MODE_WEAKSPOT))
     self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
     self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
-    self._mode_status = QLabel('')
-    self._mode_status.setStyleSheet('color: #666; font-size: 11px;')
+    self._weakspot_generating = False
 
     self._heatmap_legend = make_heatmap_legend()
     self._heatmap_panel = QWidget()
@@ -639,7 +648,6 @@ class TyperWindow(QWidget):
     mode_lay.addWidget(self._btn_weakspot)
     mode_lay.addWidget(self._btn_read_ahead)
     mode_lay.addWidget(self._btn_read_ahead_level)
-    mode_lay.addWidget(self._mode_status)
     mode_lay.addWidget(self._btn_heatmap)
     mode_lay.addWidget(self._heatmap_panel)
     mode_lay.addStretch(1)
@@ -807,11 +815,20 @@ class TyperWindow(QWidget):
     if mode == MODE_WEAKSPOT:
       self._weakspot.request_next_lesson(force=True)
     else:
-      self._mode_status.setText('')
+      self._set_weakspot_footer_busy(False)
       self.wantText.emit()
 
+  def _set_weakspot_footer_busy(self, busy):
+    self._weakspot_generating = busy
+    if busy and self._mode == MODE_WEAKSPOT:
+      self._btn_weakspot.setText(_GENERATING_BTN_LABEL)
+      self._btn_weakspot.setEnabled(False)
+    else:
+      self._btn_weakspot.setText(_WEAKSPOT_BTN_LABEL)
+      self._btn_weakspot.setEnabled(True)
+
   def _on_weakspot_busy(self, busy):
-    self._mode_status.setText('generating…' if busy else '')
+    self._set_weakspot_footer_busy(busy)
 
   def _on_weakspot_lesson(self, lesson):
     if self._mode != MODE_WEAKSPOT:
@@ -819,7 +836,7 @@ class TyperWindow(QWidget):
     if not lesson:
       self.updateLabel('No statistics yet — practice on normal mode first.')
       return
-    self._mode_status.setText('')
+    self._set_weakspot_footer_busy(False)
     self.needWeakspotLesson.emit(lesson)
 
   def updateLabel(self, msg=None):
@@ -915,13 +932,18 @@ class TyperWindow(QWidget):
         tp = 0
       vals.append( (s.median(), v, now, len(s), s.flawed(), tp, k, srcid) )
 
-    # print(vals)
-
     is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
-    # Never record weakspot drills (or other discounted lessons unless opted in).
     write_stats = self._mode != MODE_WEAKSPOT and (not is_lesson or self._settings.get('use_lesson_stats'))
 
-    if write_stats:
+    if self._mode == MODE_WEAKSPOT:
+      ws_src = self.DB.getSource('<Weakspot>', lesson=1)
+      drill_vals = [(t, vis, w, 0, m, tp, data, ws_src) for t, vis, w, _c, m, tp, data, _s in vals]
+      self.DB.executemany_('''
+      insert into statistic
+      (time,viscosity,w,count,mistakes,type,data,source)
+      values (?,?,?,?,?,?,?,?)
+      ''', drill_vals)
+    elif write_stats:
       self.DB.executemany_('''
       insert into statistic
       (time,viscosity,w,count,mistakes,type,data,source)
@@ -949,9 +971,7 @@ class TyperWindow(QWidget):
     action = lesson_completion_action(
       self._mode, met, bool(is_lesson), self._settings.get('auto_review'), bool(review_words))
 
-    if action == 'repeat':
-      self.setText(self._current_lesson)
-    elif action == 'weakspot_next':
+    if action == 'weakspot_next':
       self._weakspot.invalidate_cache()
       self._weakspot.request_next_lesson(force=True)
     elif action == 'review':

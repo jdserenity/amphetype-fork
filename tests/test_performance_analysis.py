@@ -62,4 +62,4 @@ def test_main_window_has_performance_analysis_tab(qapp):
   w = AmphetypeWindow()
   tabs = w.centralWidget()
   labels = [tabs.tabText(i) for i in range(tabs.count())]
-  assert labels == ["Typer", "Sources", "Performance Analysis", "Preferences"]
+  assert labels == ["Typer", "Performance Analysis", "Preferences"]

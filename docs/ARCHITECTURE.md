@@ -4,7 +4,7 @@
 
 - Python 3.6+ (local dev: 3.11 — see `docs/DEPLOY.md`), PyQt5 GUI, SQLite (`statistic`, `text`, `source`, `result`) via `amphetype.Data.DB`.
 - Typing stats: `type` 0 = character, 1 = trigram (3 chars, including spaces/punctuation), 2 = word (`amphetype/typer.py`).
-- Main window tabs (`amphetype/Amphetype.py`): Typer, Sources, Performance Analysis, Preferences. Lesson Generator (off-tab, for `auto_review`), Database, About/Help, and the old Weakspot tab are not shown; weakspot runs from the Typer tab mode switch.
+- Main window tabs (`amphetype/Amphetype.py`): Typer, Performance Analysis, Preferences (sub-tabs: General Options, Typer Options, Sources). Lesson Generator (off-tab, for `auto_review`), Database, About/Help, and the old Weakspot tab are not shown; weakspot runs from the Typer tab mode switch.
 
 ## Typing practice (Typer)
 
@@ -64,7 +64,7 @@ Auto-build practice text from ranked weak **characters**, **trigrams**, and **wo
 13. **Importance-weighted repetition**: each target repeated proportional to score (`allocate_repeats`, every target ≥1, capped); high-impact items get real practice, not a single token.
 14. **Cross-lesson freshness**: fresh RNG per build (varied word realizations and order); weighted repetition differs run-to-run; widget passes a 2-lesson recency deque as `recent` keys (weights halved) so emphasis rotates.
 15. **No filler invariant**: every emitted phrase covers at least one target (new or repeat); dictionary only completes trigram-boundary slots.
-16. **Weakspot feedback loop guard**: `statistic.source` tags each stats row. Generated-lesson sources (`<Weakspot>`, Lesson Generator, Reviews) have `source.discount` set. Inline typer does not write stats in **weakspot** mode; other discounted lessons only write if `use_lesson_stats` is on. Rows from discounted sources are omitted from **Performance Analysis** Stats rankings and weakspot target selection (`STAT_OMIT_DISCOUNTED` in `amphetype/Data.py`).
+16. **Weakspot drill stats** (`amphetype/stats_query.py`): weakspot runs write `statistic` rows tagged `<Weakspot>` with `count=0` (one row per type target touched per session). They update median time/hesitation for that target but not `sum(count)`, `sum(mistakes)` used for damage/accuracy. Performance Analysis **Stats** **Drilled** column counts weakspot sessions per target. Lesson Generator / Reviews remain discounted with no writes unless `use_lesson_stats` is on. Heatmap still omits discounted sources (`STAT_OMIT_DISCOUNTED`).
 
 ### Implementation
 
