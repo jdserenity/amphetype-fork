@@ -3,7 +3,12 @@
 import sqlite3
 import unittest
 
-from amphetype.stats_query import ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY
+from amphetype.speed_heatmap import OBLIVION_WPM
+from amphetype.stats_query import (
+  ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
+  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, count_unique_typed, fetch_oblivion_pool,
+  fetch_oblivion_picks,
+)
 from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
 
 
@@ -117,3 +122,67 @@ class TestStatsAggregation(unittest.TestCase):
     self.assertEqual(set(rows), {'Lady', 'lady'})
     self.assertAlmostEqual(12.0 / rows['Lady'], 70.0)
     self.assertAlmostEqual(12.0 / rows['lady'], 25.0)
+
+
+def test_fetch_oblivion_pool_returns_all_under_threshold():
+  conn = _test_db(); now = 1e9
+  rows = []
+  for i in range(35):
+    wpm = 10 + (i % 19)
+    rows.append((now, 'w%d' % i, STAT_TYPE_WORD, 12.0 / wpm, 10, 0, 1.0, None))
+  for i in range(10):
+    wpm = 40 + i
+    rows.append((now, 'fast%d' % i, STAT_TYPE_WORD, 12.0 / wpm, 10, 0, 1.0, None))
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    rows)
+  limited = conn.execute(
+    ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'wpm asc', 30),
+    (0, STAT_TYPE_WORD, 1)).fetchall()
+  old_pool = [r for r in limited if r[1] is not None and r[1] < OBLIVION_WPM]
+  assert len(old_pool) == 30
+  assert len(fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM)) == 35
+
+
+def test_oblivion_pool_includes_drill_only_rows():
+  conn = _test_db(); now = 1e9
+  weak = _add_source(conn, '<Weakspot>', 1)
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'However', STAT_TYPE_WORD, 12.0 / 20.0, 0, 1, 1.0, weak),
+      (now, 'from', STAT_TYPE_WORD, 12.0 / 25.0, 0, 0, 1.0, weak),
+      (now, 'with', STAT_TYPE_WORD, 12.0 / 28.0, 0, 0, 1.0, weak),
+    ])
+  pool = fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM)
+  assert {r[0] for r in pool} == {'However', 'from', 'with'}
+
+
+def test_fetch_oblivion_picks_falls_back_all_time():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now - 200000, 'old1', STAT_TYPE_WORD, 12.0 / 20.0, 5, 0, 1.0, None),
+      (now - 200000, 'old2', STAT_TYPE_WORD, 12.0 / 22.0, 5, 0, 1.0, None),
+      (now - 200000, 'old3', STAT_TYPE_WORD, 12.0 / 24.0, 5, 0, 1.0, None),
+      (now, 'new1', STAT_TYPE_WORD, 12.0 / 18.0, 5, 0, 1.0, None),
+    ])
+  picks = fetch_oblivion_picks(conn, now - 86400, STAT_TYPE_WORD, 3, OBLIVION_WPM)
+  assert len(picks) == 3
+
+
+def test_count_unique_typed_respects_history_window():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'from', STAT_TYPE_WORD, 0.5, 10, 0, 1.0, None),
+      (now, 'the', STAT_TYPE_WORD, 0.5, 5, 0, 1.0, None),
+      (now - 200000, 'old', STAT_TYPE_WORD, 0.5, 5, 0, 1.0, None),
+      (now, ' fr', STAT_TYPE_TRIGRAM, 0.5, 5, 0, 1.0, None),
+      (now, 'fro', STAT_TYPE_TRIGRAM, 0.5, 5, 0, 1.0, None),
+    ])
+  assert count_unique_typed(conn, now - 86400, STAT_TYPE_WORD) == 2
+  assert count_unique_typed(conn, now - 86400, STAT_TYPE_TRIGRAM) == 2
+  assert count_unique_typed(conn, now + 1, STAT_TYPE_WORD) == 0

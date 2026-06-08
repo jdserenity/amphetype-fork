@@ -90,6 +90,47 @@ def test_book_paragraph_break_requires_enter(qapp):
     assert doc._run.current.char == 'b'
 
 
+def test_book_paragraph_mistype_does_not_skip_break(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_book_chapter('a\n\nb', ['a\n\nb'], 0, auto_returns=True)
+  doc.insert('a')
+  doc.insert('x')
+  assert doc._run.index == 1
+  assert doc._run.current.char == RETURN_CHAR
+  assert doc._first_error is not None
+  doc.insert(RETURN_CHAR)
+  assert doc._run.index == 3
+  assert doc._run.current.char == 'b'
+  assert doc._first_error is None
+  doc.insert('b')
+  assert doc.is_finished()
+
+
+def test_book_paragraph_mistype_backspace_restores_hidden_return(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_book_chapter('a\n\nb', ['a\n\nb'], 0, auto_returns=True)
+  doc.insert('a')
+  doc.insert('x')
+  doc.backspace()
+  assert doc._run.index == 1
+  assert doc._first_error is None
+  di = doc._display_span(1)[0]
+  c = Cursor(doc, position=di)
+  c.movePosition(c.NextCharacter, c.KeepAnchor)
+  assert c.selectedText() == RETURN_CHAR
+  assert c.charFormat().foreground().color() == doc.style_hidden_return.foreground().color()
+
+
+def test_book_triple_newline_single_enter(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_book_chapter('a\n\n\nc', ['a\n\n\nc'], 0, auto_returns=True)
+  doc.insert('a')
+  assert doc._run.index == 1
+  doc.insert(RETURN_CHAR)
+  assert doc._run.index == 4
+  assert doc._run.current.char == 'c'
+
+
 def test_book_display_hidden_return_glyph_at_paragraph_break(qapp):
     doc = LessonDocument(QFont("Arial", 12))
     doc.set_book_chapter('a\n\nb', ['a\n\nb'], 0, auto_returns=True)

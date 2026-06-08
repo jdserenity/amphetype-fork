@@ -433,6 +433,79 @@ class LessonDocument(QTextDocument):
       self._cursor_to_match_index(self._run.index)
       self.progress.emit(self._run.index)
 
+  def _book_para_enter_index(self):
+    if not self._book_auto_returns or not self._run or not self._run.current:
+      return None
+    mi = self._run.index
+    if self._run.current.char != RETURN_CHAR:
+      return None
+    if book_return_role(self._match_text, mi, RETURN_CHAR) != 'para_enter':
+      return None
+    return mi
+
+  def _book_para_enter_glyph_replaced(self, mi):
+    di, _ = self._display_span(mi)
+    return self.characterAt(di) != RETURN_CHAR
+
+  def _restore_book_para_enter_untyped(self, mi):
+    di, _ = self._display_span(mi)
+    c = Cursor(self, position=di)
+    c.setPosition(di + 1, c.KeepAnchor)
+    c.insertText(RETURN_CHAR, self.style_hidden_return)
+    self._cursor_to_match_index(mi)
+
+  def _finish_book_insert(self):
+    if self.is_finished():
+      self.completed.emit(self._run)
+    else:
+      self._refresh_untyped_styles()
+      self.sig_position.emit(self.cursor)
+
+  def _insert_book_para_enter(self, char, lenient=False):
+    """Type (or recover) the hidden paragraph break — only the first display glyph is mutable."""
+    mi = self._book_para_enter_index()
+    assert mi is not None
+    correct = char == RETURN_CHAR
+    di, _ = self._display_span(mi)
+    c = Cursor(self, position=di)
+    c.setPosition(di + 1, c.KeepAnchor)
+
+    if self._first_error is not None:
+      if not correct:
+        self._reveal_read_ahead_word_at(mi)
+        self._run.visit(False)
+        c.insertText(char, self.style_error)
+        self._finish_book_insert()
+        return
+      self._run.visit(True)
+      self.progress.emit(mi)
+      c.insertText(RETURN_CHAR, self.style_hidden_return)
+      self._first_error = None
+      self._run.advance(True)
+      self._cursor_to_match_index(self._run.index)
+      self._consume_auto_returns()
+      self._finish_book_insert()
+      return
+
+    if not correct:
+      self._reveal_read_ahead_word_at(mi)
+      self._run.visit(False)
+      self._run.current.errors += char
+      if not lenient:
+        self._first_error = Cursor(self, position=di, fixed=True)
+      c.insertText(char, self.style_error)
+      self._cursor_to_match_index(mi)
+      self._finish_book_insert()
+      return
+
+    self._run.visit(True)
+    self.progress.emit(mi)
+    c.insertText(RETURN_CHAR, self.style_hidden_return)
+    self._run.advance(True)
+    self._cursor_to_match_index(self._run.index)
+    self._consume_auto_returns()
+    self._finish_book_insert()
+
   def is_running(self):
     """True if a lesson has started but not yet completed."""
     return self._run is not None and not self._run.is_complete()
@@ -460,6 +533,10 @@ class LessonDocument(QTextDocument):
       self.started.emit()
 
     if self._run.current is None:
+      return
+
+    if self._book_para_enter_index() is not None:
+      self._insert_book_para_enter(char, lenient=lenient)
       return
 
     correct = char == self._run.current.char
@@ -516,6 +593,15 @@ class LessonDocument(QTextDocument):
 
   def backspace(self, by_word=False, protected=False):
     if not self.is_running():
+      return
+
+    mi = self._book_para_enter_index()
+    if mi is not None and self._book_para_enter_glyph_replaced(mi):
+      self._restore_book_para_enter_untyped(mi)
+      if self._first_error and self.cursor.position() <= self._first_error.position():
+        self._first_error = None
+      self._refresh_read_ahead()
+      self.sig_position.emit(self.cursor)
       return
 
     mark = Cursor(self.cursor)
@@ -1071,6 +1157,16 @@ class TyperWindow(QWidget):
     self._set_mode_ui(MODE_NORMAL, load=False)
     self.setText(v)
 
+  def _emit_focus_lesson(self, targets):
+    wl = str(Settings.DATA_DIR / 'wordlists' / 'words-20.txt')
+    lesson = build_focus_lesson(
+      targets, wordlist_path=wl, max_chars=Settings.get('max_chars'))
+    if not lesson:
+      return False
+    self._set_weakspot_footer_busy(False)
+    self.needWeakspotLesson.emit(lesson)
+    return True
+
   def start_focus_drill(self, targets):
     """Start weakspot focus drill on specific type targets from Performance Analysis."""
     self._focus_drill = [(t[0], t[1]) for t in targets]
@@ -1078,18 +1174,13 @@ class TyperWindow(QWidget):
     for t in targets:
       if len(t) > 2 and t[2] is not None:
         self._focus_drill_wpm[t[1]] = t[2]
-    wl = str(Settings.DATA_DIR / 'wordlists' / 'words-20.txt')
-    lesson = build_focus_lesson(
-      self._focus_drill, wordlist_path=wl, max_chars=Settings.get('max_chars'))
     self._settings.set('practice_mode', 1)
     self._set_mode_ui(MODE_WEAKSPOT, load=False)
-    if not lesson:
+    if not self._emit_focus_lesson(self._focus_drill):
       self._focus_drill = None
       self._focus_drill_wpm = {}
       self.updateLabel('Could not build a drill for those targets.')
       return
-    self._set_weakspot_footer_busy(False)
-    self.needWeakspotLesson.emit(lesson)
 
   def set_practice_mode(self, mode):
     if mode == self._mode:
@@ -1177,7 +1268,8 @@ class TyperWindow(QWidget):
       return self.typingFailed("Invalid run? (~0 duration)")
 
     if self._focus_drill:
-      self.setText(self._current_lesson)
+      if not self._emit_focus_lesson(self._focus_drill):
+        self.updateLabel('Could not rebuild focus drill for those targets.')
       return
 
     now = time()

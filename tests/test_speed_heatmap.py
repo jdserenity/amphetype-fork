@@ -104,6 +104,15 @@ def test_display_text_newline_after_return_char():
   assert colors[3] is None  # b not in stats
 
 
+def test_book_return_role_triple_newline():
+  ret = '\u23ce'
+  match = 'a' + ret + ret + ret + 'c'
+  from amphetype.speed_heatmap import book_return_role
+  assert book_return_role(match, 1, ret) == 'para_enter'
+  assert book_return_role(match, 2, ret) == 'para_tail'
+  assert book_return_role(match, 3, ret) == 'para_tail'
+
+
 def test_book_display_paragraph_break_mapping():
   ret = '\u23ce'
   stats = {'a': _stat(100), 'b': _stat(80)}

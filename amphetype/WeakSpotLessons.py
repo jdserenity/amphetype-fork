@@ -43,6 +43,10 @@ def target_key(t):
   return (t[0], t[1])
 
 
+def _focus_word_in_text(word, text):
+  return bool(re.search(r'(?<![A-Za-z])' + re.escape(word) + r'(?![A-Za-z])', text))
+
+
 def covered_targets(text, targets):
   """Return the set of target keys whose surface form literally appears in text."""
   res = set()
@@ -53,6 +57,22 @@ def covered_targets(text, targets):
     kind, data = t[0], t[1]
     if kind == 'word':
       if data.lower() in runs: res.add((kind, data))
+    elif kind == 'char':
+      if data in text: res.add((kind, data))
+    elif kind == 'trigram':
+      if data in text: res.add((kind, data))
+  return res
+
+
+def focus_covered_targets(text, targets):
+  """Focus drills: word targets match exact surface (Lady ≠ lady)."""
+  res = set()
+  if not text:
+    return res
+  for t in targets:
+    kind, data = t[0], t[1]
+    if kind == 'word':
+      if _focus_word_in_text(data, text): res.add((kind, data))
     elif kind == 'char':
       if data in text: res.add((kind, data))
     elif kind == 'trigram':
@@ -664,24 +684,25 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=2
   order = list(weighted)
   rng.shuffle(order)
 
-  def _append_phrase(t):
+  def _append_phrase(t, force=False):
     nonlocal text, covered
     toks = _tokens_for_target(t, index, all_keys - covered, weighted, rng, exact_surface=True)
     if not toks:
       return False
     phrase = ' '.join(toks)
-    if not covered_targets(phrase, weighted):
+    if not focus_covered_targets(phrase, weighted):
       return False
     cand = (text + ' ' + phrase).strip() if text else phrase
-    if text and len(cand) > focus_chars:
+    if not force and text and len(cand) > focus_chars:
       return False
     text = cand
-    covered = covered_targets(text, weighted)
+    covered = focus_covered_targets(text, weighted)
     counts[target_key(t)] += 1
     return True
 
   for t in weighted:
-    _append_phrase(t)
+    if not _append_phrase(t):
+      _append_phrase(t, force=True)
   idx = 0; fails = 0
   while len(text) < focus_chars and fails < len(weighted) * 4:
     t = order[idx % len(order)]

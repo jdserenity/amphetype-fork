@@ -25,7 +25,7 @@
 
 ## Performance Analysis tab
 
-- Single tab (`amphetype/PerformanceAnalysis.py`) with sub-tabs **Stats** (aggregated keys/trigrams/words from `statistic` with impact/damage ranking) and **Progress** (session `result` history, source filter, grouping, WPM/accuracy/viscosity graph, double-click to retry a text). Both share the `history` days window (tab header + Preferences); session rows are also capped by `perf_items`, Stats rows by `ana_many` and `ana_count`.
+- Single tab (`amphetype/PerformanceAnalysis.py`) with sub-tabs **Stats** (aggregated keys/trigrams/words from `statistic` with impact/damage ranking) and **Progress** (session `result` history, source filter, grouping, WPM/accuracy/viscosity graph, double-click to retry a text). Header shows **Unique words typed** / **Unique trigrams typed** (`count_unique_typed` in `stats_query.py`, distinct `statistic.data` in the history window). Both share the `history` days window (tab header + Preferences); session rows are also capped by `perf_items`, Stats rows by `ana_many` and `ana_count`.
 
 ## Lesson generation (baseline)
 

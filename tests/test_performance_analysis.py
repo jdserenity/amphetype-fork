@@ -39,6 +39,16 @@ def test_performance_analysis_composes_sections(qapp):
   assert isinstance(pa.st, StringStats)
 
 
+def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
+  monkeypatch.setattr(
+    'amphetype.PerformanceAnalysis.count_unique_typed',
+    lambda db, hist, tp: 42 if tp == 2 else 17)
+  pa = PerformanceAnalysis()
+  pa.updateAll()
+  assert pa._words_lbl.text() == 'Unique words typed: 42'
+  assert pa._trigrams_lbl.text() == 'Unique trigrams typed: 17'
+
+
 def test_performance_analysis_has_stats_and_progress_subtabs(qapp):
   pa = PerformanceAnalysis()
   labels = [pa.subtabs.tabText(i) for i in range(pa.subtabs.count())]

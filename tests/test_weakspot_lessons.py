@@ -6,7 +6,7 @@ from amphetype.WeakSpotLessons import (
   _make_index,
   allocate_repeats,
   build_lesson,
-  build_focus_lesson,
+  build_focus_lesson, focus_covered_targets,
   build_lesson_from_db,
   compose_phrase,
   covered_targets,
@@ -193,6 +193,19 @@ class TestFocusDrill(unittest.TestCase):
     self.assertRegex(lesson, r'(?<![A-Za-z])lady(?![A-Za-z])')
     self.assertNotRegex(lesson, r'(?<![a-z])Lady(?![a-z])')
     self.assertRegex(lesson, r'(?<![A-Za-z])Meryton(?![A-Za-z])')
+
+  def test_focus_covered_words_are_case_sensitive(self):
+    targets = [('word', 'However'), ('word', 'however'), ('word', 'with')]
+    self.assertEqual(focus_covered_targets('However', targets), {('word', 'However')})
+    self.assertEqual(
+      focus_covered_targets('However however with', targets),
+      {('word', 'However'), ('word', 'however'), ('word', 'with')})
+
+  def test_focus_drill_includes_all_three_oblivion_words(self):
+    targets = [('word', 'However'), ('word', 'however'), ('word', 'with')]
+    lesson = build_focus_lesson(targets, DICT, max_chars=600, rng=_R(7))
+    cov = focus_covered_targets(lesson, targets)
+    self.assertEqual(cov, {('word', 'However'), ('word', 'however'), ('word', 'with')})
 
   def test_focus_drill_balances_three_words(self):
     targets = [('word', 'from'), ('word', 'with'), ('word', 'blue')]

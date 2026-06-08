@@ -1,11 +1,13 @@
 
 from amphetype.Config import Settings, SettingsEdit
+from amphetype.Data import DB
 from amphetype.QtUtil import *
-from amphetype.Performance import PerformanceHistory
+from amphetype.Performance import PerformanceHistory, perf_hist_cutoff
 from amphetype.StatWidgets import StringStats
+from amphetype.stats_query import STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, count_unique_typed
 
 from PyQt5.QtCore import *
-from PyQt5.QtWidgets import QTabWidget
+from PyQt5.QtWidgets import QLabel, QTabWidget
 
 
 class PerformanceAnalysis(QWidget):
@@ -23,13 +25,18 @@ class PerformanceAnalysis(QWidget):
     self.st.startDrill.connect(self._forward_drill)
     self.st.corpusTextReady.connect(self._on_corpus_text)
     Settings.signal_for("history").connect(self.updateAll)
+    _counter_style = 'font-size: 15px; padding: 2px 0;'
+    self._words_lbl = QLabel()
+    self._trigrams_lbl = QLabel()
+    self._words_lbl.setStyleSheet(_counter_style)
+    self._trigrams_lbl.setStyleSheet(_counter_style)
     subtabs = QTabWidget()
     subtabs.addTab(self.st, "Stats")
     subtabs.addTab(self.ph, "Progress")
     self.subtabs = subtabs
     subtabs.currentChanged.connect(lambda *_: self.st.clear_corpus_msg())
     self.setLayout(AmphBoxLayout([
-        ["Last", SettingsEdit("history"), "days.", None],
+        ["Last", SettingsEdit("history"), "days.", 16, self._words_lbl, 16, self._trigrams_lbl, None],
         (subtabs, 1),
       ]))
 
@@ -40,6 +47,11 @@ class PerformanceAnalysis(QWidget):
     self.ph.updateData(*args)
 
   def updateAll(self, *args):
+    hist = perf_hist_cutoff()
+    words = count_unique_typed(DB, hist, STAT_TYPE_WORD)
+    tris = count_unique_typed(DB, hist, STAT_TYPE_TRIGRAM)
+    self._words_lbl.setText('Unique words typed: %d' % words)
+    self._trigrams_lbl.setText('Unique trigrams typed: %d' % tris)
     self.ph.updateData(*args)
     self.st.update(*args)
 

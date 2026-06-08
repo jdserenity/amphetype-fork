@@ -131,6 +131,8 @@ def book_return_role(match_text, mi, return_char):
     return None
   next_is = mi + 1 < len(match_text) and match_text[mi + 1] == return_char
   prev_is = mi > 0 and match_text[mi - 1] == return_char
+  if prev_is and next_is:
+    return 'para_tail'
   if next_is:
     return 'para_enter'
   if prev_is:

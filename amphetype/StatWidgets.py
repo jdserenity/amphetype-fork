@@ -1,12 +1,11 @@
 
 
 
-import random
 import time
 
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
-from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY
+from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, fetch_oblivion_picks
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
@@ -154,9 +153,9 @@ class StringStats(QWidget):
     self.startDrill.emit(self._targets_from_rows(rows[:3], cat))
 
   def _drill_3_oblivion(self):
-    rows, cat = self._query_rows('wpm asc', Settings.get('ana_many'))
-    pool = [r for r in rows if r[1] is not None and r[1] < OBLIVION_WPM]
-    if not pool:
+    cat = Settings.get('ana_what')
+    hist = time.time() - Settings.get('history') * 86400.0
+    picks = fetch_oblivion_picks(DB, hist, cat, 3, OBLIVION_WPM)
+    if not picks:
       return
-    picks = random.sample(pool, min(3, len(pool)))
     self.startDrill.emit(self._targets_from_rows(picks, cat))

@@ -48,6 +48,17 @@ SPEED_STATS_SQL = f"""select data,
   where st.w >= ? and st.type = ?
   group by data"""
 
+UNIQUE_TYPED_SQL = """select count(distinct data) from statistic
+  where w >= ? and type = ?"""
+
+OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
+  100.0-100.0*mistakes/cast(total as real) as accuracy,
+  viscosity, total, mistakes, drilled,
+  total*time*time*(1.0+mistakes/total) as damage
+  from (%s)
+  where 12.0/time < ?
+  order by wpm asc"""
+
 SPEED_STATS_ALL_TIME_SQL = f"""select data,
   12.0 / agg_median(time) as wpm,
   sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) * agg_median(time) * agg_median(time)
@@ -57,3 +68,27 @@ SPEED_STATS_ALL_TIME_SQL = f"""select data,
   left join source as src on st.source = src.rowid
   where st.type = ?
   group by data"""
+
+STAT_TYPE_TRIGRAM = 1
+STAT_TYPE_WORD = 2
+
+
+def count_unique_typed(db, hist_cutoff, stat_type):
+  row = db.execute(UNIQUE_TYPED_SQL, (hist_cutoff, stat_type)).fetchone()
+  return int(row[0]) if row else 0
+
+
+def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):
+  sql = OBLIVION_POOL_SQL % STATS_AGG_SUBQUERY
+  return db.execute(sql, (hist_cutoff, stat_type, oblivion_wpm)).fetchall()
+
+
+def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=3, oblivion_wpm=30):
+  """Up to n oblivion targets; widen to all-time when the history window is too thin."""
+  import random
+  pool = fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm)
+  if len(pool) < n and hist_cutoff > 0:
+    pool = fetch_oblivion_pool(db, 0, stat_type, oblivion_wpm)
+  if not pool:
+    return []
+  return random.sample(pool, min(n, len(pool)))
