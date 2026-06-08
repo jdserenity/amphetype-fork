@@ -8,30 +8,20 @@
 
 ## Typing practice (Typer)
 
-Two runtime-selectable implementations, controlled by `which_typer` (0 = legacy split view, 1 = primary inline; default 1). Both are wired to sources, lesson generator, Weakspot, performance history, and statistics via signals in `amphetype/Amphetype.py`.
-
-### Primary (inline, default)
-
-- `amphetype/typer.py`: `LessonDocument` (`QTextDocument` subclass), `TyperWidget` (`QTextEdit`), `TyperWindow`.
+- `amphetype/typer.py`: `LessonDocument` (`QTextDocument` subclass), `TyperWidget` (`QTextEdit`), `TyperWindow`. Wired to sources, lesson generator, Weakspot, performance history, and statistics via signals in `amphetype/Amphetype.py`.
 - Target text is rendered in the editable document with per-character styling (untyped, correct, error, blocking errors).
 - Keystrokes mutate the document in place; timing and statistics via `RunStats` (`amphetype/timingtuple.py`).
 - Supports overwrite/lenient modes, word-aware protected backspacing, progress, and full result recording.
-- Footer: faint **normal** / **weakspot** mode toggles (persisted as `practice_mode`); **read ahead** toggle + level button (`read_ahead_enabled`, `typer/read_ahead_level`: normal / hard / easy — applies in either practice mode); novel attribution (`— Title`) in normal mode only.
+- Footer: faint **normal** / **book** / **weakspot** mode toggles (persisted as `practice_mode`: 0 / 1 / 2); book mode shows chapter progress beside **book** (`Chapter N · done/total`); click **— Title** (bottom right) to switch books. **Read ahead** toggle + level button (`read_ahead_enabled`, `typer/read_ahead_level`: normal / hard / easy — applies in any practice mode); novel attribution (`— Title`) in normal and book modes.
 - **Read ahead** (`amphetype/read_ahead.py`): off by default; when on, level cycles normal (hide current + next word) → hard (+ one more) → easy (current only). Before the lesson starts, full text is shown; the first keystroke applies hiding. Hidden letters use page `background_color` as foreground. Mistyping on a hidden word reveals that word only; other hidden words stay hidden. Compatible with speed heatmap: hidden words stay masked; visible untyped text still gets heatmap colors.
-- Completing a lesson in **normal** mode advances via `TextManager.nextText`; in **weakspot** mode builds the next weakspot lesson (`WeakSpotLessonBuilder` in `amphetype/WeakSpot.py`).
+- Completing a lesson in **normal** mode advances via `TextManager.nextText`; in **book** mode advances to the next chapter (or chapter part when over `book_max_chars`) via `BookLessonBuilder` (`amphetype/book_mode.py`); in **weakspot** mode builds the next weakspot lesson (`WeakSpotLessonBuilder` in `amphetype/WeakSpot.py`).
+- **Book mode** loads full book text from `data/texts/<source name>` when present (fuzzy match on ` - <filename>` if needed), else concatenates imported `text` rows in rowid order. Gutenberg wraps are reflowed (`reflow_paragraphs`); formatted chapters are cached in SQLite (`book_chapter_cache`). Each chapter is shown in full (grey inactive before/after); the active slice uses `min_chars`/`max_chars` from Preferences. Single newlines (soft wraps) display as line breaks and auto-skip; paragraph breaks (`\n\n`) still use the ⏎ match character (must type Enter) but the glyph is drawn in the page background color so it is invisible (extra newline in the pair auto-skips). Progress per source in `book_progress` (`chapter_index`, `chunk_index`); completed chunks in `book_lesson_done`. Stats recorded per chunk like normal mode.
 - Page background uses `typer/background_color` (defaults to Qt window grey); lesson text defaults to light foreground on clear glyph backgrounds (errors still highlighted).
-- **Speed heatmap** (off by default): footer **heatmap** click-toggle (white = on, grey = off); when on, one **words** / **trigrams** / **chars** label (click to cycle) plus single-line WPM legend (`<30` purple oblivion, `30–59`, `60–89`, `90–119`, `120+`). Untyped text with stats gets foreground color from `statistic` (same history window and discounted-source omission as Performance Analysis Stats). Trigram mode paints non-overlapping 3-char blocks; contested spans use highest damage (`count·time²·(1+misses/count)`, same as Performance Analysis). Logic: `amphetype/speed_heatmap.py`.
-
-### Legacy (split view)
-
-- `amphetype/Quizzer.py`: `Typer` (`QTextEdit`) + `Quizzer` container with `WWLabel`.
-- Lesson text above a separate plain input field. Retained during transition; scheduled for removal (see `docs/TODO.md`).
+- **Speed heatmap** (off by default): footer **heatmap** click-toggle (white = on, grey = off); when on, one **words** / **trigrams** / **chars** label (click to cycle) plus single-line WPM legend (`<30` purple oblivion, `30–59`, `60–89`, `90–119`, `120+`). Untyped text with stats gets foreground color from `statistic` (all-time query; same counted-row rules as Performance Analysis). Case-sensitive key lookup. Word stats include all lengths (no min length). Trigram mode paints non-overlapping 3-char blocks; contested spans use highest damage (`count·time²·(1+misses/count)`, same as Performance Analysis). Logic: `amphetype/speed_heatmap.py`.
 
 ### Settings
 
-- `which_typer`: 0 = legacy, 1 = inline.
-- Typer options under `typer` and `colors` groups (`amphetype/Config.py`); many general options (font, `show_last`, `auto_review`, `min_*` thresholds, etc.) apply to both.
-- Statistics collection, viscosity, and per-char/trigram/word aggregation are shared in concept but differ in implementation between the two typers (notably viscosity in the inline version).
+- Typer options under `typer` and `colors` groups (`amphetype/Config.py`); many general options (font, `show_last`, `auto_review`, `min_*` thresholds, etc.) apply to the typer.
 
 ## Performance Analysis tab
 

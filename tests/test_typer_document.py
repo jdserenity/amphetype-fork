@@ -23,9 +23,11 @@ from amphetype.typer import (
   LessonDocument, RETURN_CHAR, MODE_NORMAL, MODE_WEAKSPOT, Cursor,
   format_source_attribution, lesson_completion_action, _NO_FILL_STYLE_ATTRS,
 )
+from amphetype.book_mode import MODE_BOOK
 
 
 def test_lesson_completion_action():
+    assert lesson_completion_action(MODE_BOOK, False, False, False, False) == 'book_next'
     assert lesson_completion_action(MODE_NORMAL, False, False, False, False) == 'normal_next'
     assert lesson_completion_action(MODE_WEAKSPOT, False, False, False, False) == 'weakspot_next'
     assert lesson_completion_action(MODE_WEAKSPOT, True, True, False, False) == 'weakspot_next'
@@ -69,6 +71,35 @@ def test_lesson_document_lifecycle(qapp):
 
     doc.reset()
     assert doc.is_ready()
+
+
+def test_book_soft_newline_auto_skipped(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_book_chapter('a\nb', ['a\nb'], 0, auto_returns=True)
+    doc.insert('a')
+    assert doc._run.current.char == 'b'
+
+
+def test_book_paragraph_break_requires_enter(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_book_chapter('a\n\nb', ['a\n\nb'], 0, auto_returns=True)
+    doc.insert('a')
+    assert doc._run.current.char == RETURN_CHAR
+    doc.insert(RETURN_CHAR)
+    assert doc._run.index == 3
+    assert doc._run.current.char == 'b'
+
+
+def test_book_display_hidden_return_glyph_at_paragraph_break(qapp):
+    doc = LessonDocument(QFont("Arial", 12))
+    doc.set_book_chapter('a\n\nb', ['a\n\nb'], 0, auto_returns=True)
+    assert doc._display_text == 'a' + RETURN_CHAR + '\n' + 'b'
+    base = doc._start.position() + 1
+    c = Cursor(doc, position=base)
+    c.movePosition(c.NextCharacter, c.KeepAnchor)
+    assert c.charFormat().foreground().color() == doc.style_hidden_return.foreground().color()
+    doc.set_book_chapter('a\nb', ['a\nb'], 0, auto_returns=True)
+    assert RETURN_CHAR not in doc._display_text
 
 
 def test_insert_correct_chars_advances_and_completes(qapp):
@@ -177,14 +208,6 @@ def test_runstats_basic_paths_used_by_document():
     run.visit(True)
     run.advance(True)
     assert run.is_complete() or run.index >= 2
-
-
-def test_inline_typer_is_now_default():
-    """The behavior change we are shipping: inline typer (1) is the default."""
-    from amphetype.Config import AmphSettings
-    # We don't want to construct a full AmphSettings (it does FS + app init),
-    # so just check the class default dict directly.
-    assert AmphSettings.defaults["which_typer"] == 1
 
 
 class _FakeTyperSettings:

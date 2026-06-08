@@ -79,6 +79,12 @@ def test_trigram_mode_ignores_non_trigram_keys():
 
 
 def test_word_mode_colors_case_sensitive():
+  stats = {'hello': _stat(110), 'Hello': _stat(50), 'the': _stat(90)}
+  colors = char_heatmap_colors('say the Hello!', MODE_WORD, stats)
+  assert colors[4:7] == [wpm_color_q(90)] * 3
+  assert colors[8:13] == [wpm_color_q(50)] * 5
+
+def test_word_mode_hello_case_sensitive():
   stats = {'hello': _stat(110), 'Hello': _stat(50)}
   colors = char_heatmap_colors('say Hello!', MODE_WORD, stats)
   assert colors[0] is None
@@ -91,11 +97,21 @@ def test_display_text_newline_after_return_char():
   ret = '\u23ce'  # same glyph as typer.RETURN_CHAR
   stats = {'a': _stat(100)}
   disp = 'a' + ret + '\n' + 'b'
-  colors = char_heatmap_colors(disp, MODE_CHAR, stats, match_text='a' + ret + 'b')
+  colors = char_heatmap_colors(disp, MODE_CHAR, stats, match_text='a' + ret + 'b', return_char=ret)
   assert colors[0] == wpm_color_q(100)
   assert colors[1] is None  # return glyph — no char stat
   assert colors[2] is None  # display-only newline
   assert colors[3] is None  # b not in stats
+
+
+def test_book_display_paragraph_break_mapping():
+  ret = '\u23ce'
+  stats = {'a': _stat(100), 'b': _stat(80)}
+  match = 'a' + ret + ret + 'b'
+  disp = 'a' + ret + '\n' + 'b'
+  colors = char_heatmap_colors(
+    disp, MODE_CHAR, stats, match_text=match, return_char=ret, book_returns=True)
+  assert colors == [wpm_color_q(100), None, None, wpm_color_q(80)]
 
 
 def test_fetch_speed_stats_sqlite(tmp_path):
@@ -133,6 +149,8 @@ def test_fetch_speed_stats_sqlite(tmp_path):
   words = fetch_speed_stats(DB(), hist_cutoff=now - 86400, stat_type=2)
   assert words['the']['wpm'] == pytest.approx(100.0)
   assert 'old' not in words
+  all_words = fetch_speed_stats(DB(), hist_cutoff=0, stat_type=2)
+  assert 'old' in all_words
 
 
 def test_fetch_speed_stats_keeps_word_case_separate(tmp_path):
