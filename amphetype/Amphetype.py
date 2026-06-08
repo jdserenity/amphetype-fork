@@ -31,9 +31,8 @@ app.DB = DB
 import os
 from pathlib import Path
 from amphetype.Quizzer import Quizzer
-from amphetype.StatWidgets import StringStats
 from amphetype.TextManager import TextManager
-from amphetype.Performance import PerformanceHistory
+from amphetype.PerformanceAnalysis import PerformanceAnalysis
 from amphetype.Config import GeneralOptions, TyperOptions
 from amphetype.Lesson import LessonGenerator
 
@@ -68,30 +67,26 @@ class AmphetypeWindow(QMainWindow):
     tm.gotoText.connect(lambda: tabs.setCurrentIndex(0))
     tabs.addTab(tm, "Sources")
 
-    ph = PerformanceHistory()
-    tm.refreshSources.connect(ph.refreshSources)
-    quiz.statsChanged.connect(ph.updateData)
-    ph.setText.connect(quiz.setText)
-    ph.gotoText.connect(lambda: tabs.setCurrentIndex(0))
-    tabs.addTab(ph, "Performance")
-
-    st = StringStats()
-    tabs.addTab(st, "Analysis")
+    pa = PerformanceAnalysis()
+    tm.refreshSources.connect(pa.refreshSources)
+    quiz.statsChanged.connect(pa.updateData)
+    pa.setText.connect(quiz.setText)
+    pa.gotoText.connect(lambda: tabs.setCurrentIndex(0))
+    tabs.addTab(pa, "Performance Analysis")
 
     # LessonGenerator not shown as a tab; kept for auto_review (wantReview → newReview).
     lg = LessonGenerator()
-    st.lessonStrings.connect(lg.addStrings)
     lg.newLessons.connect(lambda: tabs.setCurrentIndex(1))
     lg.newLessons.connect(tm.addTexts)
     quiz.wantReview.connect(lg.wantReview)
     lg.newReview.connect(tm.newReview)
 
-    ph.setText.connect(tm.emit_text)
+    pa.setText.connect(tm.emit_text)
     tm.setText.connect(tw.setText)
     tw.wantText.connect(tm.nextText)
     tw.needWeakspotLesson.connect(tm.newWeakspot)
     tw.wantReview.connect(lg.wantReview)
-    tw.statsChanged.connect(ph.updateData)
+    tw.statsChanged.connect(pa.updateData)
 
     pw = QTabWidget()
     pw.addTab(GeneralOptions(), "General Options")

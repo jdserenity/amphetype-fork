@@ -495,7 +495,7 @@ class GeneralOptions(QWidget):
       [SettingsCheckBox('break_sentences', "Break long sentences when importing external text."), None],
       ["When selecting easy/difficult texts, pick the best from a sample of",
         SettingsEdit('num_rand'), "texts.", None],
-      ["When grouping by sitting on the Performance tab, consider results more than",
+      ["When grouping by sitting on the Performance Analysis tab, consider results more than",
         SettingsEdit('minutes_in_sitting'), "minutes away to be part of a different sitting.", None],
       ["Group by", SettingsEdit('def_group_by'), "results when displaying last scores and showing last results on the Typer tab.", None],
       ["When smoothing out the graph, display a running average of", SettingsEdit('dampen_average'), "values", None],

@@ -33,8 +33,6 @@ class WordModel(AmphModel):
 
 
 class StringStats(QWidget):
-  lessonStrings = pyqtSignal('PyQt_PyObject')
-  
   def __init__(self, *args):
     super(StringStats, self).__init__(*args)
 
@@ -44,6 +42,7 @@ class StringStats(QWidget):
     tw.setUniformRowHeights(True)
     tw.setRootIsDecorated(False)
     tw.setAlternatingRowColors(True)
+    tw.setMinimumHeight(220)
     self.stats = tw
 
     ob = SettingsCombo('ana_which', [
@@ -68,10 +67,8 @@ class StringStats(QWidget):
     Settings.signal_for("history").connect(self.update)
 
     self.setLayout(AmphBoxLayout([
-        ["Display statistics about the", ob, wc, None, AmphButton("Update List", self.update)],
-        ["Limit list to", lim, "items and don't show items with a count less than", self.w_count,
-          None, AmphButton("Send List to Lesson Generator",
-                   lambda: self.lessonStrings.emit([x[0] for x in self.model.words]))],
+        ["Show", wc, "sorted by", ob, None],
+        ["Limit list to", lim, "items and don't show items with a count less than", self.w_count, None],
         (self.stats, 1)
       ]))
 

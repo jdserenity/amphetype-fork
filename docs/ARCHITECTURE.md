@@ -4,7 +4,7 @@
 
 - Python 3.6+ (local dev: 3.11 — see `docs/DEPLOY.md`), PyQt5 GUI, SQLite (`statistic`, `text`, `source`, `result`) via `amphetype.Data.DB`.
 - Typing stats: `type` 0 = character, 1 = trigram (3 chars, including spaces/punctuation), 2 = word (`amphetype/typer.py`).
-- Main window tabs (`amphetype/Amphetype.py`): Typer, Sources, Performance, Analysis, Preferences. Lesson Generator (off-tab, for `auto_review`), Database, About/Help, and the old Weakspot tab are not shown; weakspot runs from the Typer tab mode switch.
+- Main window tabs (`amphetype/Amphetype.py`): Typer, Sources, Performance Analysis, Preferences. Lesson Generator (off-tab, for `auto_review`), Database, About/Help, and the old Weakspot tab are not shown; weakspot runs from the Typer tab mode switch.
 
 ## Typing practice (Typer)
 
@@ -20,7 +20,7 @@ Two runtime-selectable implementations, controlled by `which_typer` (0 = legacy 
 - **Read ahead** (`amphetype/read_ahead.py`): off by default; when on, level cycles normal (hide current + next word) → hard (+ one more) → easy (current only). Before the lesson starts, full text is shown; the first keystroke applies hiding. Hidden letters use page `background_color` as foreground. Mistyping on a hidden word reveals that word only; other hidden words stay hidden. Compatible with speed heatmap: hidden words stay masked; visible untyped text still gets heatmap colors.
 - Completing a lesson in **normal** mode advances via `TextManager.nextText`; in **weakspot** mode builds the next weakspot lesson (`WeakSpotLessonBuilder` in `amphetype/WeakSpot.py`).
 - Page background uses `typer/background_color` (defaults to Qt window grey); lesson text defaults to light foreground on clear glyph backgrounds (errors still highlighted).
-- **Speed heatmap** (off by default): footer **heatmap** click-toggle (white = on, grey = off); when on, one **words** / **trigrams** / **chars** label (click to cycle) plus single-line stoplight WPM legend appear to its right. Untyped text with stats gets bright stoplight foreground color from `statistic` (same history window and discounted-source omission as Analysis). Trigram mode paints non-overlapping 3-char blocks; contested spans use highest damage (`count·time²·(1+misses/count)`, same as Analysis). Logic: `amphetype/speed_heatmap.py`.
+- **Speed heatmap** (off by default): footer **heatmap** click-toggle (white = on, grey = off); when on, one **words** / **trigrams** / **chars** label (click to cycle) plus single-line stoplight WPM legend appear to its right. Untyped text with stats gets bright stoplight foreground color from `statistic` (same history window and discounted-source omission as Performance Analysis Stats). Trigram mode paints non-overlapping 3-char blocks; contested spans use highest damage (`count·time²·(1+misses/count)`, same as Performance Analysis). Logic: `amphetype/speed_heatmap.py`.
 
 ### Legacy (split view)
 
@@ -33,9 +33,13 @@ Two runtime-selectable implementations, controlled by `which_typer` (0 = legacy 
 - Typer options under `typer` and `colors` groups (`amphetype/Config.py`); many general options (font, `show_last`, `auto_review`, `min_*` thresholds, etc.) apply to both.
 - Statistics collection, viscosity, and per-char/trigram/word aggregation are shared in concept but differ in implementation between the two typers (notably viscosity in the inline version).
 
+## Performance Analysis tab
+
+- Single tab (`amphetype/PerformanceAnalysis.py`) with sub-tabs **Stats** (aggregated keys/trigrams/words from `statistic` with impact/damage ranking) and **Progress** (session `result` history, source filter, grouping, WPM/accuracy/viscosity graph, double-click to retry a text). Both share the `history` days window (tab header + Preferences); session rows are also capped by `perf_items`, Stats rows by `ana_many` and `ana_count`.
+
 ## Lesson generation (baseline)
 
-- **Analysis** tab ranks slow keys, trigrams, and words; user sends the list to **Lesson Generator** (`amphetype/Lesson.py`).
+- **Lesson Generator** (`amphetype/Lesson.py`) is off-tab (used by `auto_review` only).
 - Generator repeats/shuffles list entries and joins with spaces — trigram/key practice produces unreadable strings.
 - Novel/text import (`LessonMiner`, `text` table) is separate from stats-based generation.
 
@@ -60,7 +64,7 @@ Auto-build practice text from ranked weak **characters**, **trigrams**, and **wo
 13. **Importance-weighted repetition**: each target repeated proportional to score (`allocate_repeats`, every target ≥1, capped); high-impact items get real practice, not a single token.
 14. **Cross-lesson freshness**: fresh RNG per build (varied word realizations and order); weighted repetition differs run-to-run; widget passes a 2-lesson recency deque as `recent` keys (weights halved) so emphasis rotates.
 15. **No filler invariant**: every emitted phrase covers at least one target (new or repeat); dictionary only completes trigram-boundary slots.
-16. **Weakspot feedback loop guard**: `statistic.source` tags each stats row. Generated-lesson sources (`<Weakspot>`, Lesson Generator, Reviews) have `source.discount` set. Inline typer does not write stats in **weakspot** mode; other discounted lessons only write if `use_lesson_stats` is on. Rows from discounted sources are omitted from **Analysis** rankings and weakspot target selection (`STAT_OMIT_DISCOUNTED` in `amphetype/Data.py`).
+16. **Weakspot feedback loop guard**: `statistic.source` tags each stats row. Generated-lesson sources (`<Weakspot>`, Lesson Generator, Reviews) have `source.discount` set. Inline typer does not write stats in **weakspot** mode; other discounted lessons only write if `use_lesson_stats` is on. Rows from discounted sources are omitted from **Performance Analysis** Stats rankings and weakspot target selection (`STAT_OMIT_DISCOUNTED` in `amphetype/Data.py`).
 
 ### Implementation
 
