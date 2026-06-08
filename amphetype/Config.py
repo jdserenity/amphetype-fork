@@ -78,11 +78,6 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "min_lesson_wpm": 0.0,
     "min_lesson_acc": 97.0,
 
-    "quiz_right_fg": "#000000",
-    "quiz_right_bg": "#ffffff",
-    "quiz_wrong_fg": "#ffffff",
-    "quiz_wrong_bg": "#000000",
-    
     "group_month": 365.0,
     "group_week": 30.0,
     "group_day": 7.0,
@@ -100,8 +95,9 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "str_extra": 10,
     "str_what": 'e',
 
-    "which_typer": 1,
-    "practice_mode": 0,  # 0 = normal sources, 1 = weakspot lessons on Typer tab
+    "practice_mode": 0,  # 0 = normal, 1 = book, 2 = weakspot
+    "book_source_id": 0,
+    "book_max_chars": 12000,
     "read_ahead_enabled": False,
   }
 
@@ -469,24 +465,13 @@ class GeneralOptions(QWidget):
     self.setLayout(AmphBoxLayout([
       ["Typer font is", self.font_lbl, AmphButton("Change...", self.setFont), None],
       None,
-      ["Input widget", SettingsCombo('which_typer', ['Typer 1.0 (legacy): copy text above', 'Typer: write directly in the text']), None],
-      None,
       [SettingsCheckBox("text_force_ascii", 'Force unicode to plain ASCII'), ('(‘fancy’ “quotes” → "normal" quotes, <code>æ</code> → <code>ae</code>, etc.)', 1)],
       SettingsCheckBox('auto_review', "Automatically review slow and mistyped words after texts.",
                        toolTip="""Automatically create post-lesson reviews if you didn't meet the WPM/accuracy criteria set under <b>Preferences → Sources</b>."""),
       SettingsCheckBox('show_last', "Show last result(s) above text in the Typer."),
       SettingsCheckBox('use_lesson_stats', "Save key/trigram/word statistics from generated lessons."),
       SettingsCheckBox('req_space', "Make SPACE mandatory before each session",
-                        toolTip="""This is generally recommended because otherwise the timing of the very first character has to be inferred artificially (a median is used). Applies to both typers."""),
-      None,
-      [AmphGridLayout([
-        ["TYPER 1 COLORS", "Text Color", "Background"],
-        ["Correct Input", SettingsColor('quiz_right_fg', "Foreground"),
-            SettingsColor('quiz_right_bg', "Background")],
-        ["Wrong Input", SettingsColor('quiz_wrong_fg', "Foreground"),
-            SettingsColor('quiz_wrong_bg', "Background")],
-        [1+1j,1+2j,2+1j,2+2j]
-      ]), None],
+                        toolTip="""This is generally recommended because otherwise the timing of the very first character has to be inferred artificially (a median is used)."""),
       None,
       ["Data is considered too old to be included in analysis after",
         SettingsEdit("history"), "days.", None],

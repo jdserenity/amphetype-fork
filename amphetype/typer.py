@@ -5,10 +5,15 @@ from PyQt5.QtWidgets import *
 from amphetype.settings import *
 from amphetype.layout import FBoxLayout
 from amphetype.fwidgets import FStackedWidget
-from amphetype.timingtuple import RunStats
+from amphetype.timingtuple import RunStats, collect_run_stat_rows
 from amphetype.WeakSpot import WeakSpotLessonBuilder
 from amphetype.WeakSpotLessons import build_focus_lesson
 from amphetype.Config import Settings
+from amphetype.book_mode import (
+  BookLessonBuilder, MODE_BOOK, format_book_progress, lesson_text_id,
+  practice_mode_from_settings, practice_mode_to_settings,
+)
+from amphetype.speed_heatmap import book_return_role
 from amphetype.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
   READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
@@ -43,6 +48,8 @@ def lesson_completion_action(mode, met_threshold, is_lesson, auto_review, has_re
   """What to do after a typing session ends."""
   if focus_drill:
     return 'focus_repeat'
+  if mode == MODE_BOOK:
+    return 'book_next'
   if mode == MODE_WEAKSPOT:
     return 'weakspot_next'
   if met_threshold and not is_lesson and auto_review and has_review_words:
@@ -193,9 +200,34 @@ class LessonDocument(QTextDocument):
     self._read_ahead_revealed = set()
     self._page_bg = QColor('#f0f0f0')
     self.style_hidden = text_style(kerning=False, color=QBrush(self._page_bg))
+    self._book_auto_returns = False
+    self._book_chunks = None
+    self._book_chunk_index = 0
     self.set_text('default text')
 
-  def set_text(self, text, prologue='', epilogue=''):
+  def _book_plain_display(self, text):
+    import re
+    return re.sub(r'\n\n+', '\n', (text or '').replace('\r\n', '\n').replace('\r', '\n'))
+
+  def set_book_chapter(self, full_text, chunks, chunk_index, auto_returns=True):
+    self._book_auto_returns = auto_returns
+    self._book_chunks = chunks
+    self._book_chunk_index = int(chunk_index)
+    before = self._book_plain_display(''.join(chunks[:chunk_index]))
+    active = chunks[chunk_index]
+    after = self._book_plain_display(''.join(chunks[chunk_index + 1:]))
+    self.set_text(active, prologue=before, epilogue=after, book_mode=True)
+
+  def advance_book_chunk(self):
+    if not self._book_chunks or self._book_chunk_index + 1 >= len(self._book_chunks):
+      return False
+    self.set_book_chapter(
+      ''.join(self._book_chunks), self._book_chunks, self._book_chunk_index + 1, self._book_auto_returns)
+    return True
+
+  def set_text(self, text, prologue='', epilogue='', book_mode=False):
+    if not book_mode:
+      self._book_auto_returns = False
     self._curtext = (text, prologue, epilogue)
 
     text = text or 'default text'
@@ -211,7 +243,7 @@ class LessonDocument(QTextDocument):
 
     self._original_text = text
     self._match_text = self.sanitize(text)
-    self._display_text = self._match_text.replace(RETURN_CHAR, RETURN_CHAR + '\n')
+    self._display_text = self._make_display_text(self._match_text)
     
     self._start = Cursor(self, position=pos, fixed=True)
     self._end = Cursor(self, position=pos)
@@ -278,7 +310,8 @@ class LessonDocument(QTextDocument):
     if self._heatmap_colors_cache_key != key:
       self._heatmap_colors_cache_key = key
       self._heatmap_colors_cache = char_heatmap_colors(
-        self._display_text, self._speed_heatmap_mode, self._speed_heatmap_stats, self._match_text)
+        self._display_text, self._speed_heatmap_mode, self._speed_heatmap_stats, self._match_text,
+        return_char=RETURN_CHAR, book_returns=self._book_auto_returns)
     return self._heatmap_colors_cache
 
   def _needs_untyped_style_refresh(self):
@@ -302,7 +335,7 @@ class LessonDocument(QTextDocument):
     c = Cursor(self)
     c.beginEditBlock()
     while mi < len(self._match_text):
-      n = 2 if self._match_text[mi] == RETURN_CHAR else 1
+      n = self._match_display_width(mi)
       if mi >= pos:
         for j in range(n):
           disp_i = di + j - base
@@ -329,6 +362,71 @@ class LessonDocument(QTextDocument):
     text = text.replace('\n', RETURN_CHAR)
     return text
 
+  def _make_display_text(self, match_text):
+    if self._book_auto_returns:
+      out = []; i = 0
+      while i < len(match_text):
+        if match_text[i] == RETURN_CHAR:
+          role = book_return_role(match_text, i, RETURN_CHAR)
+          if role == 'soft_nl':
+            out.append('\n'); i += 1
+          elif role == 'para_enter':
+            out.append('\n'); i += 1
+            while i < len(match_text) and book_return_role(match_text, i, RETURN_CHAR) == 'para_tail':
+              i += 1
+          else:
+            i += 1
+        else:
+          out.append(match_text[i]); i += 1
+      return ''.join(out)
+    return match_text.replace(RETURN_CHAR, RETURN_CHAR + '\n')
+
+  def _match_display_width(self, mi):
+    if mi >= len(self._match_text):
+      return 0
+    if self._match_text[mi] == RETURN_CHAR:
+      if self._book_auto_returns:
+        role = book_return_role(self._match_text, mi, RETURN_CHAR)
+        if role == 'soft_nl':
+          return 1
+        if role == 'para_enter':
+          return 1
+        return 0
+      return 2
+    return 1
+
+  def _display_span(self, mi):
+    base = self._start.position()
+    di = base
+    for i in range(mi):
+      di += self._match_display_width(i)
+    n = self._match_display_width(mi)
+    return di, n
+
+  def _style_match_index(self, mi, style):
+    di, n = self._display_span(mi)
+    c = Cursor(self)
+    for j in range(n):
+      c.setPosition(di + j)
+      c.movePosition(c.NextCharacter, c.KeepAnchor)
+      c.setCharFormat(style)
+
+  def _cursor_to_match_index(self, mi):
+    if mi >= len(self._match_text):
+      self.cursor.setPosition(self._end.position())
+      return
+    self.cursor.setPosition(self._display_span(mi)[0])
+
+  def _consume_auto_returns(self):
+    while self._run and not self._run.is_complete() and self._run.current and self._run.current.char == RETURN_CHAR:
+      mi = self._run.index
+      if self._book_auto_returns and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter':
+        break
+      self._run.visit(True)
+      self._run.advance(True)
+      self._style_match_index(mi, self.style_correct)
+      self._cursor_to_match_index(self._run.index)
+      self.progress.emit(self._run.index)
 
   def is_running(self):
     """True if a lesson has started but not yet completed."""
@@ -384,10 +482,20 @@ class LessonDocument(QTextDocument):
         self._first_error = Cursor(self.cursor, fixed=True)
 
     # If not really advancing `_run` will track inserts we're doing.
+    mi = self._run.index
     self._run.advance(should_advance)
 
     style = self.style_correct if correct else self.style_error
-    self.actual_insert(char, style, overwrite=should_advance)
+    book_para = (correct and char == RETURN_CHAR and self._book_auto_returns
+                 and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter')
+    if book_para:
+      self._style_match_index(mi, self.style_correct)
+      self._cursor_to_match_index(self._run.index)
+    else:
+      self.actual_insert(char, style, overwrite=should_advance)
+
+    if correct and self._book_auto_returns:
+      self._consume_auto_returns()
 
     if self.is_finished():
       self.completed.emit(self._run)
@@ -474,12 +582,12 @@ class TyperWidget(QTextEdit):
 
   def setLesson(self, lesson):
     if lesson == self._lesson:
-      self.setTextCursor(lesson.cursor)
+      self._follow_cursor(lesson.cursor)
       self.updateStatus()
       return
     
     if self._lesson is not None:
-      self._lesson.sig_position.disconnect(self.setTextCursor)
+      self._lesson.sig_position.disconnect(self._follow_cursor)
       self._lesson.ready.disconnect(self.updateStatus)
       self._lesson.completed.disconnect(self.updateStatus)
 
@@ -487,13 +595,17 @@ class TyperWidget(QTextEdit):
       w = self.cursorWidth() # Layout thingamajig resets cursor width.
       self.setDocument(lesson)
       self.setCursorWidth(w)
-    self.setTextCursor(lesson.cursor)
+    self._follow_cursor(lesson.cursor)
     self.updateStatus()
 
-    lesson.sig_position.connect(self.setTextCursor)
+    lesson.sig_position.connect(self._follow_cursor)
     lesson.ready.connect(self.updateStatus)
     lesson.completed.connect(self.updateStatus)
     self._lesson = lesson
+
+  def _follow_cursor(self, cursor):
+    self.setTextCursor(cursor)
+    self.ensureCursorVisible()
 
   def updateStatus(self):
     if self._lesson is None:
@@ -569,6 +681,10 @@ class TyperWindow(QWidget):
     self._weakspot = WeakSpotLessonBuilder(self)
     self._weakspot.lessonReady.connect(self._on_weakspot_lesson)
     self._weakspot.busyChanged.connect(self._on_weakspot_busy)
+    self._book = BookLessonBuilder(self.DB, self)
+    self._book.lessonReady.connect(self._on_book_lesson)
+    self._book.progressChanged.connect(self._on_book_progress)
+    self._book_meta = None
     self._typer = TyperWidget(self.S)
     hack = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Ignored)
     self._label = QLabel(wordWrap=True, sizePolicy=hack)
@@ -611,6 +727,10 @@ class TyperWindow(QWidget):
 
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+    self._source_lbl.installEventFilter(self)
+    self._book_prog_lbl = QLabel('')
+    self._book_prog_lbl.setStyleSheet('color: #ffffff; font-size: 11px;')
+    self._book_prog_lbl.setVisible(False)
 
     self._mode_btn_style = (
       'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 6px; }'
@@ -618,6 +738,7 @@ class TyperWindow(QWidget):
       'QPushButton[activeMode="true"] { color: #ffffff; }')
 
     self._btn_normal = QPushButton('normal', flat=True)
+    self._btn_book = QPushButton('book', flat=True)
     self._btn_weakspot = QPushButton('weakspot', flat=True)
     self._btn_read_ahead = QPushButton('read ahead', flat=True)
     self._btn_read_ahead_level = QPushButton('normal', flat=True)
@@ -625,7 +746,7 @@ class TyperWindow(QWidget):
     self._btn_heatmap.clicked.connect(self._toggleHeatmap)
     self._btn_heatmap_kind = QPushButton(flat=True)
     self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
-    for b in (self._btn_normal, self._btn_weakspot, self._btn_read_ahead, self._btn_read_ahead_level):
+    for b in (self._btn_normal, self._btn_book, self._btn_weakspot, self._btn_read_ahead, self._btn_read_ahead_level):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setStyleSheet(self._mode_btn_style)
@@ -633,6 +754,7 @@ class TyperWindow(QWidget):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
     self._btn_normal.clicked.connect(lambda: self.set_practice_mode(MODE_NORMAL))
+    self._btn_book.clicked.connect(lambda: self.set_practice_mode(MODE_BOOK))
     self._btn_weakspot.clicked.connect(self._on_weakspot_click)
     self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
     self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
@@ -651,6 +773,8 @@ class TyperWindow(QWidget):
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(0)
     mode_lay.addWidget(self._btn_normal)
+    mode_lay.addWidget(self._btn_book)
+    mode_lay.addWidget(self._book_prog_lbl)
     mode_lay.addWidget(self._btn_weakspot)
     mode_lay.addWidget(self._btn_read_ahead)
     mode_lay.addWidget(self._btn_read_ahead_level)
@@ -735,9 +859,8 @@ class TyperWindow(QWidget):
     self._refreshHeatmap()
 
   def _heatmapStats(self):
-    hist = time() - self._settings.get('history') * 86400.0
     mode = self.S('speed_heatmap_mode').get()
-    stats = fetch_speed_stats(self.DB, hist, mode_stat_type(mode))
+    stats = fetch_speed_stats(self.DB, hist_cutoff=0, stat_type=mode_stat_type(mode))
     if self._focus_drill and self._focus_drill_wpm:
       stats = dict(stats)
       for kind, data in self._focus_drill:
@@ -766,6 +889,13 @@ class TyperWindow(QWidget):
     self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
     configure_transparent_typer(self._typer)
     self._doc.set_page_background(qcolor)
+
+  def eventFilter(self, obj, evt):
+    if obj is self._source_lbl and self._mode == MODE_BOOK:
+      if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton:
+        self._show_book_menu()
+        return True
+    return super().eventFilter(obj, evt)
 
   def showEvent(self, evt):
     self._typer.setFocus()
@@ -800,11 +930,67 @@ class TyperWindow(QWidget):
     self._source_lbl.setText(text)
     self._source_lbl.setVisible(bool(text) and self._mode == MODE_NORMAL)
 
+  def _update_book_footer(self, meta=None):
+    if meta is None:
+      meta = self._book_meta or {}
+    prog = format_book_progress(
+      meta.get('title') or '', meta.get('chunk_index', 0), meta.get('chunk_count', 0))
+    self._book_prog_lbl.setText(prog)
+    book = meta.get('book_name') or ''
+    self._source_lbl.setText(format_source_attribution(book))
+    self._source_lbl.setVisible(bool(book))
+    self._source_lbl.setCursor(Qt.PointingHandCursor if book else Qt.ArrowCursor)
+
+  def _show_book_menu(self):
+    menu = QMenu(self)
+    cur = self._book.current_source_id()
+    for sid, _, label in self._book.source_menu_entries():
+      act = menu.addAction(label)
+      act.setCheckable(True)
+      act.setChecked(sid == cur)
+      act.triggered.connect(lambda _=False, s=sid: self._select_book(s))
+    menu.exec_(self._source_lbl.mapToGlobal(QPoint(0, self._source_lbl.height())))
+
+  def _select_book(self, source_id):
+    self._book.set_source_id(int(source_id))
+    self._book.request_lesson(advance_chapter=False)
+
+  def _on_book_progress(self, msg):
+    if self._mode == MODE_BOOK:
+      self._book_prog_lbl.setText(msg)
+
+  def _on_book_lesson(self, lesson):
+    if self._mode != MODE_BOOK:
+      return
+    if not lesson:
+      self.updateLabel('No books available — import a text on the Sources tab.')
+      return
+    tid, srcid, meta = lesson
+    body = meta['full_text']
+    chunks = meta['chunks']
+    if self._settings.get('text_force_ascii'):
+      from amphetype.TextManager import force_ascii
+      body = force_ascii(body)
+      chunks = [force_ascii(c) for c in chunks]
+      meta = dict(meta, full_text=body, chunks=chunks)
+    self._book_meta = meta
+    active = chunks[meta['chunk_index']]
+    self._current_lesson = (tid, srcid, active)
+    self._update_book_footer(meta)
+    self._doc.set_book_chapter(body, chunks, meta['chunk_index'], auto_returns=True)
+    self._refreshHeatmap()
+    self._typer.setFocus()
+    self._prog.setValue(0)
+    self._prog.setMaximum(len(active))
+
   def _apply_practice_mode_from_settings(self):
-    mode = MODE_WEAKSPOT if self._settings.get('practice_mode') else MODE_NORMAL
+    mode = practice_mode_from_settings(self._settings.get('practice_mode'))
     self._set_mode_ui(mode, load=False)
     if mode == MODE_WEAKSPOT:
       self._weakspot.request_next_lesson(force=True)
+    elif mode == MODE_BOOK:
+      self._book.invalidate_cache()
+      self._book.request_lesson(advance_chapter=False)
 
   def _on_weakspot_click(self):
     if self._mode == MODE_WEAKSPOT and self._focus_drill:
@@ -843,25 +1029,31 @@ class TyperWindow(QWidget):
     if mode != MODE_WEAKSPOT:
       self._focus_drill = None
     self._focus_drill_wpm = {}
-    self._settings.set('practice_mode', 1 if mode == MODE_WEAKSPOT else 0)
+    self._settings.set('practice_mode', practice_mode_to_settings(mode))
     self._set_mode_ui(mode, load=True)
 
   def _set_mode_ui(self, mode, load):
     self._mode = mode
-    self._btn_normal.setStyleSheet(self._mode_btn_style)
-    self._btn_weakspot.setStyleSheet(self._mode_btn_style)
-    self._btn_normal.setProperty('activeMode', mode == MODE_NORMAL)
-    self._btn_weakspot.setProperty('activeMode', mode == MODE_WEAKSPOT)
-    for b in (self._btn_normal, self._btn_weakspot):
-      self._polish_mode_btn(b)
-    if self._current_lesson:
+    for btn, m in ((self._btn_normal, MODE_NORMAL), (self._btn_book, MODE_BOOK), (self._btn_weakspot, MODE_WEAKSPOT)):
+      btn.setStyleSheet(self._mode_btn_style)
+      btn.setProperty('activeMode', mode == m)
+      self._polish_mode_btn(btn)
+    self._book_prog_lbl.setVisible(mode == MODE_BOOK)
+    if self._current_lesson and mode == MODE_NORMAL:
+      self._source_lbl.setCursor(Qt.ArrowCursor)
       self._update_source_label(self._current_lesson[1])
+    elif mode == MODE_BOOK and self._book_meta:
+      self._update_book_footer()
     else:
       self._source_lbl.setVisible(False)
+      self._source_lbl.setCursor(Qt.ArrowCursor)
     if not load:
       return
     if mode == MODE_WEAKSPOT:
       self._weakspot.request_next_lesson(force=True)
+    elif mode == MODE_BOOK:
+      self._book.invalidate_cache()
+      self._book.request_lesson(advance_chapter=False)
     else:
       self._set_weakspot_footer_busy(False)
       self.wantText.emit()
@@ -941,51 +1133,10 @@ class TyperWindow(QWidget):
     self.DB.commit()
     # type (0: char, 1: trigram, 2: word)
 
-    stats = defaultdict(Statistic)
-    visc = defaultdict(Statistic)
-
-    # Collect per-char.
-    for i in range(len(run)):
-      sub = run[i:i+1]
-      spc, _, flaw = sub.stats
-      if spc is None:
-        log.info(f"skipping {sub.text} char statistic: {sub.start_end}")
-        continue
-      stats[sub.text].append(spc, flaw)
-      visc[sub.text].append(sub.median_err(med_char))
-
-    for sub in run.timed_ngrams(3):
-      spc, vc, flaw = sub.stats
-      if spc is None or vc is None:
-        log.info(f"skipping {sub.text} trigram statistic: {sub.start_end}")
-        continue
-      stats[sub.text].append(spc, flaw)
-      visc[sub.text].append(vc)
-
-    for sub in run.timed_words():
-      spc, vc, flaw = sub.stats
-      if spc is None or vc is None:
-        log.info(f"skipping {sub.text} word statistic: {sub.start_end}")
-        continue
-      stats[sub.text].append(spc, flaw)
-      visc[sub.text].append(vc)
-
-    # time, visc, now, count, mistakes, type, data
-
-    vals = []
-    for k, s in stats.items():
-      v = visc[k].median()
-      if v is not None:
-        v *= 100.0
-      tp = 2
-      if len(k) == 3:
-        tp = 1
-      elif len(k) == 1:
-        tp = 0
-      vals.append( (s.median(), v, now, len(s), s.flawed(), tp, k, srcid) )
+    vals = collect_run_stat_rows(run, med_char, now, srcid)
 
     is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
-    write_stats = self._mode != MODE_WEAKSPOT and (not is_lesson or self._settings.get('use_lesson_stats'))
+    write_stats = self._mode not in (MODE_WEAKSPOT,) and (not is_lesson or self._settings.get('use_lesson_stats'))
 
     if self._mode == MODE_WEAKSPOT:
       ws_src = self.DB.getSource('<Weakspot>', lesson=1)
@@ -1019,13 +1170,33 @@ class TyperWindow(QWidget):
       mins = self._settings.get('min_wpm'), self._settings.get('min_acc')
 
     met = wpm >= mins[0] and acc >= mins[1] / 100.0
-    review_words = [x for x in vals if x[5] == 2] if not is_lesson else []
+    review_words = [x for x in vals if x[5] == 2] if not is_lesson and self._mode == MODE_NORMAL else []
     action = lesson_completion_action(
       self._mode, met, bool(is_lesson), self._settings.get('auto_review'), bool(review_words),
       focus_drill=bool(self._focus_drill))
 
+    if self._mode == MODE_BOOK and self._book_meta is not None:
+      m = self._book_meta
+      srcid = self._current_lesson[1]
+      if self._doc.advance_book_chunk():
+        self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
+        m = dict(m, chunk_index=m['chunk_index'] + 1)
+        self._book_meta = m
+        active = m['chunks'][m['chunk_index']]
+        tid = lesson_text_id(srcid, m['chapter_index'], m['chunk_index'])
+        self._current_lesson = (tid, srcid, active)
+        self._update_book_footer(m)
+        self._prog_layout.setCurrentIndex(0)
+        self._prog.setValue(0)
+        self._prog.setMaximum(len(active))
+        self._refreshHeatmap()
+        return
+      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
+
     if action == 'focus_repeat':
       self.setText(self._current_lesson)
+    elif action == 'book_next':
+      self._book.request_lesson(advance_chapter=False)
     elif action == 'weakspot_next':
       self._weakspot.invalidate_cache()
       self._weakspot.request_next_lesson(force=True)
