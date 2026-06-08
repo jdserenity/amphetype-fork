@@ -152,11 +152,14 @@ def _display_to_match_indices(display_text, match_text, return_char=None, book_r
     mc = match_text[mi]
     if return_char and mc == return_char and book_returns:
       role = book_return_role(match_text, mi, return_char)
-      if role in ('soft_nl', 'para_enter') and dc == '\n':
+      if role == 'soft_nl' and dc == '\n':
         idxs.append(mi); mi += 1; di += 1
-        if role == 'para_enter':
-          while mi < len(match_text) and book_return_role(match_text, mi, return_char) == 'para_tail':
-            mi += 1
+      elif role == 'para_enter' and dc == return_char:
+        idxs.append(mi); mi += 1; di += 1
+        if di < len(display_text) and display_text[di] == '\n':
+          idxs.append(None); di += 1
+        while mi < len(match_text) and book_return_role(match_text, mi, return_char) == 'para_tail':
+          mi += 1
       else:
         idxs.append(None); di += 1
     elif dc == mc:

@@ -90,14 +90,16 @@ def test_book_paragraph_break_requires_enter(qapp):
     assert doc._run.current.char == 'b'
 
 
-def test_book_display_never_shows_return_glyph(qapp):
+def test_book_display_hidden_return_glyph_at_paragraph_break(qapp):
     doc = LessonDocument(QFont("Arial", 12))
     doc.set_book_chapter('a\n\nb', ['a\n\nb'], 0, auto_returns=True)
-    assert RETURN_CHAR not in doc._display_text
-    assert doc._display_text == 'a\nb'
+    assert doc._display_text == 'a' + RETURN_CHAR + '\n' + 'b'
+    base = doc._start.position() + 1
+    c = Cursor(doc, position=base)
+    c.movePosition(c.NextCharacter, c.KeepAnchor)
+    assert c.charFormat().foreground().color() == doc.style_hidden_return.foreground().color()
     doc.set_book_chapter('a\nb', ['a\nb'], 0, auto_returns=True)
     assert RETURN_CHAR not in doc._display_text
-    assert doc._display_text == 'a\nb'
 
 
 def test_insert_correct_chars_advances_and_completes(qapp):

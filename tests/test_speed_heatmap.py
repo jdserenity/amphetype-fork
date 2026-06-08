@@ -108,10 +108,10 @@ def test_book_display_paragraph_break_mapping():
   ret = '\u23ce'
   stats = {'a': _stat(100), 'b': _stat(80)}
   match = 'a' + ret + ret + 'b'
-  disp = 'a\nb'
+  disp = 'a' + ret + '\n' + 'b'
   colors = char_heatmap_colors(
     disp, MODE_CHAR, stats, match_text=match, return_char=ret, book_returns=True)
-  assert colors == [wpm_color_q(100), None, wpm_color_q(80)]
+  assert colors == [wpm_color_q(100), None, None, wpm_color_q(80)]
 
 
 def test_fetch_speed_stats_sqlite(tmp_path):

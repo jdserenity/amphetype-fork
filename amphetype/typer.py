@@ -200,6 +200,7 @@ class LessonDocument(QTextDocument):
     self._read_ahead_revealed = set()
     self._page_bg = QColor('#f0f0f0')
     self.style_hidden = text_style(kerning=False, color=QBrush(self._page_bg))
+    self.style_hidden_return = text_style(kerning=False, color=QBrush(self._page_bg))
     self._book_auto_returns = False
     self._book_chunks = None
     self._book_chunk_index = 0
@@ -287,6 +288,7 @@ class LessonDocument(QTextDocument):
   def set_page_background(self, color):
     self._page_bg = QColor(color)
     self.style_hidden.setForeground(QBrush(self._page_bg))
+    self.style_hidden_return.setForeground(QBrush(self._page_bg))
     self._refresh_read_ahead()
 
   def set_read_ahead_mode(self, mode):
@@ -325,7 +327,7 @@ class LessonDocument(QTextDocument):
   def _refresh_read_ahead(self, force=False):
     if self._match_text is None:
       return
-    if not force and not self._read_ahead_mode and not self._speed_heatmap_enabled:
+    if not force and not self._read_ahead_mode and not self._speed_heatmap_enabled and not self._book_auto_returns:
       return
     pos = self._run.index if self._run is not None else 0
     hidden = self._read_ahead_hidden_indices()
@@ -339,7 +341,10 @@ class LessonDocument(QTextDocument):
       if mi >= pos:
         for j in range(n):
           disp_i = di + j - base
-          if self._read_ahead_mode and mi in hidden:
+          if (self._book_auto_returns and j == 0 and self._match_text[mi] == RETURN_CHAR
+              and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter'):
+            style = self.style_hidden_return
+          elif self._read_ahead_mode and mi in hidden:
             style = self.style_hidden
           else:
             style = QTextCharFormat(self.style_untyped)
@@ -371,7 +376,7 @@ class LessonDocument(QTextDocument):
           if role == 'soft_nl':
             out.append('\n'); i += 1
           elif role == 'para_enter':
-            out.append('\n'); i += 1
+            out.append(RETURN_CHAR + '\n'); i += 1
             while i < len(match_text) and book_return_role(match_text, i, RETURN_CHAR) == 'para_tail':
               i += 1
           else:
@@ -390,7 +395,7 @@ class LessonDocument(QTextDocument):
         if role == 'soft_nl':
           return 1
         if role == 'para_enter':
-          return 1
+          return 2
         return 0
       return 2
     return 1
@@ -486,11 +491,10 @@ class LessonDocument(QTextDocument):
     self._run.advance(should_advance)
 
     style = self.style_correct if correct else self.style_error
-    book_para = (correct and char == RETURN_CHAR and self._book_auto_returns
-                 and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter')
-    if book_para:
-      self._style_match_index(mi, self.style_correct)
-      self._cursor_to_match_index(self._run.index)
+    hide_ret = (self._book_auto_returns and char == RETURN_CHAR
+                and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter')
+    if hide_ret and correct:
+      self.actual_insert(char, self.style_hidden_return, overwrite=should_advance)
     else:
       self.actual_insert(char, style, overwrite=should_advance)
 
