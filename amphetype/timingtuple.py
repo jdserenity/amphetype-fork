@@ -1,6 +1,9 @@
 import logging as log
-from amphetype import timer
 import re
+from collections import defaultdict
+
+from amphetype import timer
+from amphetype.Data import Statistic
 
 def median(lst):
   lst, n = sorted(lst), len(lst)
@@ -249,8 +252,48 @@ class RunStats(datatuple):
   def timed_words(self, complete=True):
     for m in re.finditer(r"\w+(?:['-]\w+)*", self.text):
       word = self[m.start():m.end()]
-      if len(word) >= 4 and (not complete or word.is_complete()):
+      if not complete or word.is_complete():
         yield word
+
+
+def collect_run_stat_rows(run, med_char, when, source_id):
+  """Build statistic insert rows; char/trigram/word buckets kept separate (3-letter words are words)."""
+  char_s, char_v = defaultdict(Statistic), defaultdict(Statistic)
+  tri_s, tri_v = defaultdict(Statistic), defaultdict(Statistic)
+  word_s, word_v = defaultdict(Statistic), defaultdict(Statistic)
+
+  for i in range(len(run)):
+    sub = run[i:i + 1]
+    spc, _, flaw = sub.stats
+    if spc is None:
+      continue
+    char_s[sub.text].append(spc, flaw)
+    char_v[sub.text].append(sub.median_err(med_char))
+
+  for sub in run.timed_ngrams(3):
+    spc, vc, flaw = sub.stats
+    if spc is None:
+      continue
+    tri_s[sub.text].append(spc, flaw)
+    if vc is not None:
+      tri_v[sub.text].append(vc)
+
+  for sub in run.timed_words():
+    spc, vc, flaw = sub.stats
+    if spc is None:
+      continue
+    word_s[sub.text].append(spc, flaw)
+    if vc is not None:
+      word_v[sub.text].append(vc)
+
+  rows = []
+  for tp, st, vs in ((0, char_s, char_v), (1, tri_s, tri_v), (2, word_s, word_v)):
+    for k, s in st.items():
+      v = vs[k].median()
+      if v is not None:
+        v *= 100.0
+      rows.append((s.median(), v, when, len(s), s.flawed(), tp, k, source_id))
+  return rows
 
 # Speedbumps:
 

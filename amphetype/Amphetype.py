@@ -30,13 +30,11 @@ app.DB = DB
 
 import os
 from pathlib import Path
-from amphetype.Quizzer import Quizzer
 from amphetype.TextManager import TextManager
 from amphetype.PerformanceAnalysis import PerformanceAnalysis
 from amphetype.Config import GeneralOptions, TyperOptions
 from amphetype.Lesson import LessonGenerator
 
-from amphetype.fwidgets import FStackedWidget
 from amphetype.typer import TyperWindow
 
 from PyQt5.QtCore import *
@@ -54,22 +52,14 @@ class AmphetypeWindow(QMainWindow):
     
     tabs = QTabWidget()
 
-    quiz = Quizzer()
     tw = TyperWindow()
-    quiztw = FStackedWidget([quiz, tw])
-    tabs.addTab(quiztw, "Typer")
-    quiztw.setCurrentIndex(Settings.get('which_typer'))
-    Settings.signal_for('which_typer').connect(quiztw.setCurrentIndex)
+    tabs.addTab(tw, "Typer")
 
     tm = TextManager()
-    quiz.wantText.connect(tm.nextText)
-    tm.setText.connect(quiz.setText)
     tm.gotoText.connect(lambda: tabs.setCurrentIndex(0))
 
     pa = PerformanceAnalysis()
     tm.refreshSources.connect(pa.refreshSources)
-    quiz.statsChanged.connect(pa.updateAll)
-    pa.setText.connect(quiz.setText)
     pa.gotoText.connect(lambda: tabs.setCurrentIndex(0))
     tabs.addTab(pa, "Performance Analysis")
 
@@ -77,10 +67,10 @@ class AmphetypeWindow(QMainWindow):
     lg = LessonGenerator()
     lg.newLessons.connect(lambda: tabs.setCurrentIndex(1))
     lg.newLessons.connect(tm.addTexts)
-    quiz.wantReview.connect(lg.wantReview)
     lg.newReview.connect(tm.newReview)
 
     pa.setText.connect(tm.emit_text)
+    pa.setText.connect(tw.setText)
     tm.setText.connect(tw.setText)
     tw.wantText.connect(tm.nextText)
     tw.needWeakspotLesson.connect(tm.newWeakspot)
@@ -102,8 +92,11 @@ class AmphetypeWindow(QMainWindow):
 
     self.setCentralWidget(tabs)
 
-    if not Settings.get('practice_mode'):
+    pm = Settings.get('practice_mode')
+    if pm == 0:
       tm.nextText()
+    elif pm == 1:
+      tw._book.request_lesson(advance_chapter=False)
 
   def sizeHint(self):
     return QSize(650, 400)
@@ -137,5 +130,4 @@ set_qt_css(Settings.get('qt_css'))
 
 Settings.signal_for('qt_style').connect(app.setStyle)
 app.setStyle(Settings.get('qt_style'))
-
 

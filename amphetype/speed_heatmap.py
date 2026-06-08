@@ -60,10 +60,13 @@ def _stat_damage(entry):
 
 
 def fetch_speed_stats(db, hist_cutoff=None, stat_type=MODE_CHAR):
-  from amphetype.stats_query import SPEED_STATS_SQL
+  from amphetype.stats_query import SPEED_STATS_SQL, SPEED_STATS_ALL_TIME_SQL
   if hist_cutoff is None:
     hist_cutoff = time.time() - 30 * 86400.0
-  rows = db.execute(SPEED_STATS_SQL, (hist_cutoff, stat_type)).fetchall()
+  if hist_cutoff <= 0:
+    rows = db.execute(SPEED_STATS_ALL_TIME_SQL, (stat_type,)).fetchall()
+  else:
+    rows = db.execute(SPEED_STATS_SQL, (hist_cutoff, stat_type)).fetchall()
   return {data: {'wpm': wpm, 'damage': damage or 0.0} for data, wpm, damage in rows}
 
 
@@ -122,16 +125,48 @@ def _colors_for_match_text(text, mode, stats):
   return colors
 
 
-def _display_to_match_indices(display_text, match_text):
+def book_return_role(match_text, mi, return_char):
+  """Book mode: soft_nl (auto), para_enter (type ⏎), para_tail (auto after para_enter)."""
+  if mi >= len(match_text) or match_text[mi] != return_char:
+    return None
+  next_is = mi + 1 < len(match_text) and match_text[mi + 1] == return_char
+  prev_is = mi > 0 and match_text[mi - 1] == return_char
+  if next_is:
+    return 'para_enter'
+  if prev_is:
+    return 'para_tail'
+  return 'soft_nl'
+
+
+def _display_to_match_indices(display_text, match_text, return_char=None, book_returns=False):
   """Map each display char index to match_text index, or None for display-only."""
+  if display_text == match_text:
+    return list(range(len(display_text)))
   idxs = []
   mi = 0
-  for ch in display_text:
-    if mi < len(match_text) and ch == match_text[mi]:
-      idxs.append(mi)
-      mi += 1
+  di = 0
+  while di < len(display_text):
+    if mi >= len(match_text):
+      idxs.append(None); di += 1; continue
+    dc = display_text[di]
+    mc = match_text[mi]
+    if return_char and mc == return_char and book_returns:
+      role = book_return_role(match_text, mi, return_char)
+      if role in ('soft_nl', 'para_enter') and dc == '\n':
+        idxs.append(mi); mi += 1; di += 1
+        if role == 'para_enter':
+          while mi < len(match_text) and book_return_role(match_text, mi, return_char) == 'para_tail':
+            mi += 1
+      else:
+        idxs.append(None); di += 1
+    elif dc == mc:
+      idxs.append(mi); mi += 1; di += 1
+    elif return_char and mc == return_char and dc == return_char:
+      idxs.append(None); mi += 1; di += 1
+      if di < len(display_text) and display_text[di] == '\n':
+        idxs.append(None); di += 1
     else:
-      idxs.append(None)
+      idxs.append(None); di += 1
   return idxs
 
 
@@ -154,11 +189,11 @@ def make_heatmap_legend(parent=None):
   return w
 
 
-def char_heatmap_colors(display_text, mode, stats, match_text=None):
+def char_heatmap_colors(display_text, mode, stats, match_text=None, return_char=None, book_returns=False):
   if match_text is None:
     match_text = display_text
   match_colors = _colors_for_match_text(match_text, mode, stats)
   if display_text == match_text:
     return match_colors
-  idxs = _display_to_match_indices(display_text, match_text)
+  idxs = _display_to_match_indices(display_text, match_text, return_char, book_returns)
   return [match_colors[i] if i is not None else None for i in idxs]
