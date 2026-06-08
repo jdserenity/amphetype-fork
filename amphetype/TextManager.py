@@ -181,6 +181,9 @@ Good luck!""")
       try:
         DB.execute("insert into text (id,text,source,disabled) values (?,?,?,?)",
                (txt_id, x, id, dis))
+        if lesson is None and dis is None:
+          from amphetype.text_index import index_chunk
+          index_chunk(DB, txt_id, id, x)
         r.append(txt_id)
       except Exception as e:
         pass # silently skip ...

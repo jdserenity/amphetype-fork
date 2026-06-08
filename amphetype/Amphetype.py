@@ -87,6 +87,7 @@ class AmphetypeWindow(QMainWindow):
     tw.wantReview.connect(lg.wantReview)
     tw.statsChanged.connect(pa.updateAll)
     pa.startDrill.connect(tw.start_focus_drill)
+    pa.loadCorpusText.connect(tw.load_corpus_text)
 
     pw = QTabWidget()
     pw.addTab(GeneralOptions(), "General Options")

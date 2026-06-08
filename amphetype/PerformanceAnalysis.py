@@ -12,6 +12,7 @@ class PerformanceAnalysis(QWidget):
   setText = pyqtSignal('PyQt_PyObject')
   gotoText = pyqtSignal()
   startDrill = pyqtSignal(list)
+  loadCorpusText = pyqtSignal('PyQt_PyObject')
 
   def __init__(self, *args):
     super(PerformanceAnalysis, self).__init__(*args)
@@ -20,11 +21,13 @@ class PerformanceAnalysis(QWidget):
     self.ph.setText.connect(self.setText.emit)
     self.ph.gotoText.connect(self.gotoText.emit)
     self.st.startDrill.connect(self._forward_drill)
+    self.st.corpusTextReady.connect(self._on_corpus_text)
     Settings.signal_for("history").connect(self.updateAll)
     subtabs = QTabWidget()
     subtabs.addTab(self.st, "Stats")
     subtabs.addTab(self.ph, "Progress")
     self.subtabs = subtabs
+    subtabs.currentChanged.connect(lambda *_: self.st.clear_corpus_msg())
     self.setLayout(AmphBoxLayout([
         ["Last", SettingsEdit("history"), "days.", None],
         (subtabs, 1),
@@ -47,3 +50,11 @@ class PerformanceAnalysis(QWidget):
   def _forward_drill(self, targets):
     self.startDrill.emit(targets)
     self.gotoText.emit()
+
+  def _on_corpus_text(self, v):
+    self.loadCorpusText.emit(v)
+    self.gotoText.emit()
+
+  def hideEvent(self, evt):
+    self.st.clear_corpus_msg()
+    return super(PerformanceAnalysis, self).hideEvent(evt)

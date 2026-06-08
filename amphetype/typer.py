@@ -466,11 +466,51 @@ class TyperWidget(QTextEdit):
 
     self._settings = settings
     self._lesson = None
+    self._pin_typing_center = False
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
     settings('overwrite_mode').bind_value(self.setOverwriteMode)
     configure_transparent_typer(self)
     settings('background_color').bind_value(lambda v: configure_transparent_typer(self))
+
+  def _typing_region_doc_y_range(self):
+    lesson = self._lesson
+    region = lesson.active_region()
+    if region.hasSelection():
+      start_pos = region.selectionStart()
+      end_pos = region.selectionEnd() - 1
+    else:
+      start_pos = end_pos = lesson._start.position()
+    scroll = self.verticalScrollBar().value()
+    y_top = self.cursorRect(Cursor(lesson, position=start_pos)).top() + scroll
+    r_end = self.cursorRect(Cursor(lesson, position=end_pos))
+    return y_top, r_end.bottom() + scroll
+
+  def center_typing_vertically(self):
+    """Scroll so the lesson typing region sits mid-viewport (normal mode)."""
+    if not self._lesson:
+      return True
+    vp_h = self.viewport().height()
+    if vp_h <= 0:
+      return False
+    sb = self.verticalScrollBar()
+    if sb.maximum() <= 0:
+      return True
+    y_top, y_bot = self._typing_region_doc_y_range()
+    target = int(round((y_top + y_bot) / 2 - vp_h / 2))
+    sb.setValue(max(sb.minimum(), min(sb.maximum(), target)))
+    return True
+
+  def _center_typing_when_ready(self):
+    if not self._pin_typing_center:
+      return
+    if not self.center_typing_vertically():
+      QTimer.singleShot(0, self._center_typing_when_ready)
+
+  def resizeEvent(self, evt):
+    super().resizeEvent(evt)
+    if self._pin_typing_center:
+      self.center_typing_vertically()
 
   def setLesson(self, lesson):
     if lesson == self._lesson:
@@ -593,6 +633,7 @@ class TyperWindow(QWidget):
       doc.onColor(var)
 
     doc.started.connect(self._prog_layout.cycle)
+    doc.started.connect(self._on_lesson_started)
     doc.progress.connect(self._prog.setValue)
     doc.ready.connect(self.typingReady)
     doc.completed.connect(self.typingDone)
@@ -769,7 +810,12 @@ class TyperWindow(QWidget):
 
   def showEvent(self, evt):
     self._typer.setFocus()
+    if self._typer._pin_typing_center:
+      QTimer.singleShot(0, self._typer._center_typing_when_ready)
     return super().showEvent(evt)
+
+  def _on_lesson_started(self):
+    self._typer._pin_typing_center = False
 
   def typingReady(self, text):
     self._prog_layout.setCurrentIndex(0)
@@ -790,6 +836,12 @@ class TyperWindow(QWidget):
     epilogue = ('\n' + post[2]) if post is not None else ''
 
     self._doc.set_text(txt[2], prologue=prologue, epilogue=epilogue)
+    self._typer.setTextCursor(self._doc.cursor)
+    if self._mode == MODE_NORMAL:
+      self._typer._pin_typing_center = True
+      QTimer.singleShot(0, self._typer._center_typing_when_ready)
+    else:
+      self._typer._pin_typing_center = False
     self._refreshHeatmap()
     self._typer.setFocus()
     self._prog.setValue(0)
@@ -816,6 +868,14 @@ class TyperWindow(QWidget):
     self._focus_drill = None
     self._focus_drill_wpm = {}
     self._weakspot.request_next_lesson(force=True)
+
+  def load_corpus_text(self, v):
+    """Open a corpus chunk in normal mode (from Performance Analysis Find in corpus)."""
+    self._focus_drill = None
+    self._focus_drill_wpm = {}
+    self._settings.set('practice_mode', 0)
+    self._set_mode_ui(MODE_NORMAL, load=False)
+    self.setText(v)
 
   def start_focus_drill(self, targets):
     """Start weakspot focus drill on specific type targets from Performance Analysis."""
