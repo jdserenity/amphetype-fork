@@ -951,6 +951,11 @@ class TyperWindow(QWidget):
   def _on_lesson_started(self):
     self._typer._pin_typing_center = False
 
+  def _schedule_typing_center(self):
+    self._typer.setTextCursor(self._doc.cursor)
+    self._typer._pin_typing_center = True
+    QTimer.singleShot(0, self._typer._center_typing_when_ready)
+
   def typingReady(self, text):
     self._prog_layout.setCurrentIndex(0)
     self._prog.setMaximum(len(text))
@@ -970,10 +975,8 @@ class TyperWindow(QWidget):
     epilogue = ('\n' + post[2]) if post is not None else ''
 
     self._doc.set_text(txt[2], prologue=prologue, epilogue=epilogue)
-    self._typer.setTextCursor(self._doc.cursor)
     if self._mode == MODE_NORMAL:
-      self._typer._pin_typing_center = True
-      QTimer.singleShot(0, self._typer._center_typing_when_ready)
+      self._schedule_typing_center()
     else:
       self._typer._pin_typing_center = False
     self._refreshHeatmap()
@@ -1034,6 +1037,7 @@ class TyperWindow(QWidget):
     self._current_lesson = (tid, srcid, active)
     self._update_book_footer(meta)
     self._doc.set_book_chapter(body, chunks, meta['chunk_index'], auto_returns=True)
+    self._schedule_typing_center()
     self._refreshHeatmap()
     self._typer.setFocus()
     self._prog.setValue(0)
@@ -1253,6 +1257,7 @@ class TyperWindow(QWidget):
         self._prog_layout.setCurrentIndex(0)
         self._prog.setValue(0)
         self._prog.setMaximum(len(active))
+        self._schedule_typing_center()
         self._refreshHeatmap()
         return
       self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)

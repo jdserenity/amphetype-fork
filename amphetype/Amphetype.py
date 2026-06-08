@@ -24,6 +24,7 @@ app.settings = Settings
 
 # Only AFTER settings has been initialized, import database:
 from amphetype.Data import DB
+from amphetype.app_meta import PREFERENCES_TAB_KEY, get_app_meta_int, set_app_meta_int
 app.DB = DB
 
 # After this we can do whatever we want.
@@ -83,6 +84,10 @@ class AmphetypeWindow(QMainWindow):
     pw.addTab(GeneralOptions(), "General Options")
     pw.addTab(TyperOptions(), "Typer Options")
     pw.addTab(tm, "Sources")
+    prefs_tab = get_app_meta_int(DB, PREFERENCES_TAB_KEY, 0)
+    if 0 <= prefs_tab < pw.count():
+      pw.setCurrentIndex(prefs_tab)
+    pw.currentChanged.connect(lambda i: set_app_meta_int(DB, PREFERENCES_TAB_KEY, i))
     tabs.addTab(pw, "Preferences")
 
     def goto_sources():

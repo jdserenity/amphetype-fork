@@ -389,6 +389,28 @@ def test_widget_starts_immediately_without_space(qapp):
     assert not doc.is_finished()
 
 
+def test_center_typing_vertically_with_book_prologue(qapp):
+  from PyQt5.QtGui import QFont
+  from amphetype.typer import TyperWidget, LessonDocument
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  w.setLesson(doc)
+  chunks = ['before\n' * 60, 'type me', 'after\n' * 40]
+  doc.set_book_chapter(''.join(chunks), chunks, 1, auto_returns=True)
+  w.setTextCursor(doc.cursor)
+  w.resize(420, 180)
+  w.show()
+  qapp.processEvents()
+  w.center_typing_vertically()
+  qapp.processEvents()
+  region = doc.active_region()
+  r0 = w.cursorRect(Cursor(doc, position=region.selectionStart()))
+  r1 = w.cursorRect(Cursor(doc, position=region.selectionEnd() - 1))
+  mid = (r0.top() + r1.bottom()) / 2
+  assert abs(mid - w.viewport().height() / 2) < 8
+
+
 def test_center_typing_vertically_with_long_prologue(qapp):
   from PyQt5.QtGui import QFont
   from amphetype.typer import TyperWidget, LessonDocument

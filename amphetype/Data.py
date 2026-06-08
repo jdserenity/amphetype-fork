@@ -138,7 +138,9 @@ class AmphDatabase(sqlite3.Connection):
     # Weakspot (and other generated lessons) must not feed back into weakspot selection.
     self.execute("update source set discount = 1 where name = '<Weakspot>' and discount is null")
     from amphetype.book_mode import ensure_book_tables
+    from amphetype.app_meta import ensure_app_meta
     ensure_book_tables(self)
+    ensure_app_meta(self)
     self.commit()
 
   def resetTimeGroup(self):
