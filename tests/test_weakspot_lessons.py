@@ -6,6 +6,7 @@ from amphetype.WeakSpotLessons import (
   _make_index,
   allocate_repeats,
   build_lesson,
+  build_focus_lesson,
   build_lesson_from_db,
   compose_phrase,
   covered_targets,
@@ -171,6 +172,43 @@ class TestNoFiller(unittest.TestCase):
     targets = [("trigram", "e h", 3.0), ("word", "from", 2.0), ("char", "c", 1.0)]
     lesson = build_lesson(targets, DICT, min_chars=120, max_chars=400, rng=_R(1))
     self.assertEqual(covered_targets(lesson, targets), _keys(targets))
+
+
+class TestFocusDrill(unittest.TestCase):
+  def test_focus_drill_repeats_single_word(self):
+    targets = [('word', 'from')]
+    lesson = build_focus_lesson(targets, DICT, max_chars=600, rng=_R(9))
+    self.assertIn('from', lesson.lower())
+    self.assertGreater(len(lesson.split()), 18)
+    self.assertGreater(lesson.lower().count('from'), 8)
+
+  def test_focus_drill_covers_all_targets(self):
+    targets = [('word', 'from'), ('trigram', 'e h')]
+    lesson = build_focus_lesson(targets, DICT, min_chars=120, max_chars=400, rng=_R(2))
+    self.assertEqual(covered_targets(lesson, [(k, d, 1.0) for k, d in targets]), {('word', 'from'), ('trigram', 'e h')})
+
+  def test_focus_drill_preserves_exact_word_surface(self):
+    targets = [('word', 'lady'), ('word', 'Meryton')]
+    lesson = build_focus_lesson(targets, DICT, max_chars=400, rng=_R(3))
+    self.assertRegex(lesson, r'(?<![A-Za-z])lady(?![A-Za-z])')
+    self.assertNotRegex(lesson, r'(?<![a-z])Lady(?![a-z])')
+    self.assertRegex(lesson, r'(?<![A-Za-z])Meryton(?![A-Za-z])')
+
+  def test_focus_drill_balances_three_words(self):
+    targets = [('word', 'from'), ('word', 'with'), ('word', 'blue')]
+    lesson = build_focus_lesson(targets, DICT, max_chars=600, rng=_R(42))
+    toks = lesson.lower().split()
+    for w in ('from', 'with', 'blue'):
+      self.assertGreaterEqual(toks.count(w), 3, w)
+    # no long run of one target without the others (round-robin, not A A A … C)
+    runs = []
+    last = None; n = 0
+    for t in toks:
+      if t in ('from', 'with', 'blue'):
+        if t == last: n += 1
+        else: runs.append(n); last = t; n = 1
+    runs.append(n)
+    self.assertLessEqual(max(runs), 4)
 
 
 class TestScoring(unittest.TestCase):

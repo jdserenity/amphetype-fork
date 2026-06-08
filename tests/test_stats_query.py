@@ -103,3 +103,17 @@ class TestStatsAggregation(unittest.TestCase):
     self.assertEqual(row[5], 1)    # mistakes (counted only)
     self.assertEqual(row[6], 1)    # drilled
     self.assertAlmostEqual(row[2], 90.0)  # accuracy 10-1/10
+
+  def test_word_stats_keep_case_separate(self):
+    conn = _test_db(); now = 1e9
+    book = _add_source(conn, 'Novel')
+    conn.executemany(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      [
+        (now, 'Lady', 2, 12.0 / 70.0, 10, 0, 1.0, book),
+        (now + 1, 'lady', 2, 12.0 / 25.0, 8, 0, 1.0, book),
+      ])
+    rows = {r[0]: r[1] for r in conn.execute(STATS_AGG_SUBQUERY, (0, 2)).fetchall()}
+    self.assertEqual(set(rows), {'Lady', 'lady'})
+    self.assertAlmostEqual(12.0 / rows['Lady'], 70.0)
+    self.assertAlmostEqual(12.0 / rows['lady'], 25.0)

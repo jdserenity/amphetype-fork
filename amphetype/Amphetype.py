@@ -68,7 +68,7 @@ class AmphetypeWindow(QMainWindow):
 
     pa = PerformanceAnalysis()
     tm.refreshSources.connect(pa.refreshSources)
-    quiz.statsChanged.connect(pa.updateData)
+    quiz.statsChanged.connect(pa.updateAll)
     pa.setText.connect(quiz.setText)
     pa.gotoText.connect(lambda: tabs.setCurrentIndex(0))
     tabs.addTab(pa, "Performance Analysis")
@@ -85,7 +85,8 @@ class AmphetypeWindow(QMainWindow):
     tw.wantText.connect(tm.nextText)
     tw.needWeakspotLesson.connect(tm.newWeakspot)
     tw.wantReview.connect(lg.wantReview)
-    tw.statsChanged.connect(pa.updateData)
+    tw.statsChanged.connect(pa.updateAll)
+    pa.startDrill.connect(tw.start_focus_drill)
 
     pw = QTabWidget()
     pw.addTab(GeneralOptions(), "General Options")

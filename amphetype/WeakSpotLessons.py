@@ -15,6 +15,10 @@ from amphetype.stats_query import RAW_TARGETS_SQL
 
 # A target is (kind, data, weight); kind in {'char','trigram','word'}.
 TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}
+ANA_WHAT_KINDS = ('char', 'trigram', 'word')
+
+def ana_what_kind(cat_index):
+  return ANA_WHAT_KINDS[cat_index]
 
 _dict_cache = {}
 _TRAIL_PUNCT = '.,!?;:'   # punctuation that naturally trails a word
@@ -524,12 +528,14 @@ def _kind_rank(kind):
   return {'trigram': 0, 'word': 1, 'char': 2}.get(kind, 3)
 
 
-def _tokens_for_target(t, index, remaining, targets, rng):
+def _tokens_for_target(t, index, remaining, targets, rng, exact_surface=False):
   """Render token(s) that practise a single target. `remaining` steers slot
   fillers toward still-uncovered targets; when empty they vary for freshness."""
   if t[0] == 'trigram':
     return [x for x in trigram_tokens(t[1], index, remaining, targets, rng) if x]
   if t[0] == 'word':
+    if exact_surface:
+      return [t[1]] if t[1] else []
     w = _word_token(t[1], remaining, targets)
     return [w] if w else []
   w = index.word_for_char(t[1], rng, remaining, targets)
@@ -576,7 +582,7 @@ def _interleave(instances, rng):
   return instances
 
 
-def build_lesson(targets, dict_words, min_chars=220, max_chars=600, rng=None, recent=None):
+def build_lesson(targets, dict_words, min_chars=220, max_chars=600, rng=None, recent=None, repeat_cap=6):
   """Assemble a lesson from weak targets only — no random filler.
 
   Importance drives everything: targets are repeated proportionally to weight so
@@ -594,7 +600,7 @@ def build_lesson(targets, dict_words, min_chars=220, max_chars=600, rng=None, re
   all_keys = _keys(targets)
 
   budget = max(len(targets), (min_chars // 8) + 1)
-  counts = allocate_repeats(targets, budget)
+  counts = allocate_repeats(targets, budget, cap=repeat_cap)
   instances = []
   for t in targets:
     instances.extend([t] * counts[target_key(t)])
@@ -639,6 +645,55 @@ def build_lesson(targets, dict_words, min_chars=220, max_chars=600, rng=None, re
 # ---------------------------------------------------------------------------
 # DB selection + caching
 # ---------------------------------------------------------------------------
+
+def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=220, max_chars=600, rng=None):
+  """Repeat only the given type targets (Performance Analysis drill). targets: [(kind, data), ...]."""
+  if not targets:
+    return ''
+  if dict_words is None and wordlist_path:
+    dict_words = load_wordlist(wordlist_path)
+  weighted = [(k, d, 1.0) for k, d in targets]
+  focus_chars = max(80, max_chars // 2)
+  rng = rng or random.Random()
+  index = _make_index(weighted, dict_words or [])
+  all_keys = _keys(weighted)
+  counts = {target_key(t): 0 for t in weighted}
+  min_each = max(3, (focus_chars // 12) // len(weighted))
+  text = ''
+  covered = set()
+  order = list(weighted)
+  rng.shuffle(order)
+
+  def _append_phrase(t):
+    nonlocal text, covered
+    toks = _tokens_for_target(t, index, all_keys - covered, weighted, rng, exact_surface=True)
+    if not toks:
+      return False
+    phrase = ' '.join(toks)
+    if not covered_targets(phrase, weighted):
+      return False
+    cand = (text + ' ' + phrase).strip() if text else phrase
+    if text and len(cand) > focus_chars:
+      return False
+    text = cand
+    covered = covered_targets(text, weighted)
+    counts[target_key(t)] += 1
+    return True
+
+  for t in weighted:
+    _append_phrase(t)
+  idx = 0; fails = 0
+  while len(text) < focus_chars and fails < len(weighted) * 4:
+    t = order[idx % len(order)]
+    idx += 1
+    if all(c >= min_each for c in counts.values()) and len(text) >= focus_chars * 0.85:
+      break
+    if _append_phrase(t):
+      fails = 0
+    else:
+      fails += 1
+  return text
+
 
 def fetch_weak_targets(conn, hist=None, min_count=1, per_type=15):
   """Pull weak chars/trigrams/words, scored by slowness (dominant) and frequency."""

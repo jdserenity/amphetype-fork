@@ -7,6 +7,8 @@ from amphetype.layout import FBoxLayout
 from amphetype.fwidgets import FStackedWidget
 from amphetype.timingtuple import RunStats
 from amphetype.WeakSpot import WeakSpotLessonBuilder
+from amphetype.WeakSpotLessons import build_focus_lesson
+from amphetype.Config import Settings
 from amphetype.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
   READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
@@ -37,8 +39,10 @@ _WEAKSPOT_BTN_LABEL = 'weakspot'
 _GENERATING_BTN_LABEL = 'generating…'
 
 
-def lesson_completion_action(mode, met_threshold, is_lesson, auto_review, has_review_words):
+def lesson_completion_action(mode, met_threshold, is_lesson, auto_review, has_review_words, focus_drill=False):
   """What to do after a typing session ends."""
+  if focus_drill:
+    return 'focus_repeat'
   if mode == MODE_WEAKSPOT:
     return 'weakspot_next'
   if met_threshold and not is_lesson and auto_review and has_review_words:
@@ -560,6 +564,8 @@ class TyperWindow(QWidget):
     self._read_ahead_on = False
     self._read_ahead_level = 0
     self._mode = MODE_NORMAL
+    self._focus_drill = None
+    self._focus_drill_wpm = {}
     self._weakspot = WeakSpotLessonBuilder(self)
     self._weakspot.lessonReady.connect(self._on_weakspot_lesson)
     self._weakspot.busyChanged.connect(self._on_weakspot_busy)
@@ -627,7 +633,7 @@ class TyperWindow(QWidget):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
     self._btn_normal.clicked.connect(lambda: self.set_practice_mode(MODE_NORMAL))
-    self._btn_weakspot.clicked.connect(lambda: self.set_practice_mode(MODE_WEAKSPOT))
+    self._btn_weakspot.clicked.connect(self._on_weakspot_click)
     self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
     self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
     self._weakspot_generating = False
@@ -731,7 +737,15 @@ class TyperWindow(QWidget):
   def _heatmapStats(self):
     hist = time() - self._settings.get('history') * 86400.0
     mode = self.S('speed_heatmap_mode').get()
-    return fetch_speed_stats(self.DB, hist, mode_stat_type(mode))
+    stats = fetch_speed_stats(self.DB, hist, mode_stat_type(mode))
+    if self._focus_drill and self._focus_drill_wpm:
+      stats = dict(stats)
+      for kind, data in self._focus_drill:
+        wpm = self._focus_drill_wpm.get(data)
+        if wpm is not None:
+          prev = stats.get(data) or {}
+          stats[data] = {**prev, 'wpm': wpm}
+    return stats
 
   def _refreshHeatmap(self):
     self._doc.set_speed_heatmap(
@@ -792,9 +806,43 @@ class TyperWindow(QWidget):
     if mode == MODE_WEAKSPOT:
       self._weakspot.request_next_lesson(force=True)
 
+  def _on_weakspot_click(self):
+    if self._mode == MODE_WEAKSPOT and self._focus_drill:
+      self._exit_focus_drill()
+      return
+    self.set_practice_mode(MODE_WEAKSPOT)
+
+  def _exit_focus_drill(self):
+    self._focus_drill = None
+    self._focus_drill_wpm = {}
+    self._weakspot.request_next_lesson(force=True)
+
+  def start_focus_drill(self, targets):
+    """Start weakspot focus drill on specific type targets from Performance Analysis."""
+    self._focus_drill = [(t[0], t[1]) for t in targets]
+    self._focus_drill_wpm = {}
+    for t in targets:
+      if len(t) > 2 and t[2] is not None:
+        self._focus_drill_wpm[t[1]] = t[2]
+    wl = str(Settings.DATA_DIR / 'wordlists' / 'words-20.txt')
+    lesson = build_focus_lesson(
+      self._focus_drill, wordlist_path=wl, max_chars=Settings.get('max_chars'))
+    self._settings.set('practice_mode', 1)
+    self._set_mode_ui(MODE_WEAKSPOT, load=False)
+    if not lesson:
+      self._focus_drill = None
+      self._focus_drill_wpm = {}
+      self.updateLabel('Could not build a drill for those targets.')
+      return
+    self._set_weakspot_footer_busy(False)
+    self.needWeakspotLesson.emit(lesson)
+
   def set_practice_mode(self, mode):
     if mode == self._mode:
       return
+    if mode != MODE_WEAKSPOT:
+      self._focus_drill = None
+    self._focus_drill_wpm = {}
     self._settings.set('practice_mode', 1 if mode == MODE_WEAKSPOT else 0)
     self._set_mode_ui(mode, load=True)
 
@@ -867,6 +915,10 @@ class TyperWindow(QWidget):
     if run.per_sec < 1e-6:
       log.error("run seems to be ~0.0 duration: %s", run)
       return self.typingFailed("Invalid run? (~0 duration)")
+
+    if self._focus_drill:
+      self.setText(self._current_lesson)
+      return
 
     now = time()
     textid, srcid, _ = self._current_lesson
@@ -969,9 +1021,12 @@ class TyperWindow(QWidget):
     met = wpm >= mins[0] and acc >= mins[1] / 100.0
     review_words = [x for x in vals if x[5] == 2] if not is_lesson else []
     action = lesson_completion_action(
-      self._mode, met, bool(is_lesson), self._settings.get('auto_review'), bool(review_words))
+      self._mode, met, bool(is_lesson), self._settings.get('auto_review'), bool(review_words),
+      focus_drill=bool(self._focus_drill))
 
-    if action == 'weakspot_next':
+    if action == 'focus_repeat':
+      self.setText(self._current_lesson)
+    elif action == 'weakspot_next':
       self._weakspot.invalidate_cache()
       self._weakspot.request_next_lesson(force=True)
     elif action == 'review':

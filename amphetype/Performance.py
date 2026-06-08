@@ -104,7 +104,7 @@ class PerformanceHistory(QWidget):
           self.cb_source,
           "and group by", SettingsCombo('perf_group_by',
             ["<no grouping>", "%d sessions" % Settings.get('def_group_by'), "sitting", "day"]),
-          None, AmphButton("Update", self.updateData)],
+          None],
         (t, 1),
         ["Plot", SettingsCombo('graph_what', ((3, 'WPM'), (4, 'accuracy'), (5, 'viscosity'))),
           SettingsCheckBox("show_xaxis", "Show X-axis"),

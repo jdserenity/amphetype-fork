@@ -14,12 +14,15 @@ def mode_stat_type(mode):
   return _STAT_TYPE[mode]
 
 # Stoplight buckets — bright, full saturation (legend + underlines).
+OBLIVION_WPM = 30
 WPM_BUCKETS = (
-  (0, '#d64545'),    # <75 red (deeper — readable on dark canvas)
-  (75, '#ff8c00'),   # 75–99 orange
-  (100, '#ffd600'),  # 100–124 yellow
-  (125, '#00e676'),  # 125+ green
+  (0, '#a855f7'),    # <30 purple (oblivion)
+  (30, '#d64545'),   # 30–59
+  (60, '#ff8c00'),   # 60–89
+  (90, '#ffd600'),   # 90–119
+  (120, '#00e676'),  # 120+
 )
+WPM_BUCKET_LABELS = ('<30', '30–59', '60–89', '90–119', '120+')
 
 _WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
 
@@ -57,19 +60,10 @@ def _stat_damage(entry):
 
 
 def fetch_speed_stats(db, hist_cutoff=None, stat_type=MODE_CHAR):
-  from amphetype.Data import STAT_OMIT_DISCOUNTED
+  from amphetype.stats_query import SPEED_STATS_SQL
   if hist_cutoff is None:
     hist_cutoff = time.time() - 30 * 86400.0
-  rows = db.execute("""
-    select data,
-      12.0 / agg_median(time) as wpm,
-      sum(count) * agg_median(time) * agg_median(time)
-        * (1.0 + cast(sum(mistakes) as real) / sum(count)) as damage
-    from statistic as st
-    left join source as src on st.source = src.rowid
-    where st.w >= ? and st.type = ? and %s
-    group by data
-  """ % STAT_OMIT_DISCOUNTED, (hist_cutoff, stat_type)).fetchall()
+  rows = db.execute(SPEED_STATS_SQL, (hist_cutoff, stat_type)).fetchall()
   return {data: {'wpm': wpm, 'damage': damage or 0.0} for data, wpm, damage in rows}
 
 
@@ -119,9 +113,8 @@ def _colors_for_match_text(text, mode, stats):
   elif mode == MODE_TRIGRAM:
     return _trigram_colors_by_damage(text, stats)
   else:
-    word_stats = {k.lower(): v for k, v in stats.items()}
     for start, end, word in _word_spans(text):
-      entry = word_stats.get(word.lower())
+      entry = stats.get(word)
       if entry is not None:
         c = wpm_color_q(_stat_wpm(entry))
         for i in range(start, end):
@@ -149,11 +142,11 @@ def make_heatmap_legend(parent=None):
   lay = QHBoxLayout(w)
   lay.setContentsMargins(0, 0, 0, 0)
   lay.setSpacing(10)
-  labels = ('<75', '75–99', '100–124', '125+')
-  for label, (_, color) in zip(labels, WPM_BUCKETS):
+  for i, (label, (_, color)) in enumerate(zip(WPM_BUCKET_LABELS, WPM_BUCKETS)):
     lbl = QLabel(label, parent=w)
+    fg = '#fff' if i == 0 else '#111'
     lbl.setStyleSheet(
-      'QLabel { background: %s; color: #111; padding: 2px 8px; border-radius: 2px; font-size: 11px; }' % color)
+      'QLabel { background: %s; color: %s; padding: 4px 8px; border-radius: 2px; font-size: 11px; min-height: 18px; }' % (color, fg))
     lay.addWidget(lbl)
   wpm = QLabel('wpm', parent=w)
   wpm.setStyleSheet('color: #888; font-size: 11px;')

@@ -1,12 +1,14 @@
 
 
 
+import random
 import time
 
 from amphetype.Data import DB
 from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY
+from amphetype.speed_heatmap import OBLIVION_WPM
+from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
-from amphetype.Text import LessonGeneratorPlain
 from amphetype.Config import *
 
 from PyQt5.QtCore import *
@@ -34,6 +36,8 @@ class WordModel(AmphModel):
 
 
 class StringStats(QWidget):
+  startDrill = pyqtSignal(list)
+
   def __init__(self, *args):
     super(StringStats, self).__init__(*args)
 
@@ -44,6 +48,7 @@ class StringStats(QWidget):
     tw.setRootIsDecorated(False)
     tw.setAlternatingRowColors(True)
     tw.setMinimumHeight(220)
+    tw.doubleClicked['QModelIndex'].connect(self._drill_row)
     self.stats = tw
 
     ob = SettingsCombo('ana_which', [
@@ -68,18 +73,44 @@ class StringStats(QWidget):
     Settings.signal_for("history").connect(self.update)
 
     self.setLayout(AmphBoxLayout([
-        ["Show", wc, "sorted by", ob, None],
+        ["Show", wc, "sorted by", ob, None,
+          AmphButton("Drill worst 3", self._drill_worst_3),
+          AmphButton("Drill 3 oblivion", self._drill_3_oblivion)],
         ["Limit list to", lim, "items and don't show items with a count less than", self.w_count, None],
         (self.stats, 1)
       ]))
 
-  def update(self, *arg):
-
-    ord = Settings.get('ana_which')
+  def _query_rows(self, order, limit):
     cat = Settings.get('ana_what')
-    limit = Settings.get('ana_many')
     count = Settings.get('ana_count')
     hist = time.time() - Settings.get('history') * 86400.0
+    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, order, limit)
+    return DB.fetchall(sql, (hist, cat, count)), cat
 
-    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, ord, limit)
-    self.model.setData(DB.fetchall(sql, (hist, cat, count)))
+  def update(self, *arg):
+    rows, _ = self._query_rows(Settings.get('ana_which'), Settings.get('ana_many'))
+    self.model.setData(rows)
+
+  def _targets_from_rows(self, rows, cat):
+    kind = ana_what_kind(cat)
+    return [(kind, r[0], r[1]) for r in rows]
+
+  def _drill_row(self, idx):
+    if not idx.isValid() or idx.row() >= len(self.model.words):
+      return
+    cat = Settings.get('ana_what')
+    self.startDrill.emit(self._targets_from_rows([self.model.words[idx.row()]], cat))
+
+  def _drill_worst_3(self):
+    rows, cat = self._query_rows('damage desc', 3)
+    if not rows:
+      return
+    self.startDrill.emit(self._targets_from_rows(rows[:3], cat))
+
+  def _drill_3_oblivion(self):
+    rows, cat = self._query_rows('wpm asc', Settings.get('ana_many'))
+    pool = [r for r in rows if r[1] is not None and r[1] < OBLIVION_WPM]
+    if not pool:
+      return
+    picks = random.sample(pool, min(3, len(pool)))
+    self.startDrill.emit(self._targets_from_rows(picks, cat))

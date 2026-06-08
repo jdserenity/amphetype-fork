@@ -32,6 +32,7 @@ def test_lesson_completion_action():
     assert lesson_completion_action(MODE_NORMAL, True, True, False, False) == 'normal_next'
     assert lesson_completion_action(MODE_NORMAL, True, False, True, True) == 'review'
     assert lesson_completion_action(MODE_WEAKSPOT, True, False, True, True) == 'weakspot_next'
+    assert lesson_completion_action(MODE_WEAKSPOT, False, False, False, False, focus_drill=True) == 'focus_repeat'
 
 
 def test_format_source_attribution():

@@ -36,3 +36,14 @@ ANALYSIS_OUTER_SQL = """select data, 12.0/time as wpm,
   from (%s)
   where total >= ?
   order by %s limit %d"""
+
+# Heatmap WPM uses the same median-time pool as Analysis; damage uses counted rows only.
+SPEED_STATS_SQL = f"""select data,
+  12.0 / agg_median(time) as wpm,
+  sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) * agg_median(time) * agg_median(time)
+    * (1.0 + cast(sum(case when {_STAT_IS_COUNTED} then st.mistakes else 0 end) as real)
+       / nullif(sum(case when {_STAT_IS_COUNTED} then st.count else 0 end), 0)) as damage
+  from statistic as st
+  left join source as src on st.source = src.rowid
+  where st.w >= ? and st.type = ?
+  group by data"""
