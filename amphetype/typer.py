@@ -1013,15 +1013,9 @@ class TyperWindow(QWidget):
     self.statsChanged.emit()
     self._refreshHeatmap()
 
-    if is_lesson:
-      mins = self._settings.get('min_lesson_wpm'), self._settings.get('min_lesson_acc')
-    else:
-      mins = self._settings.get('min_wpm'), self._settings.get('min_acc')
-
-    met = wpm >= mins[0] and acc >= mins[1] / 100.0
     review_words = [x for x in vals if x[5] == 2] if not is_lesson else []
     action = lesson_completion_action(
-      self._mode, met, bool(is_lesson), self._settings.get('auto_review'), bool(review_words),
+      self._mode, True, bool(is_lesson), self._settings.get('auto_review'), bool(review_words),
       focus_drill=bool(self._focus_drill))
 
     if action == 'focus_repeat':

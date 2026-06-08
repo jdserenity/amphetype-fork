@@ -256,14 +256,7 @@ class Quizzer(QWidget):
 
     DB.commit()
 
-    if is_lesson:
-      mins = (Settings.get("min_lesson_wpm"), Settings.get("min_lesson_acc"))
-    else:
-      mins = (Settings.get("min_wpm"), Settings.get("min_acc"))
-
-    if 12.0/spc < mins[0] or accuracy < mins[1]/100.0:
-      self.setText(self.text)
-    elif not is_lesson and Settings.get('auto_review'):
+    if not is_lesson and Settings.get('auto_review'):
       ws = [x for x in vals if x[5] == 2]
       if len(ws) == 0:
         self.wantText.emit()

@@ -40,7 +40,7 @@ setup(
     "Programming Language :: Python :: 3",
   ],
 
-  packages=['amphetype', 'amphetype.Widgets'],
+  packages=['amphetype', 'amphetype.Widgets', 'amphetype.gutenberg'],
   install_requires=['PyQt5', 'translitcodec', 'editdistance'],
   extras_require={
     'test': ['pytest', 'pytest-qt'],
