@@ -27,14 +27,14 @@ from amphetype.book_mode import MODE_BOOK
 
 
 def test_lesson_completion_action():
-    assert lesson_completion_action(MODE_BOOK, False, False, False, False) == 'book_next'
-    assert lesson_completion_action(MODE_NORMAL, False, False, False, False) == 'normal_next'
-    assert lesson_completion_action(MODE_WEAKSPOT, False, False, False, False) == 'weakspot_next'
-    assert lesson_completion_action(MODE_WEAKSPOT, True, True, False, False) == 'weakspot_next'
-    assert lesson_completion_action(MODE_NORMAL, True, True, False, False) == 'normal_next'
-    assert lesson_completion_action(MODE_NORMAL, True, False, True, True) == 'review'
-    assert lesson_completion_action(MODE_WEAKSPOT, True, False, True, True) == 'weakspot_next'
-    assert lesson_completion_action(MODE_WEAKSPOT, False, False, False, False, focus_drill=True) == 'focus_repeat'
+    assert lesson_completion_action(MODE_BOOK, False, False, False) == 'book_next'
+    assert lesson_completion_action(MODE_NORMAL, False, False, False) == 'normal_next'
+    assert lesson_completion_action(MODE_WEAKSPOT, False, False, False) == 'weakspot_next'
+    assert lesson_completion_action(MODE_WEAKSPOT, True, False, False) == 'weakspot_next'
+    assert lesson_completion_action(MODE_NORMAL, True, False, False) == 'normal_next'
+    assert lesson_completion_action(MODE_NORMAL, False, True, True) == 'review'
+    assert lesson_completion_action(MODE_WEAKSPOT, False, True, True) == 'weakspot_next'
+    assert lesson_completion_action(MODE_WEAKSPOT, False, False, False, focus_drill=True) == 'focus_repeat'
 
 
 def test_format_source_attribution():
@@ -98,6 +98,11 @@ def test_book_paragraph_mistype_does_not_skip_break(qapp):
   assert doc._run.index == 1
   assert doc._run.current.char == RETURN_CHAR
   assert doc._first_error is not None
+  di = doc._display_span(1)[0]
+  c = Cursor(doc, position=di)
+  c.movePosition(c.NextCharacter, c.KeepAnchor)
+  assert c.selectedText() == RETURN_CHAR
+  assert c.charFormat().foreground().color() == doc.style_error.foreground().color()
   doc.insert(RETURN_CHAR)
   assert doc._run.index == 3
   assert doc._run.current.char == 'b'
@@ -111,6 +116,11 @@ def test_book_paragraph_mistype_backspace_restores_hidden_return(qapp):
   doc.set_book_chapter('a\n\nb', ['a\n\nb'], 0, auto_returns=True)
   doc.insert('a')
   doc.insert('x')
+  di = doc._display_span(1)[0]
+  c = Cursor(doc, position=di)
+  c.movePosition(c.NextCharacter, c.KeepAnchor)
+  assert c.selectedText() == RETURN_CHAR
+  assert c.charFormat().foreground().color() == doc.style_error.foreground().color()
   doc.backspace()
   assert doc._run.index == 1
   assert doc._first_error is None

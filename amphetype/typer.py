@@ -44,7 +44,7 @@ _WEAKSPOT_BTN_LABEL = 'weakspot'
 _GENERATING_BTN_LABEL = 'generating…'
 
 
-def lesson_completion_action(mode, met_threshold, is_lesson, auto_review, has_review_words, focus_drill=False):
+def lesson_completion_action(mode, is_lesson, auto_review, has_review_words, focus_drill=False):
   """What to do after a typing session ends."""
   if focus_drill:
     return 'focus_repeat'
@@ -52,7 +52,7 @@ def lesson_completion_action(mode, met_threshold, is_lesson, auto_review, has_re
     return 'book_next'
   if mode == MODE_WEAKSPOT:
     return 'weakspot_next'
-  if met_threshold and not is_lesson and auto_review and has_review_words:
+  if not is_lesson and auto_review and has_review_words:
     return 'review'
   return 'normal_next'
 
@@ -342,6 +342,10 @@ class LessonDocument(QTextDocument):
         for j in range(n):
           disp_i = di + j - base
           if (self._book_auto_returns and j == 0 and self._match_text[mi] == RETURN_CHAR
+              and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter'
+              and self._book_para_enter_revealed(mi)):
+            break
+          if (self._book_auto_returns and j == 0 and self._match_text[mi] == RETURN_CHAR
               and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter'):
             style = self.style_hidden_return
           elif self._read_ahead_mode and mi in hidden:
@@ -443,9 +447,16 @@ class LessonDocument(QTextDocument):
       return None
     return mi
 
-  def _book_para_enter_glyph_replaced(self, mi):
+  def _book_para_enter_revealed(self, mi):
+    if self._book_para_enter_index() != mi:
+      return False
     di, _ = self._display_span(mi)
-    return self.characterAt(di) != RETURN_CHAR
+    if self.characterAt(di) != RETURN_CHAR:
+      return True
+    return self._first_error is not None and self._first_error.position() == di
+
+  def _book_para_enter_glyph_replaced(self, mi):
+    return self._book_para_enter_revealed(mi)
 
   def _restore_book_para_enter_untyped(self, mi):
     di, _ = self._display_span(mi)
@@ -474,7 +485,7 @@ class LessonDocument(QTextDocument):
       if not correct:
         self._reveal_read_ahead_word_at(mi)
         self._run.visit(False)
-        c.insertText(char, self.style_error)
+        c.insertText(RETURN_CHAR, self.style_error)
         self._finish_book_insert()
         return
       self._run.visit(True)
@@ -493,7 +504,7 @@ class LessonDocument(QTextDocument):
       self._run.current.errors += char
       if not lenient:
         self._first_error = Cursor(self, position=di, fixed=True)
-      c.insertText(char, self.style_error)
+      c.insertText(RETURN_CHAR, self.style_error)
       self._cursor_to_match_index(mi)
       self._finish_book_insert()
       return
@@ -1324,15 +1335,9 @@ class TyperWindow(QWidget):
     self.statsChanged.emit()
     self._refreshHeatmap()
 
-    if is_lesson:
-      mins = self._settings.get('min_lesson_wpm'), self._settings.get('min_lesson_acc')
-    else:
-      mins = self._settings.get('min_wpm'), self._settings.get('min_acc')
-
-    met = wpm >= mins[0] and acc >= mins[1] / 100.0
-    review_words = [x for x in vals if x[5] == 2] if not is_lesson and self._mode == MODE_NORMAL else []
+    review_words = [x for x in vals if x[5] == 2] if not is_lesson else []
     action = lesson_completion_action(
-      self._mode, met, bool(is_lesson), self._settings.get('auto_review'), bool(review_words),
+      self._mode, bool(is_lesson), self._settings.get('auto_review'), bool(review_words),
       focus_drill=bool(self._focus_drill))
 
     if self._mode == MODE_BOOK and self._book_meta is not None:

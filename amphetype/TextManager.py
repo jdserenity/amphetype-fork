@@ -1,13 +1,17 @@
 
 import logging as log
 import os.path as path
+import shutil
 import time
 import hashlib
+from pathlib import Path
 
 from amphetype.Text import LessonMiner
 from amphetype.Data import DB
 from amphetype.QtUtil import *
 from amphetype.Config import *
+from amphetype.gutenberg.browser import GutenbergBrowser
+from amphetype.gutenberg.paths import texts_dir
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -70,6 +74,10 @@ Good luck!""")
     self.progress.setRange(0, 100)
     self.progress.hide()
 
+    self.gutenberg = GutenbergBrowser(self)
+    self.gutenberg.bookReady.connect(self.importGutenbergBook)
+    self.gutenberg.busyChanged.connect(self._gutenberg_busy)
+
     self.setLayout(AmphBoxLayout(
         [
           ([
@@ -80,31 +88,21 @@ Good luck!""")
               AmphButton("Enable All", self.enableAll),
               AmphButton("Delete Disabled", self.removeDisabled), None,
               AmphButton("Update List", self.update)],
-            [ #AmphButton("Remove", self.removeSelected), "or",
+            [AmphButton("Delete selected", self.deleteSelected), None,
               AmphButton("Toggle disabled", self.disableSelected),
               "on all selected texts that match <a href=\"http://en.wikipedia.org/wiki/Regular_expression\">regular expression</a>",
               SettingsEdit('text_regex')]
           ], 1),
-          [
-            ["Selection method for new lessons:",
-              SettingsCombo('select_method', ['Random', 'In Order', 'Difficult', 'Easy']), None],
-            "(in order works by selecting the next text after the one you completed last, in the order they were added to the database, easy/difficult works by estimating your WPM for several random texts and choosing the fastest/slowest)\n",
-            20,
-            AmphGridLayout([
-              [("Repeat <i>texts</i> that don't meet the following requirements:\n", (1, 3))],
-              ["WPM:", SettingsEdit("min_wpm")],
-              ["Accuracy:", SettingsEdit("min_acc"), (None, (0, 1))],
-              [("Repeat <i>lessons</i> that don't meet the following requirements:\n", (1, 3))],
-              ["WPM:", SettingsEdit("min_lesson_wpm")],
-              ["Accuracy:", SettingsEdit("min_lesson_acc")],
-            ]),
-            None
-          ]
+          [(self.gutenberg, 1)],
         ], QBoxLayout.LeftToRight))
 
     Settings.signal_for("select_method").connect(self.setSelect)
     Settings.signal_for('text_force_ascii').connect(self.nextText)
     self.setSelect(Settings.get('select_method'))
+
+  def showEvent(self, event):
+    super().showEvent(event)
+    self.gutenberg.refresh_catalog_notice()
 
   def setSelect(self, v):
     if v == 0 or v == 1:
@@ -141,9 +139,28 @@ Good luck!""")
     self.diff_eval = _func
     self.nextText()
 
+  def _gutenberg_busy(self, busy):
+    self.tree.setEnabled(not busy)
+
+  def importGutenbergBook(self, source_name, path):
+    self.progress.show()
+    self.progress.setValue(0)
+    book_path = texts_dir() / source_name
+    try:
+      lm = LessonMiner(str(book_path))
+    except Exception:
+      log.error(f'failed to process gutenberg file {source_name}!')
+      self.progress.hide()
+      return
+    lm.progress[int].connect(self.progress.setValue)
+    self.addTexts(source_name, lm, update=False, replace=True)
+    self.progress.hide()
+    self.update()
+    DB.commit()
+
   def addFiles(self):
 
-    qf = QFileDialog(self, "Import Text From File(s)", directory=str(Settings.DATA_DIR / 'texts'))
+    qf = QFileDialog(self, "Import Text From File(s)", directory=str(texts_dir()))
     qf.setNameFilters(["UTF-8 text files (*.txt)", "All files (*)"])
     qf.setFileMode(QFileDialog.ExistingFiles)
     qf.setAcceptMode(QFileDialog.AcceptOpen)
@@ -157,9 +174,13 @@ Good luck!""")
     self.progress.show()
     for x in map(str, files):
       self.progress.setValue(0)
-      fname = path.basename(x)
+      src = Path(x)
+      dest = texts_dir() / src.name
+      if src.resolve() != dest.resolve():
+        shutil.copy2(src, dest)
+      fname = dest.name
       try:
-        lm = LessonMiner(x)
+        lm = LessonMiner(str(dest))
       except:
         log.error(f"failed to process file {fname}!")
         continue
@@ -170,8 +191,10 @@ Good luck!""")
     self.update()
     DB.commit()
 
-  def addTexts(self, source, texts, lesson=None, update=True):
+  def addTexts(self, source, texts, lesson=None, update=True, replace=False):
     id = DB.getSource(source, lesson)
+    if replace:
+      self._clear_source_texts(id)
     r = []
     for x in texts:
       h = hashlib.sha1()
@@ -248,6 +271,43 @@ Good luck!""")
       v = self.defaultText
 
     self.emit_text(v)
+
+  def _clear_source_texts(self, source_id):
+    for row in DB.fetchall('select id from text where source = ?', (source_id,)):
+      DB.execute('delete from result where text_id = ?', (row[0],))
+    DB.execute('delete from text where source = ?', (source_id,))
+
+  def deleteSelected(self):
+    cats, texts = self.getSelected()
+    if not cats and not texts:
+      return
+    parts = []
+    if cats:
+      parts.append(f'{len(cats)} source{"s" if len(cats) != 1 else ""}')
+    if texts:
+      parts.append(f'{len(texts)} lesson{"s" if len(texts) != 1 else ""}')
+    label = ' and '.join(parts)
+    if QMessageBox.question(
+        self, 'Delete selected',
+        f'Delete {label} and any associated typing results?\nThis cannot be undone.',
+        QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+      return
+    for sid in cats:
+      self._clear_source_texts(sid)
+      DB.execute('delete from result where source = ?', (sid,))
+      DB.execute('delete from source where rowid = ?', (sid,))
+    for tid in texts:
+      row = DB.fetchone('select id, source from text where rowid = ?', None, (tid,))
+      if row is None:
+        continue
+      DB.execute('delete from result where text_id = ?', (row[0],))
+      DB.execute('delete from text where rowid = ?', (tid,))
+      rest = DB.fetchall('select rowid from text where source = ? limit 1', (row[1],))
+      if not rest:
+        DB.execute('delete from result where source = ?', (row[1],))
+        DB.execute('delete from source where rowid = ?', (row[1],))
+    self.update()
+    DB.commit()
 
   def removeUnused(self):
     DB.execute('''

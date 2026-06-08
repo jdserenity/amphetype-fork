@@ -32,6 +32,7 @@
 - **Lesson Generator** (`amphetype/Lesson.py`) is off-tab (used by `auto_review` only).
 - Generator repeats/shuffles list entries and joins with spaces — trigram/key practice produces unreadable strings.
 - Novel/text import (`LessonMiner`, `text` table) is separate from stats-based generation.
+- **Project Gutenberg US/AUS** (Preferences → Sources): search merged US (`pg_catalog.csv`) + Australia (`GUTINDEX.AUS`) catalogs (stale after 7 days); duplicate titles prefer US. US import uses `pg{id}.txt`; AUS uses PGA URLs (`.txt` or `.html` → text). Boilerplate stripped (`amphetype/gutenberg/strip_headers.py`), saved under `data/texts/`, then `LessonMiner`. Cache: `gutenberg/` under local `data/` or `QStandardPaths` AppLocalData.
 
 ## Weakspot intelligent lessons
 
