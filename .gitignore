@@ -5,3 +5,6 @@ __pycache__/
 /venv/
 *.db
 /*.egg-info/
+/.wrangler/
+website/node_modules/
+website/.wrangler/

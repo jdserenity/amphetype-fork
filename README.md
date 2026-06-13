@@ -5,7 +5,7 @@ Typing practice with statistics, novel import, and intelligent weak-spot lessons
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md) — stack, typer implementations, Weakspot rules
-- [Deploy](docs/DEPLOY.md) — local dev setup and launch
+- [Deploy](docs/DEPLOY.md) — local dev, Cloudflare Pages website
 - [TODO](docs/TODO.md) — open work and resolved items
 
 ## Quick start (dev)

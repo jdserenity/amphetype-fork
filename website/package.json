@@ -1,0 +1,11 @@
+{
+  "name": "typing-program-website",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev .",
+    "deploy": "wrangler pages deploy . --project-name=typing-program"
+  },
+  "devDependencies": {
+    "wrangler": "^4.24.0"
+  }
+}

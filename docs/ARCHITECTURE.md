@@ -3,6 +3,7 @@
 ## Stack
 
 - Python 3.6+ (local dev: 3.11 — see `docs/DEPLOY.md`), PyQt5 GUI, SQLite (`statistic`, `text`, `source`, `result`) via `amphetype.Data.DB`.
+- Marketing site: static HTML/CSS/JS in `website/`, deployed to Cloudflare Pages (`wrangler.jsonc` → `pages_build_output_dir: ./website`). No build step; `wrangler pages dev` / `wrangler pages deploy` from `website/` for local preview and CLI deploy. Git-connected Pages: root directory `website`, empty build command.
 - Typing stats: `type` 0 = character, 1 = trigram (3 chars, including spaces/punctuation), 2 = word (`amphetype/typer.py`).
 - Main window tabs (`amphetype/Amphetype.py`): Typer, Performance Analysis, Preferences (sub-tabs: General Options, Typer Options, Sources). Last Preferences sub-tab index persists in SQLite (`app_meta.preferences_tab`). Lesson Generator (off-tab, for `auto_review`), Database, About/Help, and the old Weakspot tab are not shown; weakspot runs from the Typer tab mode switch.
 
