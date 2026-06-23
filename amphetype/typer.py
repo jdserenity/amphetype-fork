@@ -206,6 +206,7 @@ class LessonDocument(QTextDocument):
     self._book_auto_returns = False
     self._book_chunks = None
     self._book_chunk_index = 0
+    self._pre_start_paused = False
     self.set_text('default text')
 
   def _book_plain_display(self, text):
@@ -265,6 +266,7 @@ class LessonDocument(QTextDocument):
 
     self._run = None
     self._first_error = None
+    self._pre_start_paused = False
     self._read_ahead_preview = bool(self._read_ahead_mode)
     self._read_ahead_revealed = set()
     self._refresh_read_ahead()
@@ -524,11 +526,15 @@ class LessonDocument(QTextDocument):
     return self._run is not None and not self._run.is_complete()
 
   def is_paused(self):
-    return self._run is not None and self._run.is_paused()
+    return self._pre_start_paused or (self._run is not None and self._run.is_paused())
 
   def pause(self):
-    if not self.is_running() or self.is_paused():
+    if self.is_paused() or self.is_finished():
       return False
+    if self.is_ready():
+      self._pre_start_paused = True
+      self.paused.emit()
+      return True
     self._run.pause()
     self.paused.emit()
     return True
@@ -536,6 +542,10 @@ class LessonDocument(QTextDocument):
   def resume(self):
     if not self.is_paused():
       return False
+    if self._pre_start_paused:
+      self._pre_start_paused = False
+      self.resumed.emit()
+      return True
     self._run.resume()
     self.resumed.emit()
     return True
@@ -814,7 +824,7 @@ class TyperWidget(QTextEdit):
   def _toggle_pause(self):
     if self._lesson.is_paused():
       self._lesson.resume()
-    elif self._lesson.is_running():
+    elif self._lesson.is_ready() or self._lesson.is_running():
       self._lesson.pause()
 
   # Block mouse cursor movement. (Focus should still work.)
@@ -834,7 +844,7 @@ class TyperWidget(QTextEdit):
       return
 
     if evt.key() == Qt.Key_Escape:
-      if self._lesson.is_paused() or self._lesson.is_running():
+      if self._lesson.is_paused() or self._lesson.is_ready() or self._lesson.is_running():
         self._toggle_pause()
       evt.accept()
       return

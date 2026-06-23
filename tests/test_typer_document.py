@@ -502,6 +502,30 @@ def test_widget_still_respects_require_space_when_enabled(qapp):
     assert doc.is_running()
 
 
+def test_escape_pauses_before_first_keystroke(qapp):
+  from PyQt5.QtGui import QFont, QKeyEvent
+  from PyQt5.QtCore import Qt
+  from amphetype.typer import TyperWidget, LessonDocument
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  w.setLesson(doc)
+  assert doc.is_ready()
+  assert not doc.is_paused()
+
+  w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+  assert doc.is_paused()
+  assert doc.is_ready()
+  w.insert('h')
+  assert doc.is_ready()
+
+  w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+  assert not doc.is_paused()
+  w.insert('h')
+  assert doc.is_running()
+
+
 def test_escape_pauses_and_resumes_running_lesson(qapp):
   from PyQt5.QtGui import QFont, QKeyEvent
   from PyQt5.QtCore import Qt
