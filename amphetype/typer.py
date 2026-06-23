@@ -24,6 +24,11 @@ from amphetype.read_ahead import (
 from amphetype.Data import Statistic
 from amphetype.speed_heatmap import (
   MODE_LABELS, char_heatmap_colors, fetch_speed_stats, make_heatmap_legend, mode_stat_type,
+  PROGRESS_GREEN,
+)
+from amphetype.word_progress import (
+  analyze_run_progress, fetch_word_baselines, format_progress_html,
+  is_improved, lesson_words, word_spans, word_wpm_from_slice,
 )
 from collections import defaultdict, Counter
 
@@ -207,6 +212,9 @@ class LessonDocument(QTextDocument):
     self._book_auto_returns = False
     self._book_chunks = None
     self._book_chunk_index = 0
+    self._word_baselines = {}
+    self._word_spans = []
+    self.style_progress = text_style(kerning=False, color=QBrush(QColor(PROGRESS_GREEN)))
     self.set_text('default text')
 
   def _book_plain_display(self, text):
@@ -571,6 +579,7 @@ class LessonDocument(QTextDocument):
 
     if correct:
       self.progress.emit(self._run.index)
+      self._maybe_style_completed_word()
     else:
       self._reveal_read_ahead_word_at(self._run.index)
       self._run.current.errors += char
@@ -650,6 +659,29 @@ class LessonDocument(QTextDocument):
 
     self._refresh_read_ahead()
     self.sig_position.emit(self.cursor)
+
+  def set_word_baselines(self, baselines):
+    self._word_baselines = dict(baselines or {})
+    self._word_spans = word_spans(self._match_text) if self._match_text else []
+
+  def _maybe_style_completed_word(self):
+    if not self._word_baselines or not self._run:
+      return
+    mi = self._run.index
+    if mi <= 0:
+      return
+    for start, end, word in self._word_spans:
+      if end != mi:
+        continue
+      sub = self._run[start:end]
+      if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
+        return
+      base = self._word_baselines.get(word)
+      wpm = word_wpm_from_slice(sub)
+      if base is not None and wpm is not None and is_improved(wpm, base):
+        for j in range(start, end):
+          self._style_match_index(j, self.style_progress)
+      return
 
   def set_speed_heatmap(self, enabled, mode, stats):
     self._speed_heatmap_enabled = enabled
@@ -858,6 +890,7 @@ class TyperWindow(QWidget):
     doc.started.connect(self._on_lesson_started)
     doc.progress.connect(self._prog.setValue)
     doc.ready.connect(self.typingReady)
+    doc.ready.connect(self._load_word_baselines)
     doc.completed.connect(self.typingDone)
 
     self._typer.setLesson(doc)
@@ -1312,6 +1345,13 @@ class TyperWindow(QWidget):
     self._set_improve_footer_busy(False)
     self.needWeakspotLesson.emit(lesson)
 
+  def _load_word_baselines(self, match_text):
+    self._doc.set_word_baselines(fetch_word_baselines(self.DB, lesson_words(match_text)))
+
+  def _show_progress_summary(self, run, stats_saved=True):
+    progress = analyze_run_progress(run, self._doc._word_baselines)
+    self.updateLabel(format_progress_html(progress, stats_saved=stats_saved))
+
   def updateLabel(self, msg=None):
     text = []
     # text.append("[This beta typer will not collect statistics currently, don't use it!]")
@@ -1342,6 +1382,7 @@ class TyperWindow(QWidget):
       return self.typingFailed("Invalid run? (~0 duration)")
 
     if self._focus_drill:
+      self._show_progress_summary(run, stats_saved=False)
       if not self._emit_focus_lesson(self._focus_drill):
         self.updateLabel('Could not rebuild focus drill for those targets.')
       return
@@ -1357,12 +1398,6 @@ class TyperWindow(QWidget):
     values (?,?,?, ?,?,?)
     ''', (now, textid, srcid,
           wpm, acc, visc))
-
-    # Update last view
-    if self._settings.get("show_last"):
-      v2 = self.DB.fetchone("""select agg_median(wpm),agg_median(acc) from
-        (select wpm,100.0*accuracy as acc from result order by w desc limit %d)""" % self._settings.get('def_group_by'), (0.0, 100.0))
-      self.updateLabel("Last: %.1fwpm (%.1f%%), last 10 average: %.1fwpm (%.1f%%)" % ((wpm, 100.0*acc) + v2))
 
     self.DB.commit()
     # type (0: char, 1: trigram, 2: word)
@@ -1397,6 +1432,7 @@ class TyperWindow(QWidget):
     self.DB.commit()
     self.statsChanged.emit()
     self._refreshHeatmap()
+    self._show_progress_summary(run, stats_saved=True)
 
     review_words = [x for x in vals if x[5] == 2] if not is_lesson else []
     action = lesson_completion_action(
