@@ -35,8 +35,10 @@ from amphetype.TextManager import TextManager
 from amphetype.PerformanceAnalysis import PerformanceAnalysis
 from amphetype.Config import GeneralOptions, TyperOptions
 from amphetype.Lesson import LessonGenerator
+from amphetype.layout import FBoxLayout
 
 from amphetype.typer import TyperWindow
+from amphetype.session_timer import FocusedSessionTimer, SessionTimerLabel
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -95,13 +97,49 @@ class AmphetypeWindow(QMainWindow):
       pw.setCurrentWidget(tm)
     lg.newLessons.connect(goto_sources)
 
-    self.setCentralWidget(tabs)
+    content = QWidget()
+    content.setLayout(FBoxLayout([tabs]))
+    self.setCentralWidget(content)
+
+    self._session_timer = FocusedSessionTimer()
+    self._session_clock = SessionTimerLabel(self._session_timer, content)
+    self._session_clock.start()
+    content.installEventFilter(self)
+    if self.isActiveWindow():
+      self._session_timer.resume()
 
     pm = Settings.get('practice_mode')
     if pm == 0:
       tm.nextText()
     elif pm == 1:
       tw._book.request_lesson(advance_chapter=False)
+
+  def _reposition_session_clock(self):
+    host = self.centralWidget()
+    if host is None:
+      return
+    self._session_clock.adjustSize()
+    self._session_clock.move(host.width() - self._session_clock.width() - 10, 8)
+    self._session_clock.raise_()
+
+  def eventFilter(self, obj, evt):
+    if obj is self.centralWidget() and evt.type() == QEvent.Resize:
+      self._reposition_session_clock()
+    return super().eventFilter(obj, evt)
+
+  def changeEvent(self, evt):
+    if evt.type() == QEvent.ActivationChange:
+      if self.isActiveWindow():
+        self._session_timer.resume()
+      else:
+        self._session_timer.pause()
+    super().changeEvent(evt)
+
+  def showEvent(self, evt):
+    super().showEvent(evt)
+    if self.isActiveWindow():
+      self._session_timer.resume()
+    self._reposition_session_clock()
 
   def sizeHint(self):
     return QSize(650, 400)
