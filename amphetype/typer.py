@@ -51,7 +51,7 @@ _IMPROVE_BTN_LABEL = 'improve'
 _CORPUS_BTN_LABEL = 'corpus'
 _GENERATING_BTN_LABEL = 'generating…'
 _FOOTER_ITEM_GAP = 8
-_BADGE_FONT_PT = 10
+_BADGE_FONT_PT = 13
 
 
 def _footer_zero_margins(w):
@@ -602,7 +602,6 @@ class LessonDocument(QTextDocument):
 
     if correct:
       self.progress.emit(self._run.index)
-      self._maybe_style_completed_word()
     else:
       self._reveal_read_ahead_word_at(self._run.index)
       self._run.current.errors += char
@@ -612,6 +611,8 @@ class LessonDocument(QTextDocument):
     # If not really advancing `_run` will track inserts we're doing.
     mi = self._run.index
     self._run.advance(should_advance)
+    if correct and should_advance:
+      self._maybe_style_completed_word()
 
     style = self.style_correct if correct else self.style_error
     hide_ret = (self._book_auto_returns and char == RETURN_CHAR
@@ -694,6 +695,12 @@ class LessonDocument(QTextDocument):
   def set_progress_badges(self, badges):
     self._progress_badges = list(badges)
     self.progress_badges_changed.emit()
+
+  def apply_improved_word_styles(self, run, baselines):
+    from amphetype.word_progress import improved_word_spans
+    for start, end, _wpm, _gain in improved_word_spans(run, baselines, self._match_text):
+      for j in range(start, end):
+        self._style_match_index(j, self.style_progress)
 
   def _drop_badges_from(self, match_index):
     n = len(self._progress_badges)
@@ -810,16 +817,17 @@ class TyperWidget(QTextEdit):
       return
     p = QPainter(self.viewport())
     p.setRenderHint(QPainter.Antialiasing)
+    f = QFont()
+    f.setPointSize(_BADGE_FONT_PT)
+    p.setFont(f)
+    fm = QFontMetrics(f)
     for start, end, gain in badges:
       r = self._badge_rect(start, end)
       pad = 2
-      box = QRect(r.left() - pad, r.top() - pad, r.width() + pad * 2, r.height() + pad * 2)
+      box_h = max(r.height() + pad * 2, fm.height() + 4)
+      box = QRect(r.left() - pad, r.top() - pad, r.width() + pad * 2, box_h)
       p.fillRect(box, QColor(80, 80, 80, 120))
       p.setPen(QColor('#f0f0f0'))
-      f = QFont()
-      f.setPointSize(_BADGE_FONT_PT)
-      p.setFont(f)
-      fm = QFontMetrics(f)
       full_lbl = '+%dwpm' % gain
       short_lbl = '+%d' % gain
       lbl = full_lbl if fm.horizontalAdvance(full_lbl) + 4 <= box.width() else short_lbl
@@ -1457,8 +1465,10 @@ class TyperWindow(QWidget):
 
   def _show_progress_summary(self, run, stats_saved=True):
     baselines = self._doc._word_baselines
-    progress = analyze_run_progress(run, baselines)
-    self._doc.set_progress_badges(progress_badges_for_run(run, baselines, self._doc._match_text))
+    match_text = self._doc._match_text
+    progress = analyze_run_progress(run, baselines, match_text)
+    self._doc.apply_improved_word_styles(run, baselines)
+    self._doc.set_progress_badges(progress_badges_for_run(run, baselines, match_text))
     self._awaiting_next = True
     self._typer.set_awaiting_enter(self._continue_lesson)
     self.updateLabel(format_progress_html(progress, stats_saved=stats_saved))

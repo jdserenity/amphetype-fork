@@ -64,13 +64,27 @@ class RunProgress:
     return int(round(self.gain_total / self.gain_count))
 
 
-def analyze_run_progress(run, baselines):
+def improved_word_spans(run, baselines, match_text):
+  """Each improved word occurrence: (start, end, wpm, gain)."""
+  out = []
+  for start, end, word in word_spans(match_text or ''):
+    sub = run[start:end]
+    if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
+      continue
+    wpm = word_wpm_from_slice(sub)
+    base = baselines.get(word)
+    if base is not None and wpm is not None and is_improved(wpm, base):
+      out.append((start, end, wpm, wpm_gain(wpm, base)))
+  return out
+
+
+def analyze_run_progress(run, baselines, match_text=None):
   """Score a finished run against baselines captured before the run wrote stats."""
   improved = 0; known = 0; new_words = []; gain_total = 0; gain_count = 0
   seen_new = set()
-  for sub in run.timed_words(complete=True):
-    word = sub.text
-    if any(sub[i].mistakes for i in range(len(sub))):
+  for start, end, word in word_spans(match_text or run.text):
+    sub = run[start:end]
+    if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
       continue
     wpm = word_wpm_from_slice(sub)
     if wpm is None:
@@ -90,16 +104,7 @@ def analyze_run_progress(run, baselines):
 
 def progress_badges_for_run(run, baselines, match_text):
   """(start, end, gain) spans for improved words; shown after the run completes."""
-  badges = []
-  for start, end, word in word_spans(match_text or ''):
-    sub = run[start:end]
-    if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
-      continue
-    wpm = word_wpm_from_slice(sub)
-    base = baselines.get(word)
-    if base is not None and wpm is not None and is_improved(wpm, base):
-      badges.append((start, end, wpm_gain(wpm, base)))
-  return badges
+  return [(s, e, g) for s, e, _w, g in improved_word_spans(run, baselines, match_text)]
 
 
 def format_progress_html(progress, stats_saved=True):

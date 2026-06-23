@@ -8,8 +8,8 @@ import pytest
 from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED
 from amphetype.timingtuple import RunStats
 from amphetype.word_progress import (
-  analyze_run_progress, fetch_word_baselines, format_progress_html, is_improved,
-  lesson_words, progress_badges_for_run, word_wpm_from_slice,
+  analyze_run_progress, fetch_word_baselines, format_progress_html, improved_word_spans,
+  is_improved, lesson_words, progress_badges_for_run, word_wpm_from_slice,
 )
 
 
@@ -89,6 +89,13 @@ def test_progress_badges_for_run():
   badges = progress_badges_for_run(run, {'fast': 50.0, 'slow': 90.0}, 'fast slow')
   assert len(badges) == 1
   assert badges[0][2] == 30
+
+
+def test_improved_word_spans_includes_last_word():
+  run = _make_run('ab', spc=12.0 / 80.0)
+  spans = improved_word_spans(run, {'ab': 50.0}, 'ab')
+  assert len(spans) == 1
+  assert spans[0][1] == 2
 
 
 def test_analyze_run_progress_improved_and_new():
