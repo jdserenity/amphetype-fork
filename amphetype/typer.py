@@ -1046,10 +1046,16 @@ class TyperWindow(QWidget):
     hp_lay.addWidget(self._heatmap_legend, 0)
 
     mode_row = QWidget()
-    self._mode_lay = QHBoxLayout(mode_row)
-    self._mode_lay.setContentsMargins(0, 0, 0, 0)
-    self._mode_lay.setSpacing(_FOOTER_ITEM_GAP)
-    self._sync_footer_row()
+    mode_lay = QHBoxLayout(mode_row)
+    mode_lay.setContentsMargins(0, 0, 0, 0)
+    mode_lay.setSpacing(_FOOTER_ITEM_GAP)
+    self._heatmap_panel.setVisible(False)
+    for w in (self._btn_improve, self._btn_improve_level, self._btn_book, self._btn_corpus,
+              self._btn_read_ahead, self._btn_read_ahead_level, self._btn_heatmap,
+              self._heatmap_panel):
+      mode_lay.addWidget(w)
+    mode_lay.addStretch(1)
+    mode_lay.addWidget(self._source_lbl)
     self.S('speed_heatmap').bind_value(self._onHeatmapSetting, call=True)
     self.S('speed_heatmap_mode').bind_value(self._onHeatmapSetting, call=True)
 
@@ -1069,28 +1075,6 @@ class TyperWindow(QWidget):
   def _polish_mode_btn(self, btn):
     btn.style().unpolish(btn)
     btn.style().polish(btn)
-
-  def _footer_row_widgets(self):
-    ws = [self._btn_improve]
-    if self._btn_improve_level.isVisible():
-      ws.append(self._btn_improve_level)
-    ws.append(self._btn_book)
-    ws.extend([self._btn_corpus, self._btn_read_ahead])
-    if self._btn_read_ahead_level.isVisible():
-      ws.append(self._btn_read_ahead_level)
-    ws.append(self._btn_heatmap)
-    if self._heatmap_panel.isVisible():
-      ws.append(self._heatmap_panel)
-    return ws
-
-  def _sync_footer_row(self):
-    lay = self._mode_lay
-    while lay.count():
-      lay.takeAt(0)
-    for w in self._footer_row_widgets():
-      lay.addWidget(w)
-    lay.addStretch(1)
-    lay.addWidget(self._source_lbl)
 
   def _refresh_book_btn(self):
     if self._mode == MODE_BOOK and self._book_prog_text:
@@ -1123,7 +1107,6 @@ class TyperWindow(QWidget):
       self._btn_improve_level.setStyleSheet(self._mode_btn_style)
       self._btn_improve_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_improve_level)
-    self._sync_footer_row()
 
   def _improve_hist_cutoff(self):
     return time() - Settings.get('history') * 86400.0
@@ -1167,7 +1150,6 @@ class TyperWindow(QWidget):
       self._btn_read_ahead_level.setStyleSheet(self._mode_btn_style)
       self._btn_read_ahead_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_read_ahead_level)
-    self._sync_footer_row()
     if refresh_doc:
       self._doc.set_read_ahead_mode(document_read_ahead_mode(enabled, level))
 
@@ -1191,7 +1173,6 @@ class TyperWindow(QWidget):
     self._heatmap_panel.setVisible(on)
     self._btn_heatmap_kind.setText(MODE_LABELS[mode])
     self._style_heatmap_footer_btn(self._btn_heatmap_kind, on)
-    self._sync_footer_row()
     self._refreshHeatmap()
 
   def _heatmapStats(self):
