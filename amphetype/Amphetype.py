@@ -97,11 +97,14 @@ class AmphetypeWindow(QMainWindow):
     lg.newLessons.connect(goto_sources)
 
     self._session_timer = FocusedSessionTimer()
-    self._session_clock = SessionTimerLabel(self._session_timer)
+    self._session_clock = SessionTimerLabel(self._session_timer, tabs)
     self._session_clock.start()
-    tabs.setCornerWidget(self._session_clock, Qt.TopRightCorner)
+    self._session_clock.textChanged.connect(self._reposition_session_clock)
+    tabs.installEventFilter(self)
 
     self.setCentralWidget(tabs)
+    Settings.signal_for('show_session_timer').connect(lambda *_: self._apply_session_clock_visible())
+    self._apply_session_clock_visible()
     if self.isActiveWindow():
       self._session_timer.resume()
 
@@ -110,6 +113,30 @@ class AmphetypeWindow(QMainWindow):
       tm.nextText()
     elif pm == 1:
       tw._book.request_lesson(advance_chapter=False)
+
+  def _apply_session_clock_visible(self):
+    on = bool(Settings.get('show_session_timer'))
+    self._session_clock.setVisible(on)
+    if on:
+      self._reposition_session_clock()
+
+  def _reposition_session_clock(self):
+    tabs = self.centralWidget()
+    if tabs is None or not self._session_clock.isVisible():
+      return
+    y = tabs.tabBar().height() + 10
+    self._session_clock.adjustSize()
+    self._session_clock.move(tabs.width() - self._session_clock.width() - 12, y)
+    self._session_clock.raise_()
+
+  def eventFilter(self, obj, evt):
+    if obj is self.centralWidget() and evt.type() in (QEvent.Resize, QEvent.Show):
+      self._reposition_session_clock()
+    return super().eventFilter(obj, evt)
+
+  def showEvent(self, evt):
+    super().showEvent(evt)
+    self._reposition_session_clock()
 
   def changeEvent(self, evt):
     if evt.type() == QEvent.ActivationChange:

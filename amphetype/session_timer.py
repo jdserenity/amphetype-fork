@@ -1,16 +1,18 @@
 """Focused session clock — elapsed time while the main window is frontmost."""
 
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal
 from PyQt5.QtWidgets import QLabel
 
 from amphetype import timer
 
 
-def format_session_time(secs):
+def format_session_label(secs):
   secs = max(0, int(secs))
-  h, rem = divmod(secs, 3600)
-  m, s = divmod(rem, 60)
-  return f'{h}:{m:02d}:{s:02d}'
+  if secs >= 3600:
+    return f'{secs // 3600} hour session'
+  if secs >= 60:
+    return f'{secs // 60} minute session'
+  return f'{secs} second session'
 
 
 class FocusedSessionTimer:
@@ -36,6 +38,8 @@ class FocusedSessionTimer:
 
 
 class SessionTimerLabel(QLabel):
+  textChanged = pyqtSignal()
+
   def __init__(self, session_timer, parent=None):
     super().__init__(parent)
     self._session_timer = session_timer
@@ -51,4 +55,5 @@ class SessionTimerLabel(QLabel):
     self._refresh()
 
   def _refresh(self):
-    self.setText(format_session_time(self._session_timer.elapsed()))
+    self.setText(format_session_label(self._session_timer.elapsed()))
+    self.textChanged.emit()

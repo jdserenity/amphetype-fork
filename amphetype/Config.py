@@ -99,6 +99,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "book_source_id": 0,
     "book_max_chars": 12000,
     "read_ahead_enabled": False,
+    "show_session_timer": True,
   }
 
   typer_defaults = {
@@ -468,6 +469,7 @@ class GeneralOptions(QWidget):
       [SettingsCheckBox("text_force_ascii", 'Force unicode to plain ASCII'), ('(‘fancy’ “quotes” → "normal" quotes, <code>æ</code> → <code>ae</code>, etc.)', 1)],
       SettingsCheckBox('auto_review', "Automatically review slow and mistyped words after texts."),
       SettingsCheckBox('show_last', "Show last result(s) above text in the Typer."),
+      SettingsCheckBox('show_session_timer', "Show focused session timer in the top-right corner."),
       SettingsCheckBox('use_lesson_stats', "Save key/trigram/word statistics from generated lessons."),
       SettingsCheckBox('req_space', "Make SPACE mandatory before each session",
                         toolTip="""This is generally recommended because otherwise the timing of the very first character has to be inferred artificially (a median is used)."""),

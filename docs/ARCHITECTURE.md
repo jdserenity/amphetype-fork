@@ -7,7 +7,7 @@
 - Sales: Lemon Squeezy ($5 one-time). LS generates license keys per sale. App activates via LS License API on first launch (`amphetype/license.py`); settings keys `license_key`, `license_instance_id`, `license_machine_id`. Offline grace: if a key was activated before and the network is down, launch is allowed.
 - Typing stats: `type` 0 = character, 1 = trigram (3 chars, including spaces/punctuation), 2 = word (`amphetype/typer.py`).
 - Main window tabs (`amphetype/Amphetype.py`): Typer, Performance Analysis, Preferences (sub-tabs: General Options, Typer Options, Sources). Last Preferences sub-tab index persists in SQLite (`app_meta.preferences_tab`). Lesson Generator (off-tab, for `auto_review`), Database, About/Help, and the old Weakspot tab are not shown; weakspot runs from the Typer tab mode switch.
-- **Session clock** (`amphetype/session_timer.py`): `H:MM:SS` in the main tab bar top-right corner (`QTabWidget` corner widget). Counts elapsed time only while the app window is focused; pauses when another window is frontmost. Unaffected by lesson pause, settings, or tab changes.
+- **Session clock** (`amphetype/session_timer.py`): top-right of the content area (below the tab bar), e.g. `15 minutes session`. Counts elapsed time only while the app window is focused. Toggle via General Options → **Show focused session timer** (`show_session_timer`, default on). Unaffected by lesson pause or tab changes.
 
 ## Typing practice (Typer)
 
