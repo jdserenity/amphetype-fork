@@ -5,7 +5,7 @@ import time
 
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
-from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, fetch_analysis_search, fetch_oblivion_picks
+from amphetype.stats_query import ANALYSIS_OUTER_SQL, ANALYSIS_ORDER_OPTIONS, STATS_AGG_SUBQUERY, analysis_order_clause, fetch_analysis_search, fetch_oblivion_picks
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
@@ -57,16 +57,7 @@ class StringStats(QWidget):
     self._corpus_lbl.setStyleSheet('color: #c44;')
     self._corpus_lbl.hide()
 
-    ob = SettingsCombo('ana_which', [
-          ('wpm asc', 'slowest'),
-          ('wpm desc', 'fastest'),
-          ('viscosity desc', 'most hesitation'),
-          ('viscosity asc', 'least hesitation'),
-          ('accuracy asc', 'least accurate'),
-          ('misses desc', 'most mistyped'),
-          ('total desc', 'most common'),
-          ('damage desc', 'most damaging'),
-          ])
+    ob = SettingsCombo('ana_which', ANALYSIS_ORDER_OPTIONS)
 
     wc = SettingsCombo('ana_what', ['keys', 'trigrams', 'words'])
     lim = SettingsEdit('ana_many')
@@ -124,7 +115,7 @@ class StringStats(QWidget):
       return
     rows = fetch_analysis_search(
       DB, time.time() - Settings.get('history') * 86400.0,
-      Settings.get('ana_what'), Settings.get('ana_count'), term, Settings.get('ana_which'))
+      Settings.get('ana_what'), Settings.get('ana_count'), term, analysis_order_clause(Settings.get('ana_which')))
     self._search_applied = term
     self.model.setData(rows)
     self._sync_search_btn()
@@ -137,12 +128,12 @@ class StringStats(QWidget):
     cat = Settings.get('ana_what')
     count = Settings.get('ana_count')
     hist = time.time() - Settings.get('history') * 86400.0
-    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, order, limit)
+    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_clause(order), limit)
     return DB.fetchall(sql, (hist, cat, count)), cat
 
   def update(self, *arg):
     self.clear_corpus_msg()
-    rows, _ = self._query_rows(Settings.get('ana_which'), Settings.get('ana_many'))
+    rows, _ = self._query_rows(analysis_order_clause(Settings.get('ana_which')), Settings.get('ana_many'))
     self._baseline_rows = list(rows)
     if self._search_applied is not None:
       self._apply_search()

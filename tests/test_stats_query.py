@@ -6,8 +6,8 @@ import unittest
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.stats_query import (
   ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
-  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, count_unique_typed, fetch_analysis_search,
-  fetch_oblivion_pool, fetch_oblivion_picks,
+  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, analysis_order_clause, count_unique_typed,
+  fetch_analysis_search, fetch_oblivion_pool, fetch_oblivion_picks,
 )
 from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
 
@@ -170,6 +170,11 @@ class TestStatsAggregation(unittest.TestCase):
     self.assertEqual(len(limited), 10)
     hits = fetch_analysis_search(conn, 0, STAT_TYPE_WORD, 1, 'w', 'data asc')
     self.assertEqual(len(hits), 40)
+
+
+def test_analysis_order_clause_rejects_unknown_sort():
+  assert analysis_order_clause('improved desc') == 'wpm asc'
+  assert analysis_order_clause('damage desc') == 'damage desc'
 
 
 def test_fetch_oblivion_pool_returns_all_under_threshold():

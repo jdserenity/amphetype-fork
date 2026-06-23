@@ -281,6 +281,7 @@ class SettingsCombo(QComboBox):
 
     prev = Settings.get(setting)
     self.idx2item = []
+    matched = False
     for i in range(len(lst)):
       if isinstance(lst[i], str):
         # not a tuple, use index as key
@@ -291,6 +292,10 @@ class SettingsCombo(QComboBox):
       self.idx2item.append(k)
       if k == prev:
         self.setCurrentIndex(i)
+        matched = True
+    if not matched and self.idx2item:
+      self.setCurrentIndex(0)
+      Settings.set(setting, self.idx2item[0])
 
     self.activated[int].connect(lambda x: Settings.set(setting, self.idx2item[x]))
 
