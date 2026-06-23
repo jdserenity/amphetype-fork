@@ -14,15 +14,18 @@ def mode_stat_type(mode):
   return _STAT_TYPE[mode]
 
 # Stoplight buckets — bright, full saturation (legend + underlines).
-OBLIVION_WPM = 30
+OBLIVION_WPM = 32
+WPM_GREEN = '#00e676'
+PROGRESS_GREEN = WPM_GREEN
+PROGRESS_RED = '#d64545'
 WPM_BUCKETS = (
-  (0, '#a855f7'),    # <30 purple (oblivion)
-  (30, '#d64545'),   # 30–59
-  (60, '#ff8c00'),   # 60–89
-  (90, '#ffd600'),   # 90–119
-  (120, '#00e676'),  # 120+
+  (0, '#a855f7'),     # <32 (oblivion)
+  (32, '#d64545'),    # 32–54
+  (55, '#ff8c00'),    # 55–77
+  (78, '#ffd600'),    # 78–99
+  (100, WPM_GREEN),   # 100+
 )
-WPM_BUCKET_LABELS = ('<30', '30–59', '60–89', '90–119', '120+')
+WPM_BUCKET_LABELS = ('<32', '32–54', '55–77', '78–99', '100+')
 
 _WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
 
