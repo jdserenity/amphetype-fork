@@ -32,9 +32,11 @@ def word_wpm_from_slice(sub):
   spcs = []
   for i in range(len(sub)):
     st = sub[i:i + 1].stats
-    if st is None:
-      return None
+    if st is None or st[0] is None:
+      continue
     spcs.append(st[0])
+  if not spcs:
+    return None
   m = median(spcs)
   if m is None or m <= 0:
     return None

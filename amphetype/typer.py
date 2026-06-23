@@ -51,6 +51,7 @@ _IMPROVE_BTN_LABEL = 'improve'
 _CORPUS_BTN_LABEL = 'corpus'
 _GENERATING_BTN_LABEL = 'generating…'
 _FOOTER_ITEM_GAP = 8
+_FOOTER_PAIR_GAP = 4
 
 
 def lesson_completion_action(mode, is_lesson, auto_review, has_review_words, focus_drill=False):
@@ -1019,17 +1020,27 @@ class TyperWindow(QWidget):
     hp_lay.addWidget(self._btn_heatmap_kind, 0)
     hp_lay.addWidget(self._heatmap_legend, 0)
 
+    def _footer_pair(*widgets):
+      w = QWidget()
+      lay = QHBoxLayout(w)
+      lay.setContentsMargins(0, 0, 0, 0)
+      lay.setSpacing(_FOOTER_PAIR_GAP)
+      for x in widgets:
+        lay.addWidget(x)
+      return w
+
+    self._improve_group = _footer_pair(self._btn_improve, self._btn_improve_level)
+    self._book_group = _footer_pair(self._btn_book, self._book_prog_lbl)
+    self._read_ahead_group = _footer_pair(self._btn_read_ahead, self._btn_read_ahead_level)
+
     mode_row = QWidget()
     mode_lay = QHBoxLayout(mode_row)
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
-    mode_lay.addWidget(self._btn_improve)
-    mode_lay.addWidget(self._btn_improve_level)
-    mode_lay.addWidget(self._btn_book)
-    mode_lay.addWidget(self._book_prog_lbl)
+    mode_lay.addWidget(self._improve_group)
+    mode_lay.addWidget(self._book_group)
     mode_lay.addWidget(self._btn_corpus)
-    mode_lay.addWidget(self._btn_read_ahead)
-    mode_lay.addWidget(self._btn_read_ahead_level)
+    mode_lay.addWidget(self._read_ahead_group)
     mode_lay.addWidget(self._btn_heatmap)
     mode_lay.addWidget(self._heatmap_panel)
     mode_lay.addStretch(1)

@@ -61,6 +61,17 @@ def test_word_wpm_from_slice():
   assert wpm == pytest.approx(60.0)
 
 
+def test_word_wpm_from_slice_skips_chars_without_timing():
+  run = RunStats.make('ab', started=None)
+  run[0].visit(True, None)
+  run[0].last = 1000.5
+  run[1].visit(True, 1000.5)
+  run[1].last = 1000.6
+  run.index = 2
+  wpm = word_wpm_from_slice(run[0:2])
+  assert wpm == pytest.approx(120.0)
+
+
 def test_analyze_run_progress_improved_and_new():
   run = _make_run('fast slow newword', spc=12.0 / 80.0)
   baselines = {'fast': 50.0, 'slow': 90.0}
