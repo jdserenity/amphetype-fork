@@ -42,7 +42,7 @@ class SessionTimerLabel(QLabel):
     super().__init__(parent)
     self._session_timer = session_timer
     self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-    self.setStyleSheet('color: rgba(255, 255, 255, 0.28); font-size: 11px; padding: 0 2px;')
+    self.setStyleSheet('color: #555; font-size: 11px; padding: 0 2px;')
     self._tick = QTimer(self)
     self._tick.setInterval(500)
     self._tick.timeout.connect(self._refresh)
