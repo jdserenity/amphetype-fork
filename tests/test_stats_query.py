@@ -3,11 +3,13 @@
 import sqlite3
 import unittest
 
+import pytest
+
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.stats_query import (
   ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
-  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, count_unique_typed, fetch_oblivion_pool,
-  fetch_oblivion_picks,
+  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, count_unique_typed, fetch_first_sample_wpm,
+  fetch_oblivion_pool, fetch_oblivion_picks,
 )
 from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
 
@@ -122,6 +124,18 @@ class TestStatsAggregation(unittest.TestCase):
     self.assertEqual(set(rows), {'Lady', 'lady'})
     self.assertAlmostEqual(12.0 / rows['Lady'], 70.0)
     self.assertAlmostEqual(12.0 / rows['lady'], 25.0)
+
+
+def test_fetch_first_sample_wpm():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now - 1000, 'slow', STAT_TYPE_WORD, 12.0 / 30.0, 5, 0, 1.0, None),
+      (now, 'slow', STAT_TYPE_WORD, 12.0 / 60.0, 5, 0, 1.0, None),
+    ])
+  first = fetch_first_sample_wpm(conn, STAT_TYPE_WORD, ['slow'])
+  assert first['slow'] == pytest.approx(30.0)
 
 
 def test_fetch_oblivion_pool_returns_all_under_threshold():
