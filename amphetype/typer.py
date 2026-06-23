@@ -24,7 +24,6 @@ from amphetype.read_ahead import (
 from amphetype.Data import Statistic
 from amphetype.speed_heatmap import (
   MODE_LABELS, char_heatmap_colors, fetch_speed_stats, make_heatmap_legend, mode_stat_type,
-  PROGRESS_GREEN,
 )
 from amphetype.word_progress import (
   analyze_run_progress, fetch_word_baselines, format_progress_html,
@@ -191,6 +190,7 @@ class LessonDocument(QTextDocument):
   completed = pyqtSignal('PyQt_PyObject')
   error = pyqtSignal(str)
   progress = pyqtSignal(int)
+  progress_badges_changed = pyqtSignal()
 
   def __init__(self, font, *args, **kwargs):
     super().__init__(*args, undoRedoEnabled=False, **kwargs)
@@ -214,7 +214,7 @@ class LessonDocument(QTextDocument):
     self._book_chunk_index = 0
     self._word_baselines = {}
     self._word_spans = []
-    self.style_progress = text_style(kerning=False, color=QBrush(QColor(PROGRESS_GREEN)))
+    self._progress_badges = []
     self.set_text('default text')
 
   def _book_plain_display(self, text):
@@ -231,11 +231,14 @@ class LessonDocument(QTextDocument):
     self.set_text(active, prologue=before, epilogue=after, book_mode=True)
 
   def advance_book_chunk(self):
-    if not self._book_chunks or self._book_chunk_index + 1 >= len(self._book_chunks):
+    if not self.has_next_book_chunk():
       return False
     self.set_book_chapter(
       ''.join(self._book_chunks), self._book_chunks, self._book_chunk_index + 1, self._book_auto_returns)
     return True
+
+  def has_next_book_chunk(self):
+    return bool(self._book_chunks) and self._book_chunk_index + 1 < len(self._book_chunks)
 
   def set_text(self, text, prologue='', epilogue='', book_mode=False):
     if not book_mode:
@@ -274,6 +277,7 @@ class LessonDocument(QTextDocument):
 
     self._run = None
     self._first_error = None
+    self._progress_badges = []
     self._read_ahead_preview = bool(self._read_ahead_mode)
     self._read_ahead_revealed = set()
     self._refresh_read_ahead()
@@ -650,6 +654,7 @@ class LessonDocument(QTextDocument):
       c = self._run.pop_char()
       log.debug("backspacing over <%s> (by_word=%s protected=%s cursor=%s mark=%s)", c, by_word, protected, str(self.cursor), str(mark))
       if c is not None:
+        self._drop_badges_from(self._run.index)
         self.cursor.insertText(c, self.style_untyped)
         self.cursor.movePosition(QTextCursor.PreviousCharacter)
       self.cursor.deletePreviousChar()
@@ -663,6 +668,15 @@ class LessonDocument(QTextDocument):
   def set_word_baselines(self, baselines):
     self._word_baselines = dict(baselines or {})
     self._word_spans = word_spans(self._match_text) if self._match_text else []
+
+  def progress_badges(self):
+    return list(self._progress_badges)
+
+  def _drop_badges_from(self, match_index):
+    n = len(self._progress_badges)
+    self._progress_badges = [(s, e, g) for s, e, g in self._progress_badges if e <= match_index]
+    if len(self._progress_badges) != n:
+      self.progress_badges_changed.emit()
 
   def _maybe_style_completed_word(self):
     if not self._word_baselines or not self._run:
@@ -679,8 +693,9 @@ class LessonDocument(QTextDocument):
       base = self._word_baselines.get(word)
       wpm = word_wpm_from_slice(sub)
       if base is not None and wpm is not None and is_improved(wpm, base):
-        for j in range(start, end):
-          self._style_match_index(j, self.style_progress)
+        from amphetype.word_progress import wpm_gain
+        self._progress_badges.append((start, end, wpm_gain(wpm, base)))
+        self.progress_badges_changed.emit()
       return
 
   def set_speed_heatmap(self, enabled, mode, stats):
@@ -711,6 +726,7 @@ class TyperWidget(QTextEdit):
     self._settings = settings
     self._lesson = None
     self._pin_typing_center = False
+    self._on_awaiting_enter = None
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
     settings('overwrite_mode').bind_value(self.setOverwriteMode)
@@ -751,6 +767,38 @@ class TyperWidget(QTextEdit):
     if not self.center_typing_vertically():
       QTimer.singleShot(0, self._center_typing_when_ready)
 
+  def set_awaiting_enter(self, cb):
+    self._on_awaiting_enter = cb
+    self.viewport().update()
+
+  def _badge_rect(self, start_mi, end_mi):
+    lesson = self._lesson
+    lo = lesson._display_span(start_mi)[0]
+    hi = lesson._display_span(end_mi - 1)[0] + lesson._display_span(end_mi - 1)[1]
+    r = self.cursorRect(Cursor(lesson, lo))
+    r = r.united(self.cursorRect(Cursor(lesson, max(lo, hi - 1))))
+    return r
+
+  def paintEvent(self, evt):
+    super().paintEvent(evt)
+    if not self._lesson:
+      return
+    badges = self._lesson.progress_badges()
+    if not badges:
+      return
+    p = QPainter(self.viewport())
+    p.setRenderHint(QPainter.Antialiasing)
+    for start, end, gain in badges:
+      r = self._badge_rect(start, end)
+      badge_h = 14
+      box_w = max(r.width() + 8, 44)
+      box = QRect(r.left(), r.top() - badge_h - 3, box_w, badge_h)
+      p.fillRect(box, QColor(80, 80, 80, 150))
+      p.setPen(QColor('#f0f0f0'))
+      f = p.font(); f.setPointSize(max(7, f.pointSize() - 2)); p.setFont(f)
+      p.drawText(box, Qt.AlignCenter, '+%dwpm' % gain)
+    p.end()
+
   def resizeEvent(self, evt):
     super().resizeEvent(evt)
     if self._pin_typing_center:
@@ -766,6 +814,7 @@ class TyperWidget(QTextEdit):
       self._lesson.sig_position.disconnect(self._follow_cursor)
       self._lesson.ready.disconnect(self.updateStatus)
       self._lesson.completed.disconnect(self.updateStatus)
+      self._lesson.progress_badges_changed.disconnect(self._repaint_badges)
 
     if self.document() != lesson:
       w = self.cursorWidth() # Layout thingamajig resets cursor width.
@@ -777,7 +826,11 @@ class TyperWidget(QTextEdit):
     lesson.sig_position.connect(self._follow_cursor)
     lesson.ready.connect(self.updateStatus)
     lesson.completed.connect(self.updateStatus)
+    lesson.progress_badges_changed.connect(self._repaint_badges)
     self._lesson = lesson
+
+  def _repaint_badges(self):
+    self.viewport().update()
 
   def _follow_cursor(self, cursor):
     self.setTextCursor(cursor)
@@ -800,12 +853,19 @@ class TyperWidget(QTextEdit):
       evt.ignore()
       return
 
+    if self._lesson.is_finished() and self._on_awaiting_enter:
+      if evt.key() in (Qt.Key_Enter, Qt.Key_Return):
+        self._on_awaiting_enter()
+        evt.accept()
+        return
+
     if evt.key() == Qt.Key_Backspace or evt.key() == Qt.Key_Back:
       by_word = bool(evt.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier))
       self.backspace(word=by_word)
     elif evt.key() == Qt.Key_Enter or evt.key() == Qt.Key_Return:
       self.insert(RETURN_CHAR)
     elif evt.key() == Qt.Key_Escape:
+      self._on_awaiting_enter = None
       self._lesson.reset()
     elif evt.text() and ord(evt.text()) >= 32:
       self.insert(evt.text())
@@ -856,6 +916,10 @@ class TyperWindow(QWidget):
     self._focus_drill = None
     self._focus_drill_wpm = {}
     self._focus_drill_from_pa = False
+    self._awaiting_next = False
+    self._pending_action = None
+    self._pending_now = None
+    self._pending_review_words = None
     self._weakspot = WeakSpotLessonBuilder(self)
     self._weakspot.lessonReady.connect(self._on_weakspot_lesson)
     self._weakspot.busyChanged.connect(self._on_weakspot_busy)
@@ -890,7 +954,7 @@ class TyperWindow(QWidget):
     doc.started.connect(self._on_lesson_started)
     doc.progress.connect(self._prog.setValue)
     doc.ready.connect(self.typingReady)
-    doc.ready.connect(self._load_word_baselines)
+    doc.ready.connect(self._on_lesson_ready)
     doc.completed.connect(self.typingDone)
 
     self._typer.setLesson(doc)
@@ -1345,12 +1409,68 @@ class TyperWindow(QWidget):
     self._set_improve_footer_busy(False)
     self.needWeakspotLesson.emit(lesson)
 
+  def _on_lesson_ready(self, match_text):
+    self._load_word_baselines(match_text)
+    if self._awaiting_next and self._doc.is_ready():
+      self._clear_awaiting()
+      self.updateLabel()
+
   def _load_word_baselines(self, match_text):
     self._doc.set_word_baselines(fetch_word_baselines(self.DB, lesson_words(match_text)))
 
+  def _clear_awaiting(self):
+    self._awaiting_next = False
+    self._pending_action = None
+    self._pending_now = None
+    self._pending_review_words = None
+    self._typer.set_awaiting_enter(None)
+
   def _show_progress_summary(self, run, stats_saved=True):
     progress = analyze_run_progress(run, self._doc._word_baselines)
+    self._awaiting_next = True
+    self._typer.set_awaiting_enter(self._continue_lesson)
     self.updateLabel(format_progress_html(progress, stats_saved=stats_saved))
+
+  def _continue_lesson(self):
+    action = self._pending_action
+    now = self._pending_now
+    review_words = self._pending_review_words
+    self._clear_awaiting()
+    if action == 'focus_repeat':
+      if self._focus_drill:
+        if not self._emit_focus_lesson(self._focus_drill):
+          self.updateLabel('Could not rebuild focus drill for those targets.')
+      else:
+        self.setText(self._current_lesson)
+      return
+    if action == 'book_chunk' and self._mode == MODE_BOOK and self._book_meta is not None:
+      m = self._book_meta
+      srcid = self._current_lesson[1]
+      if self._doc.advance_book_chunk():
+        m = dict(m, chunk_index=m['chunk_index'] + 1)
+        self._book_meta = m
+        active = m['chunks'][m['chunk_index']]
+        tid = lesson_text_id(srcid, m['chapter_index'], m['chunk_index'])
+        self._current_lesson = (tid, srcid, active)
+        self._update_book_footer(m)
+        self._prog_layout.setCurrentIndex(0)
+        self._prog.setValue(0)
+        self._prog.setMaximum(len(active))
+        self._schedule_typing_center()
+        self._refreshHeatmap()
+      return
+    if action == 'book_next':
+      self._book.request_lesson(advance_chapter=False)
+    elif action == 'improve_next':
+      self._weakspot.invalidate_cache()
+      self._load_improve_lesson()
+    elif action == 'review' and review_words:
+      review_words.sort(key=lambda x: (x[4], x[0]), reverse=True)
+      u = sum(x[4] != 0 for x in review_words)
+      u += (len(review_words) - u) // 4
+      self.wantReview.emit([x[6] for x in review_words[:u]])
+    elif action == 'normal_next':
+      self.wantText.emit()
 
   def updateLabel(self, msg=None):
     text = []
@@ -1360,6 +1480,8 @@ class TyperWindow(QWidget):
       text.append('')
 
     text.append("Press ESCAPE to cancel at any time.")
+    if self._awaiting_next:
+      text.append("Press ENTER to start the next exercise.")
     self._label.setText('<br />'.join(text))
 
   def typingFailed(self, txt):
@@ -1382,9 +1504,8 @@ class TyperWindow(QWidget):
       return self.typingFailed("Invalid run? (~0 duration)")
 
     if self._focus_drill:
+      self._pending_action = 'focus_repeat'
       self._show_progress_summary(run, stats_saved=False)
-      if not self._emit_focus_lesson(self._focus_drill):
-        self.updateLabel('Could not rebuild focus drill for those targets.')
       return
 
     now = time()
@@ -1432,44 +1553,24 @@ class TyperWindow(QWidget):
     self.DB.commit()
     self.statsChanged.emit()
     self._refreshHeatmap()
-    self._show_progress_summary(run, stats_saved=True)
 
     review_words = [x for x in vals if x[5] == 2] if not is_lesson else []
     action = lesson_completion_action(
       self._mode, bool(is_lesson), self._settings.get('auto_review'), bool(review_words),
       focus_drill=bool(self._focus_drill))
 
+    self._pending_now = now
+    self._pending_review_words = review_words if action == 'review' else None
+
     if self._mode == MODE_BOOK and self._book_meta is not None:
       m = self._book_meta
       srcid = self._current_lesson[1]
-      if self._doc.advance_book_chunk():
-        self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
-        m = dict(m, chunk_index=m['chunk_index'] + 1)
-        self._book_meta = m
-        active = m['chunks'][m['chunk_index']]
-        tid = lesson_text_id(srcid, m['chapter_index'], m['chunk_index'])
-        self._current_lesson = (tid, srcid, active)
-        self._update_book_footer(m)
-        self._prog_layout.setCurrentIndex(0)
-        self._prog.setValue(0)
-        self._prog.setMaximum(len(active))
-        self._schedule_typing_center()
-        self._refreshHeatmap()
+      if self._doc.has_next_book_chunk():
+        self._pending_action = 'book_chunk'
+        self._show_progress_summary(run, stats_saved=True)
         return
       self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
 
-    if action == 'focus_repeat':
-      self.setText(self._current_lesson)
-    elif action == 'book_next':
-      self._book.request_lesson(advance_chapter=False)
-    elif action == 'improve_next':
-      self._weakspot.invalidate_cache()
-      self._load_improve_lesson()
-    elif action == 'review':
-      review_words.sort(key=lambda x: (x[4], x[0]), reverse=True)
-      u = sum(x[4] != 0 for x in review_words)
-      u += (len(review_words) - u) // 4
-      self.wantReview.emit([x[6] for x in review_words[:u]])
-    else:
-      self.wantText.emit()
+    self._pending_action = action
+    self._show_progress_summary(run, stats_saved=True)
 
