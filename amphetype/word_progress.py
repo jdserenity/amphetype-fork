@@ -25,22 +25,13 @@ def fetch_word_baselines(db, words):
 
 
 def word_wpm_from_slice(sub):
-  """WPM for a completed word slice; same median-spc pool as collect_run_stat_rows."""
-  from amphetype.timingtuple import median
+  """WPM for a completed word; same whole-word spc as collect_run_stat_rows word bucket."""
   if not sub.is_complete():
     return None
-  spcs = []
-  for i in range(len(sub)):
-    st = sub[i:i + 1].stats
-    if st is None or st[0] is None:
-      continue
-    spcs.append(st[0])
-  if not spcs:
+  st = sub.stats
+  if st is None or st[0] is None or st[0] <= 0:
     return None
-  m = median(spcs)
-  if m is None or m <= 0:
-    return None
-  return 12.0 / m
+  return 12.0 / st[0]
 
 
 def is_improved(run_wpm, baseline_wpm):
@@ -95,6 +86,20 @@ def analyze_run_progress(run, baselines):
       seen_new.add(word)
       new_words.append(word)
   return RunProgress(improved, known, new_words, gain_total, gain_count)
+
+
+def progress_badges_for_run(run, baselines, match_text):
+  """(start, end, gain) spans for improved words; shown after the run completes."""
+  badges = []
+  for start, end, word in word_spans(match_text or ''):
+    sub = run[start:end]
+    if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
+      continue
+    wpm = word_wpm_from_slice(sub)
+    base = baselines.get(word)
+    if base is not None and wpm is not None and is_improved(wpm, base):
+      badges.append((start, end, wpm_gain(wpm, base)))
+  return badges
 
 
 def format_progress_html(progress, stats_saved=True):

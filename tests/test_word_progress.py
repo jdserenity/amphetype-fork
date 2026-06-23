@@ -9,7 +9,7 @@ from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RE
 from amphetype.timingtuple import RunStats
 from amphetype.word_progress import (
   analyze_run_progress, fetch_word_baselines, format_progress_html, is_improved,
-  lesson_words, word_wpm_from_slice,
+  lesson_words, progress_badges_for_run, word_wpm_from_slice,
 )
 
 
@@ -61,15 +61,34 @@ def test_word_wpm_from_slice():
   assert wpm == pytest.approx(60.0)
 
 
-def test_word_wpm_from_slice_skips_chars_without_timing():
+def test_word_wpm_from_slice_uses_whole_word_not_char_median():
+  run = RunStats.make('hello', started=1000.0)
+  t = 1000.0
+  for i in range(5):
+    run[i].visit(True, t)
+    t += 0.5 if i == 0 else 0.05
+    run[i].last = t
+    run.index = i + 1
+  sub = run[0:5]
+  assert word_wpm_from_slice(sub) == pytest.approx(12.0 / sub.stats[0])
+  assert word_wpm_from_slice(sub) == pytest.approx(85.714, rel=1e-3)
+
+
+def test_word_wpm_from_slice_skips_incomplete():
   run = RunStats.make('ab', started=None)
   run[0].visit(True, None)
   run[0].last = 1000.5
   run[1].visit(True, 1000.5)
-  run[1].last = 1000.6
+  run[1].last = 1000.55
   run.index = 2
-  wpm = word_wpm_from_slice(run[0:2])
-  assert wpm == pytest.approx(120.0)
+  assert word_wpm_from_slice(run[0:2]) is None
+
+
+def test_progress_badges_for_run():
+  run = _make_run('fast slow', spc=12.0 / 80.0)
+  badges = progress_badges_for_run(run, {'fast': 50.0, 'slow': 90.0}, 'fast slow')
+  assert len(badges) == 1
+  assert badges[0][2] == 30
 
 
 def test_analyze_run_progress_improved_and_new():

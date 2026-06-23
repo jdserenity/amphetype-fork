@@ -28,7 +28,7 @@ from amphetype.speed_heatmap import (
 )
 from amphetype.word_progress import (
   analyze_run_progress, fetch_word_baselines, format_progress_html,
-  is_improved, lesson_words, word_spans, word_wpm_from_slice,
+  is_improved, lesson_words, progress_badges_for_run, word_spans, word_wpm_from_slice,
 )
 from collections import defaultdict, Counter
 
@@ -691,6 +691,10 @@ class LessonDocument(QTextDocument):
   def progress_badges(self):
     return list(self._progress_badges)
 
+  def set_progress_badges(self, badges):
+    self._progress_badges = list(badges)
+    self.progress_badges_changed.emit()
+
   def _drop_badges_from(self, match_index):
     n = len(self._progress_badges)
     self._progress_badges = [(s, e, g) for s, e, g in self._progress_badges if e <= match_index]
@@ -712,11 +716,8 @@ class LessonDocument(QTextDocument):
       base = self._word_baselines.get(word)
       wpm = word_wpm_from_slice(sub)
       if base is not None and wpm is not None and is_improved(wpm, base):
-        from amphetype.word_progress import wpm_gain
         for j in range(start, end):
           self._style_match_index(j, self.style_progress)
-        self._progress_badges.append((start, end, wpm_gain(wpm, base)))
-        self.progress_badges_changed.emit()
       return
 
   def set_speed_heatmap(self, enabled, mode, stats):
@@ -1474,7 +1475,9 @@ class TyperWindow(QWidget):
     self._typer.set_awaiting_enter(None)
 
   def _show_progress_summary(self, run, stats_saved=True):
-    progress = analyze_run_progress(run, self._doc._word_baselines)
+    baselines = self._doc._word_baselines
+    progress = analyze_run_progress(run, baselines)
+    self._doc.set_progress_badges(progress_badges_for_run(run, baselines, self._doc._match_text))
     self._awaiting_next = True
     self._typer.set_awaiting_enter(self._continue_lesson)
     self.updateLabel(format_progress_html(progress, stats_saved=stats_saved))
