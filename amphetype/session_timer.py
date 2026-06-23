@@ -8,11 +8,9 @@ from amphetype import timer
 
 def format_session_label(secs):
   secs = max(0, int(secs))
-  if secs >= 3600:
-    return f'{secs // 3600} hour session'
-  if secs >= 60:
-    return f'{secs // 60} minute session'
-  return f'{secs} second session'
+  h, rem = divmod(secs, 3600)
+  m, s = divmod(rem, 60)
+  return f'{h}:{m:02d}:{s:02d} session'
 
 
 class FocusedSessionTimer:
@@ -44,7 +42,7 @@ class SessionTimerLabel(QLabel):
     super().__init__(parent)
     self._session_timer = session_timer
     self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-    self.setStyleSheet('color: #aaaaaa; font-size: 12px; padding: 2px 6px;')
+    self.setStyleSheet('color: rgba(255, 255, 255, 0.28); font-size: 11px; padding: 0 2px;')
     self._tick = QTimer(self)
     self._tick.setInterval(500)
     self._tick.timeout.connect(self._refresh)
