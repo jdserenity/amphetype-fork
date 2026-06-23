@@ -611,8 +611,6 @@ class LessonDocument(QTextDocument):
     # If not really advancing `_run` will track inserts we're doing.
     mi = self._run.index
     self._run.advance(should_advance)
-    if correct and should_advance:
-      self._maybe_style_completed_word()
 
     style = self.style_correct if correct else self.style_error
     hide_ret = (self._book_auto_returns and char == RETURN_CHAR
@@ -624,6 +622,8 @@ class LessonDocument(QTextDocument):
 
     if correct and self._book_auto_returns:
       self._consume_auto_returns()
+    if correct and should_advance:
+      self._maybe_style_completed_word()
 
     if self.is_finished():
       self.completed.emit(self._run)
