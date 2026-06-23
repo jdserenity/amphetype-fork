@@ -53,21 +53,29 @@ def wpm_gain(run_wpm, baseline_wpm):
 
 
 class RunProgress:
-  __slots__ = ('improved', 'known', 'new_words')
+  __slots__ = ('improved', 'known', 'new_words', 'gain_total', 'gain_count')
 
-  def __init__(self, improved=0, known=0, new_words=None):
+  def __init__(self, improved=0, known=0, new_words=None, gain_total=0, gain_count=0):
     self.improved = improved
     self.known = known
     self.new_words = list(new_words or [])
+    self.gain_total = gain_total
+    self.gain_count = gain_count
 
   @property
   def new_count(self):
     return len(self.new_words)
 
+  @property
+  def avg_gain(self):
+    if not self.gain_count:
+      return 0
+    return int(round(self.gain_total / self.gain_count))
+
 
 def analyze_run_progress(run, baselines):
   """Score a finished run against baselines captured before the run wrote stats."""
-  improved = 0; known = 0; new_words = []
+  improved = 0; known = 0; new_words = []; gain_total = 0; gain_count = 0
   seen_new = set()
   for sub in run.timed_words(complete=True):
     word = sub.text
@@ -81,17 +89,19 @@ def analyze_run_progress(run, baselines):
       known += 1
       if is_improved(wpm, base):
         improved += 1
+        g = wpm_gain(wpm, base)
+        gain_total += g; gain_count += 1
     elif word not in seen_new:
       seen_new.add(word)
       new_words.append(word)
-  return RunProgress(improved, known, new_words)
+  return RunProgress(improved, known, new_words, gain_total, gain_count)
 
 
 def format_progress_html(progress, stats_saved=True):
   imp_color = PROGRESS_GREEN if progress.improved > 0 else PROGRESS_RED
   lines = [
-    'You improved on <span style="color:%s">%d</span> out of %d words!' % (
-      imp_color, progress.improved, progress.known),
+    'You improved on <span style="color:%s">%d</span> out of %d words at an average of <span style="color:%s">+%d</span>wpm!' % (
+      imp_color, progress.improved, progress.known, imp_color, progress.avg_gain),
   ]
   if progress.new_count > 0:
     lines.append('You typed <span style="color:%s">%d</span> unique new word%s!' % (

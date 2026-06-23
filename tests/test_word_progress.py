@@ -78,6 +78,7 @@ def test_analyze_run_progress_improved_and_new():
   p = analyze_run_progress(run, baselines)
   assert p.known == 2
   assert p.improved == 1  # fast 80 vs 50; slow 80 vs 90 not improved
+  assert p.avg_gain == 30
   assert p.new_words == ['newword']
 
 
@@ -99,7 +100,8 @@ def test_analyze_run_progress_skips_mistyped_words():
 def test_format_progress_html_zero_improved_is_red():
   html = format_progress_html(analyze_run_progress(_make_run('a', spc=0.2), {'a': 200.0}))
   assert PROGRESS_RED in html
-  assert '0</span> out of 1 words!' in html
+  assert '0</span> out of 1 words at an average of' in html
+  assert '+0</span>wpm!' in html
 
 
 def test_format_progress_html_new_words_orange():
@@ -131,3 +133,4 @@ def test_format_progress_html_improved_green():
   run = _make_run('fast', spc=12.0 / 80.0)
   html = format_progress_html(analyze_run_progress(run, {'fast': 50.0}))
   assert PROGRESS_GREEN in html
+  assert '+30</span>wpm!' in html

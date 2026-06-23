@@ -51,7 +51,12 @@ _IMPROVE_BTN_LABEL = 'improve'
 _CORPUS_BTN_LABEL = 'corpus'
 _GENERATING_BTN_LABEL = 'generating…'
 _FOOTER_ITEM_GAP = 8
-_FOOTER_PAIR_GAP = 4
+
+
+def _footer_zero_margins(w):
+  w.setContentsMargins(0, 0, 0, 0)
+  if isinstance(w, QLabel):
+    w.setMargin(0)
 
 
 def lesson_completion_action(mode, is_lesson, auto_review, has_review_words, focus_drill=False):
@@ -801,7 +806,11 @@ class TyperWidget(QTextEdit):
       p.fillRect(box, QColor(80, 80, 80, 120))
       p.setPen(QColor('#f0f0f0'))
       f = p.font(); f.setPointSize(max(7, f.pointSize() - 2)); p.setFont(f)
-      p.drawText(box, Qt.AlignCenter, '+%dwpm' % gain)
+      fm = QFontMetrics(f)
+      full_lbl = '+%dwpm' % gain
+      short_lbl = '+%d' % gain
+      lbl = full_lbl if fm.horizontalAdvance(full_lbl) + 4 <= box.width() else short_lbl
+      p.drawText(box, Qt.AlignCenter, lbl)
     p.end()
 
   def resizeEvent(self, evt):
@@ -978,11 +987,11 @@ class TyperWindow(QWidget):
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
     self._source_lbl.installEventFilter(self)
     self._book_prog_lbl = QLabel('')
-    self._book_prog_lbl.setStyleSheet('color: #ffffff; font-size: 11px; padding: 2px 0;')
+    self._book_prog_lbl.setStyleSheet('color: #ffffff; font-size: 11px; padding: 2px 0; margin: 0;')
     self._book_prog_lbl.setVisible(False)
 
     self._mode_btn_style = (
-      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 0; }'
+      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 0; margin: 0; }'
       'QPushButton:hover { color: #888; }'
       'QPushButton[activeMode="true"] { color: #ffffff; }')
 
@@ -1001,9 +1010,12 @@ class TyperWindow(QWidget):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setStyleSheet(self._mode_btn_style)
+      _footer_zero_margins(b)
     for b in (self._btn_heatmap, self._btn_heatmap_kind):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
+      _footer_zero_margins(b)
+    _footer_zero_margins(self._book_prog_lbl)
     self._btn_improve.clicked.connect(self._on_improve_click)
     self._btn_corpus.clicked.connect(lambda: self.set_practice_mode(MODE_CORPUS))
     self._btn_book.clicked.connect(lambda: self.set_practice_mode(MODE_BOOK))
@@ -1020,29 +1032,14 @@ class TyperWindow(QWidget):
     hp_lay.addWidget(self._btn_heatmap_kind, 0)
     hp_lay.addWidget(self._heatmap_legend, 0)
 
-    def _footer_pair(*widgets):
-      w = QWidget()
-      lay = QHBoxLayout(w)
-      lay.setContentsMargins(0, 0, 0, 0)
-      lay.setSpacing(_FOOTER_PAIR_GAP)
-      for x in widgets:
-        lay.addWidget(x)
-      return w
-
-    self._improve_group = _footer_pair(self._btn_improve, self._btn_improve_level)
-    self._book_group = _footer_pair(self._btn_book, self._book_prog_lbl)
-    self._read_ahead_group = _footer_pair(self._btn_read_ahead, self._btn_read_ahead_level)
-
     mode_row = QWidget()
     mode_lay = QHBoxLayout(mode_row)
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
-    mode_lay.addWidget(self._improve_group)
-    mode_lay.addWidget(self._book_group)
-    mode_lay.addWidget(self._btn_corpus)
-    mode_lay.addWidget(self._read_ahead_group)
-    mode_lay.addWidget(self._btn_heatmap)
-    mode_lay.addWidget(self._heatmap_panel)
+    for w in (self._btn_improve, self._btn_improve_level, self._btn_book, self._book_prog_lbl,
+              self._btn_corpus, self._btn_read_ahead, self._btn_read_ahead_level,
+              self._btn_heatmap, self._heatmap_panel):
+      mode_lay.addWidget(w)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
     self.S('speed_heatmap').bind_value(self._onHeatmapSetting, call=True)
@@ -1150,7 +1147,7 @@ class TyperWindow(QWidget):
     # Direct color — QSS activeMode only matches bool true, not int 1 from settings.
     color = '#ffffff' if on else '#555555'
     btn.setStyleSheet(
-      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px; padding: 2px 0; }'
+      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px; padding: 2px 0; margin: 0; }'
       'QPushButton:hover { color: #888888; }' % color)
 
   def _onHeatmapSetting(self, *_):
