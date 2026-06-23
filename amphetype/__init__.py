@@ -50,12 +50,15 @@ AMPH_LOCAL     setting this to "1" is the same as specifying "-l".
   p.add_argument('-L', '--log', metavar='LOGFILE',
                  help="""enables logging to the given file; use "-" to log to stdout""")
   p.add_argument('-V', '--version', action='version', version=f'amphetype {__version__}')
+  p.add_argument('--skip-license', action='store_true',
+                 help='skip Lemon Squeezy license check (dev only)')
 
   # parse_known_args() because there might be QT arguments?
   args, _ = p.parse_known_args()
 
   args.settings = args.settings or os.environ.get('AMPH_SETTINGS')
   args.local = args.local or _env_true(os.environ.get('AMPH_LOCAL'))
+  args.skip_license = args.skip_license or _env_true(os.environ.get('TYPING_PROGRAM_SKIP_LICENSE'))
 
   logfile = args.log or os.environ.get('AMPH_LOGFILE')
   logargs = dict(level=logging.DEBUG)

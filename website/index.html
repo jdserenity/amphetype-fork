@@ -18,7 +18,7 @@
       <nav class="nav" aria-label="Main">
         <a href="#features">Features</a>
         <a href="#pricing">Pricing</a>
-        <a class="nav-cta" href="#pricing">Get it — $5</a>
+        <a class="nav-cta" href="#" data-checkout>Get it — $5</a>
       </nav>
       <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="mobile-nav" aria-label="Open menu">
         <span></span><span></span><span></span>
@@ -27,7 +27,7 @@
     <nav id="mobile-nav" class="mobile-nav" aria-label="Mobile" hidden>
       <a href="#features">Features</a>
       <a href="#pricing">Pricing</a>
-      <a href="#pricing">Get it — $5</a>
+      <a href="#" data-checkout>Get it — $5</a>
     </nav>
   </header>
 
@@ -39,7 +39,7 @@
           <h1>Type faster on text you actually want to read</h1>
           <p class="lead">Typing Program That Helps You Type Better turns novels, essays, and your own imports into focused lessons — then finds your weak keys, trigrams, and words and drills them with real phrases, not gibberish.</p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="#pricing">Get it — $5</a>
+            <a class="btn btn-primary" href="#" data-checkout>Get it — $5</a>
             <a class="btn btn-ghost" href="#features">See features</a>
           </div>
         </div>
@@ -96,7 +96,7 @@
           <article class="feature-card">
             <div class="feature-icon" aria-hidden="true">⌨</div>
             <h3>Layout-agnostic</h3>
-            <p>QWERTY, Colemak, Dvorak — Typing Program cares how you type, not which layout label is on the keycaps.</p>
+            <p>QWERTY, Dvorak, or anything else — Typing Program cares how you type, not which layout is printed on the keys.</p>
           </article>
         </div>
       </div>
@@ -105,9 +105,9 @@
     <section class="highlight">
       <div class="container highlight-inner">
         <blockquote>
-          <p>When I was learning Colemak, I typed <em>The Metamorphosis</em> cover to cover. Practice should feel like progress, not punishment.</p>
+          <p>Most typing apps give you random word lists. Typing Program tracks what you actually miss — specific keys, letter pairs, and words — then builds your next lesson around those weak spots using normal sentences.</p>
         </blockquote>
-        <p class="highlight-note">A desktop app built for people who want to get measurably better.</p>
+        <p class="highlight-note">Measure, target, improve. One desktop app, no subscription.</p>
       </div>
     </section>
 
@@ -129,8 +129,9 @@
             <li>Weak-spot and book mode practice</li>
             <li>Performance analysis and heatmaps</li>
           </ul>
-          <a class="btn btn-primary btn-block" href="mailto:hello@typingprogram.app?subject=Typing%20Program%20purchase">Buy for $5</a>
-          <p class="pricing-footnote">Checkout coming soon — email us to purchase early access.</p>
+          <a class="btn btn-primary btn-block" href="#" data-checkout>Buy for $5</a>
+          <p id="checkout-notice" class="checkout-notice" hidden>Checkout link not set yet — paste your Lemon Squeezy checkout URL into <code>website/checkout.json</code> and reload.</p>
+          <p class="pricing-footnote">Secure checkout via Lemon Squeezy. License key and download links arrive by email.</p>
         </div>
       </div>
     </section>

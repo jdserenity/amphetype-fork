@@ -2,8 +2,11 @@
 
 def main_normal():
   import amphetype.Amphetype as A
-  import amphetype.Config as S
-  
+  from amphetype.license import ensure_licensed
+
+  if not ensure_licensed(A.app, A.Settings):
+    return 1
+
   w = A.AmphetypeWindow()
   w.show()
   r = A.app.exec_()
