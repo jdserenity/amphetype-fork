@@ -51,12 +51,22 @@ _IMPROVE_BTN_LABEL = 'improve'
 _CORPUS_BTN_LABEL = 'corpus'
 _GENERATING_BTN_LABEL = 'generating…'
 _FOOTER_ITEM_GAP = 8
+_BADGE_FONT_PT = 10
 
 
 def _footer_zero_margins(w):
   w.setContentsMargins(0, 0, 0, 0)
   if isinstance(w, QLabel):
     w.setMargin(0)
+
+
+def _footer_btn_style(active=False):
+  color = '#ffffff' if active else '#555'
+  hover = '#888' if not active else '#ffffff'
+  return (
+    'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
+    ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
+    'QPushButton:hover { color: %s; }' % (color, hover))
 
 
 def lesson_completion_action(mode, is_lesson, auto_review, has_review_words, focus_drill=False):
@@ -805,7 +815,9 @@ class TyperWidget(QTextEdit):
       box = QRect(r.left() - pad, r.top() - pad, r.width() + pad * 2, r.height() + pad * 2)
       p.fillRect(box, QColor(80, 80, 80, 120))
       p.setPen(QColor('#f0f0f0'))
-      f = p.font(); f.setPointSize(max(7, f.pointSize() - 2)); p.setFont(f)
+      f = QFont()
+      f.setPointSize(_BADGE_FONT_PT)
+      p.setFont(f)
       fm = QFontMetrics(f)
       full_lbl = '+%dwpm' % gain
       short_lbl = '+%d' % gain
@@ -986,12 +998,11 @@ class TyperWindow(QWidget):
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
     self._source_lbl.installEventFilter(self)
-    self._book_prog_lbl = QLabel('')
-    self._book_prog_lbl.setStyleSheet('color: #ffffff; font-size: 11px; padding: 2px 0; margin: 0;')
-    self._book_prog_lbl.setVisible(False)
+    self._book_prog_text = ''
 
     self._mode_btn_style = (
-      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px; padding: 2px 0; margin: 0; }'
+      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px;'
+      ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
       'QPushButton:hover { color: #888; }'
       'QPushButton[activeMode="true"] { color: #ffffff; }')
 
@@ -1010,12 +1021,13 @@ class TyperWindow(QWidget):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setStyleSheet(self._mode_btn_style)
+      b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       _footer_zero_margins(b)
     for b in (self._btn_heatmap, self._btn_heatmap_kind):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
+      b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       _footer_zero_margins(b)
-    _footer_zero_margins(self._book_prog_lbl)
     self._btn_improve.clicked.connect(self._on_improve_click)
     self._btn_corpus.clicked.connect(lambda: self.set_practice_mode(MODE_CORPUS))
     self._btn_book.clicked.connect(lambda: self.set_practice_mode(MODE_BOOK))
@@ -1033,15 +1045,10 @@ class TyperWindow(QWidget):
     hp_lay.addWidget(self._heatmap_legend, 0)
 
     mode_row = QWidget()
-    mode_lay = QHBoxLayout(mode_row)
-    mode_lay.setContentsMargins(0, 0, 0, 0)
-    mode_lay.setSpacing(_FOOTER_ITEM_GAP)
-    for w in (self._btn_improve, self._btn_improve_level, self._btn_book, self._book_prog_lbl,
-              self._btn_corpus, self._btn_read_ahead, self._btn_read_ahead_level,
-              self._btn_heatmap, self._heatmap_panel):
-      mode_lay.addWidget(w)
-    mode_lay.addStretch(1)
-    mode_lay.addWidget(self._source_lbl)
+    self._mode_lay = QHBoxLayout(mode_row)
+    self._mode_lay.setContentsMargins(0, 0, 0, 0)
+    self._mode_lay.setSpacing(_FOOTER_ITEM_GAP)
+    self._sync_footer_row()
     self.S('speed_heatmap').bind_value(self._onHeatmapSetting, call=True)
     self.S('speed_heatmap_mode').bind_value(self._onHeatmapSetting, call=True)
 
@@ -1061,6 +1068,34 @@ class TyperWindow(QWidget):
   def _polish_mode_btn(self, btn):
     btn.style().unpolish(btn)
     btn.style().polish(btn)
+
+  def _footer_row_widgets(self):
+    ws = [self._btn_improve]
+    if self._btn_improve_level.isVisible():
+      ws.append(self._btn_improve_level)
+    ws.append(self._btn_book)
+    ws.extend([self._btn_corpus, self._btn_read_ahead])
+    if self._btn_read_ahead_level.isVisible():
+      ws.append(self._btn_read_ahead_level)
+    ws.append(self._btn_heatmap)
+    if self._heatmap_panel.isVisible():
+      ws.append(self._heatmap_panel)
+    return ws
+
+  def _sync_footer_row(self):
+    lay = self._mode_lay
+    while lay.count():
+      lay.takeAt(0)
+    for w in self._footer_row_widgets():
+      lay.addWidget(w)
+    lay.addStretch(1)
+    lay.addWidget(self._source_lbl)
+
+  def _refresh_book_btn(self):
+    if self._mode == MODE_BOOK and self._book_prog_text:
+      self._btn_book.setText('book · ' + self._book_prog_text)
+    else:
+      self._btn_book.setText('book')
 
   def _apply_read_ahead_from_settings(self):
     enabled = bool(self._settings.get('read_ahead_enabled'))
@@ -1087,6 +1122,7 @@ class TyperWindow(QWidget):
       self._btn_improve_level.setStyleSheet(self._mode_btn_style)
       self._btn_improve_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_improve_level)
+    self._sync_footer_row()
 
   def _improve_hist_cutoff(self):
     return time() - Settings.get('history') * 86400.0
@@ -1130,6 +1166,7 @@ class TyperWindow(QWidget):
       self._btn_read_ahead_level.setStyleSheet(self._mode_btn_style)
       self._btn_read_ahead_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_read_ahead_level)
+    self._sync_footer_row()
     if refresh_doc:
       self._doc.set_read_ahead_mode(document_read_ahead_mode(enabled, level))
 
@@ -1144,11 +1181,7 @@ class TyperWindow(QWidget):
     self.S('speed_heatmap_mode').set(mode)
 
   def _style_heatmap_footer_btn(self, btn, on):
-    # Direct color — QSS activeMode only matches bool true, not int 1 from settings.
-    color = '#ffffff' if on else '#555555'
-    btn.setStyleSheet(
-      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px; padding: 2px 0; margin: 0; }'
-      'QPushButton:hover { color: #888888; }' % color)
+    btn.setStyleSheet(_footer_btn_style(on))
 
   def _onHeatmapSetting(self, *_):
     on = bool(self.S('speed_heatmap').get())
@@ -1157,6 +1190,7 @@ class TyperWindow(QWidget):
     self._heatmap_panel.setVisible(on)
     self._btn_heatmap_kind.setText(MODE_LABELS[mode])
     self._style_heatmap_footer_btn(self._btn_heatmap_kind, on)
+    self._sync_footer_row()
     self._refreshHeatmap()
 
   def _heatmapStats(self):
@@ -1250,7 +1284,8 @@ class TyperWindow(QWidget):
       meta = self._book_meta or {}
     prog = format_book_progress(
       meta.get('title') or '', meta.get('chunk_index', 0), meta.get('chunk_count', 0))
-    self._book_prog_lbl.setText(prog)
+    self._book_prog_text = prog
+    self._refresh_book_btn()
     book = meta.get('book_name') or ''
     self._source_lbl.setText(format_source_attribution(book))
     self._source_lbl.setVisible(bool(book))
@@ -1272,7 +1307,8 @@ class TyperWindow(QWidget):
 
   def _on_book_progress(self, msg):
     if self._mode == MODE_BOOK:
-      self._book_prog_lbl.setText(msg)
+      self._book_prog_text = msg
+      self._refresh_book_btn()
 
   def _on_book_lesson(self, lesson):
     if self._mode != MODE_BOOK:
@@ -1380,7 +1416,7 @@ class TyperWindow(QWidget):
       btn.setProperty('activeMode', mode == m)
       self._polish_mode_btn(btn)
     self._set_improve_submode_ui(self._improve_submode)
-    self._book_prog_lbl.setVisible(mode == MODE_BOOK)
+    self._refresh_book_btn()
     if self._current_lesson and mode == MODE_CORPUS:
       self._source_lbl.setCursor(Qt.ArrowCursor)
       self._update_source_label(self._current_lesson[1])
