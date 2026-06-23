@@ -24,6 +24,7 @@ from amphetype.read_ahead import (
 from amphetype.Data import Statistic
 from amphetype.speed_heatmap import (
   MODE_LABELS, char_heatmap_colors, fetch_speed_stats, make_heatmap_legend, mode_stat_type,
+  PROGRESS_GREEN,
 )
 from amphetype.word_progress import (
   analyze_run_progress, fetch_word_baselines, format_progress_html,
@@ -215,6 +216,7 @@ class LessonDocument(QTextDocument):
     self._word_baselines = {}
     self._word_spans = []
     self._progress_badges = []
+    self.style_progress = text_style(kerning=False, color=QBrush(QColor(PROGRESS_GREEN)))
     self.set_text('default text')
 
   def _book_plain_display(self, text):
@@ -694,6 +696,8 @@ class LessonDocument(QTextDocument):
       wpm = word_wpm_from_slice(sub)
       if base is not None and wpm is not None and is_improved(wpm, base):
         from amphetype.word_progress import wpm_gain
+        for j in range(start, end):
+          self._style_match_index(j, self.style_progress)
         self._progress_badges.append((start, end, wpm_gain(wpm, base)))
         self.progress_badges_changed.emit()
       return
@@ -790,10 +794,9 @@ class TyperWidget(QTextEdit):
     p.setRenderHint(QPainter.Antialiasing)
     for start, end, gain in badges:
       r = self._badge_rect(start, end)
-      badge_h = 14
-      box_w = max(r.width() + 8, 44)
-      box = QRect(r.left(), r.top() - badge_h - 3, box_w, badge_h)
-      p.fillRect(box, QColor(80, 80, 80, 150))
+      pad = 2
+      box = QRect(r.left() - pad, r.top() - pad, r.width() + pad * 2, r.height() + pad * 2)
+      p.fillRect(box, QColor(80, 80, 80, 120))
       p.setPen(QColor('#f0f0f0'))
       f = p.font(); f.setPointSize(max(7, f.pointSize() - 2)); p.setFont(f)
       p.drawText(box, Qt.AlignCenter, '+%dwpm' % gain)
