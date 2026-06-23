@@ -69,4 +69,5 @@ class PerformanceAnalysis(QWidget):
 
   def hideEvent(self, evt):
     self.st.clear_corpus_msg()
+    self.st.clear_search()
     return super(PerformanceAnalysis, self).hideEvent(evt)

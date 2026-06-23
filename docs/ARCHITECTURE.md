@@ -29,7 +29,7 @@
 
 ## Performance Analysis tab
 
-- Single tab (`amphetype/PerformanceAnalysis.py`) with sub-tabs **Stats** (aggregated keys/trigrams/words from `statistic` with impact/damage ranking) and **Progress** (session `result` history, source filter, grouping, WPM/accuracy/viscosity graph, double-click to retry a text). Header shows **Unique words typed** / **Unique trigrams typed** (`count_unique_typed` in `stats_query.py`, distinct `statistic.data` in the history window). Both share the `history` days window (tab header + Preferences); session rows are also capped by `perf_items`, Stats rows by `ana_many` and `ana_count`.
+- Single tab (`amphetype/PerformanceAnalysis.py`) with sub-tabs **Stats** (aggregated keys/trigrams/words from `statistic` with impact/damage ranking) and **Progress** (session `result` history, source filter, grouping, WPM/accuracy/viscosity graph, double-click to retry a text). Header shows **Unique words typed** / **Unique trigrams typed** (`count_unique_typed` in `stats_query.py`, distinct `statistic.data` in the history window). Both share the `history` days window (tab header + Preferences); session rows are also capped by `perf_items`, Stats rows by `ana_many` and `ana_count`. **Stats** search bar: substring match on the current keys/trigrams/words list (`fetch_analysis_search` in `stats_query.py`); words are case-insensitive, keys/trigrams case-sensitive; returns all matches (no `ana_many` cap), still respects `ana_count` and sort order; **Clear** restores the limited list; editing the term switches the button back to **Search**; leaving Performance Analysis clears search.
 
 ## Lesson generation (baseline)
 

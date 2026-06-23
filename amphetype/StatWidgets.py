@@ -5,7 +5,7 @@ import time
 
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
-from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, fetch_oblivion_picks
+from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, fetch_analysis_search, fetch_oblivion_picks
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
@@ -13,7 +13,7 @@ from amphetype.Config import *
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from PyQt5.QtWidgets import QLabel, QMenu
+from PyQt5.QtWidgets import QLabel, QMenu, QLineEdit
 
 
 
@@ -71,6 +71,13 @@ class StringStats(QWidget):
     wc = SettingsCombo('ana_what', ['keys', 'trigrams', 'words'])
     lim = SettingsEdit('ana_many')
     self.w_count = SettingsEdit('ana_count')
+    self._baseline_rows = []
+    self._search_applied = None
+    self._search_edit = QLineEdit()
+    self._search_edit.setPlaceholderText('target…')
+    self._search_btn = AmphButton('Search', self._on_search_btn)
+    self._search_edit.textChanged.connect(self._sync_search_btn)
+    self._search_edit.returnPressed.connect(self._apply_search)
 
     Settings.signal_for("ana_which").connect(self.update)
     Settings.signal_for("ana_what").connect(self.update)
@@ -83,6 +90,7 @@ class StringStats(QWidget):
           AmphButton("Drill worst 3", self._drill_worst_3),
           AmphButton("Drill 3 oblivion", self._drill_3_oblivion)],
         ["Limit list to", lim, "items and don't show items with a count less than", self.w_count, None],
+        ["Search", self._search_edit, self._search_btn, None],
         self._corpus_lbl,
         (self.stats, 1)
       ]))
@@ -90,6 +98,36 @@ class StringStats(QWidget):
   def clear_corpus_msg(self):
     self._corpus_lbl.hide()
     self._corpus_lbl.clear()
+
+  def clear_search(self):
+    self._search_applied = None
+    self._search_edit.clear()
+    self.model.setData(self._baseline_rows)
+    self._sync_search_btn()
+
+  def _sync_search_btn(self):
+    term = self._search_edit.text()
+    if self._search_applied is not None and term == self._search_applied:
+      self._search_btn.setText('Clear')
+    else:
+      self._search_btn.setText('Search')
+
+  def _on_search_btn(self):
+    if self._search_btn.text() == 'Clear':
+      self.clear_search()
+    else:
+      self._apply_search()
+
+  def _apply_search(self):
+    term = self._search_edit.text().strip()
+    if not term:
+      return
+    rows = fetch_analysis_search(
+      DB, time.time() - Settings.get('history') * 86400.0,
+      Settings.get('ana_what'), Settings.get('ana_count'), term, Settings.get('ana_which'))
+    self._search_applied = term
+    self.model.setData(rows)
+    self._sync_search_btn()
 
   def _show_corpus_msg(self, msg):
     self._corpus_lbl.setText(msg)
@@ -105,7 +143,11 @@ class StringStats(QWidget):
   def update(self, *arg):
     self.clear_corpus_msg()
     rows, _ = self._query_rows(Settings.get('ana_which'), Settings.get('ana_many'))
-    self.model.setData(rows)
+    self._baseline_rows = list(rows)
+    if self._search_applied is not None:
+      self._apply_search()
+    else:
+      self.model.setData(rows)
 
   def _targets_from_rows(self, rows, cat):
     kind = ana_what_kind(cat)
