@@ -73,6 +73,24 @@ STAT_TYPE_TRIGRAM = 1
 STAT_TYPE_WORD = 2
 
 
+def fetch_first_sample_wpm(db, stat_type, data_keys):
+  """WPM from each key's earliest statistic row (all-time first typing)."""
+  if not data_keys:
+    return {}
+  qs = ','.join('?' * len(data_keys))
+  rows = db.execute(
+    '''select s.data, min(12.0 / s.time)
+    from statistic s
+    inner join (
+      select data, min(w) as fw from statistic
+      where type=? and data in (%s)
+      group by data
+    ) x on s.data = x.data and s.w = x.fw and s.type=?
+    group by s.data''' % qs,
+    (stat_type, *data_keys, stat_type)).fetchall()
+  return {d: w for d, w in rows}
+
+
 def count_unique_typed(db, hist_cutoff, stat_type):
   row = db.execute(UNIQUE_TYPED_SQL, (hist_cutoff, stat_type)).fetchone()
   return int(row[0]) if row else 0

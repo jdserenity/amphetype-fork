@@ -134,9 +134,16 @@ def _word_run_gain(sub, base_entry):
     return None, None
   spc = word_spc_from_slice(sub)
   bump = avg_wpm_bump(baseline_times(base_entry), spc)
-  if bump is None:
-    return None, None
+  if bump is None or bump <= 0:
+    return wpm, None
   return wpm, bump
+
+
+def lifetime_wpm_gain(current_wpm, first_wpm):
+  """Current median WPM minus WPM from the first recorded sample."""
+  if current_wpm is None or first_wpm is None:
+    return None
+  return int(current_wpm) - int(first_wpm)
 
 
 def improved_word_spans(run, baselines, match_text):

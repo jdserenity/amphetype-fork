@@ -9,7 +9,8 @@ from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RE
 from amphetype.timingtuple import RunStats
 from amphetype.word_progress import (
   analyze_run_progress, avg_wpm_bump, fetch_word_baselines, format_progress_html,
-  improved_word_spans, is_improved, lesson_words, progress_badges_for_run, word_wpm_from_slice,
+  improved_word_spans, is_improved, lesson_words, lifetime_wpm_gain,
+  progress_badges_for_run, word_wpm_from_slice,
 )
 
 
@@ -71,6 +72,22 @@ def test_avg_wpm_bump_smaller_than_instance_delta():
   bump = avg_wpm_bump(old, 12.0 / 90.0)
   assert bump is not None
   assert bump < 40  # instance would be ~+40; median pool moves less
+
+
+def test_no_badge_when_median_bump_is_zero():
+  run = _make_run('fast', spc=12.0 / 52.0)
+  times = [12.0 / 50.0] * 10
+  base = {'wpm': 50.0, 'times': times}
+  assert is_improved(word_wpm_from_slice(run[0:4]), 50.0)
+  badges = progress_badges_for_run(run, {'fast': base}, 'fast')
+  assert badges == []
+  p = analyze_run_progress(run, {'fast': base}, 'fast')
+  assert p.improved == 0
+
+
+def test_lifetime_wpm_gain():
+  assert lifetime_wpm_gain(70.0, 40.0) == 30
+  assert lifetime_wpm_gain(40.0, 40.0) == 0
 
 
 def test_word_wpm_from_slice():

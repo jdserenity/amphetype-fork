@@ -697,10 +697,16 @@ class LessonDocument(QTextDocument):
     self.progress_badges_changed.emit()
 
   def apply_improved_word_styles(self, run, baselines):
-    from amphetype.word_progress import improved_word_spans
-    for start, end, _wpm, _gain in improved_word_spans(run, baselines, self._match_text):
-      for j in range(start, end):
-        self._style_match_index(j, self.style_progress)
+    from amphetype.word_progress import baseline_wpm, is_improved, word_spans, word_wpm_from_slice
+    for start, end, word in word_spans(self._match_text or ''):
+      sub = run[start:end]
+      if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
+        continue
+      base = baselines.get(word)
+      wpm = word_wpm_from_slice(sub)
+      if base is not None and wpm is not None and is_improved(wpm, baseline_wpm(base)):
+        for j in range(start, end):
+          self._style_match_index(j, self.style_progress)
 
   def _drop_badges_from(self, match_index):
     n = len(self._progress_badges)

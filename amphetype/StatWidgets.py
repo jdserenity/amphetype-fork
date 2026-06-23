@@ -5,7 +5,8 @@ import time
 
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
-from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY
+from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD, fetch_first_sample_wpm
+from amphetype.word_progress import lifetime_wpm_gain
 from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
 from amphetype.Config import *
@@ -17,10 +18,26 @@ from PyQt5.QtWidgets import QLabel, QMenu
 
 
 class WordModel(AmphModel):
-  def signature(self):
+  def __init__(self):
+    super(WordModel, self).__init__()
     self.words = []
-    return (["Type target", "Speed", "Accuracy", "Hesitation", "Count", "Mistakes", "Drilled", "Impact"],
-        [None, "%.1f wpm", "%.1f%%", "%.1f", None, None, None, "%.1f"])
+    self._words_mode = False
+
+  def signature(self):
+    hdr = ["Type target", "Speed", "Accuracy", "Hesitation", "Count", "Mistakes", "Drilled", "Impact"]
+    fmt = [None, "%.1f wpm", "%.1f%%", "%.1f", None, None, None, "%.1f"]
+    if self._words_mode:
+      hdr = hdr[:2] + ["Improved"] + hdr[2:]
+      fmt = fmt[:2] + ["%+d"] + fmt[2:]
+    return (hdr, fmt)
+
+  def set_words_mode(self, on):
+    on = bool(on)
+    if on == self._words_mode:
+      return
+    self._words_mode = on
+    self.head, self.fmt = self.signature()
+    self.cols = len(self.head)
 
   def populateData(self, idx):
     if len(idx) != 0:
@@ -101,7 +118,11 @@ class StringStats(QWidget):
 
   def update(self, *arg):
     self.clear_corpus_msg()
-    rows, _ = self._query_rows(Settings.get('ana_which'), Settings.get('ana_many'))
+    rows, cat = self._query_rows(Settings.get('ana_which'), Settings.get('ana_many'))
+    self.model.set_words_mode(cat == 2)
+    if cat == 2 and rows:
+      first = fetch_first_sample_wpm(DB, STAT_TYPE_WORD, [r[0] for r in rows])
+      rows = [list(r[:2]) + [lifetime_wpm_gain(r[1], first.get(r[0]))] + list(r[2:]) for r in rows]
     self.model.setData(rows)
 
   def _targets_from_rows(self, rows, cat):
