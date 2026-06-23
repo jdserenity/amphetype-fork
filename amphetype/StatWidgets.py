@@ -19,9 +19,9 @@ from PyQt5.QtWidgets import QLabel, QMenu
 
 class WordModel(AmphModel):
   def __init__(self):
-    super(WordModel, self).__init__()
     self.words = []
     self._words_mode = False
+    super(WordModel, self).__init__()
 
   def signature(self):
     hdr = ["Type target", "Speed", "Accuracy", "Hesitation", "Count", "Mistakes", "Drilled", "Impact"]
@@ -52,6 +52,56 @@ class WordModel(AmphModel):
 
 
 
+class AnalysisSortCombo(QComboBox):
+  SORT_OPTIONS = [
+    ('wpm asc', 'slowest'),
+    ('wpm desc', 'fastest'),
+    ('viscosity desc', 'most hesitation'),
+    ('viscosity asc', 'least hesitation'),
+    ('accuracy asc', 'least accurate'),
+    ('misses desc', 'most mistyped'),
+    ('total desc', 'most common'),
+    ('damage desc', 'most damaging'),
+    ('improved desc', 'most improved'),
+  ]
+
+  def __init__(self):
+    super(AnalysisSortCombo, self).__init__()
+    self._keys = []
+    Settings.signal_for('ana_what').connect(self._sync_items)
+    Settings.signal_for('ana_which').connect(self._sync_selection)
+    self.activated[int].connect(lambda idx: Settings.set('ana_which', self._keys[idx]))
+    self._sync_items()
+
+  def _words_only(self):
+    return Settings.get('ana_what') == 2
+
+  def _sync_items(self):
+    words = self._words_only()
+    cur = Settings.get('ana_which')
+    if not words and cur == 'improved desc':
+      Settings.set('ana_which', 'damage desc')
+      cur = 'damage desc'
+    self.blockSignals(True)
+    self.clear()
+    self._keys = []
+    for k, v in self.SORT_OPTIONS:
+      if k == 'improved desc' and not words:
+        continue
+      self.addItem(v)
+      self._keys.append(k)
+    self._sync_selection()
+    self.blockSignals(False)
+
+  def _sync_selection(self):
+    cur = Settings.get('ana_which')
+    if cur not in self._keys:
+      return
+    self.blockSignals(True)
+    self.setCurrentIndex(self._keys.index(cur))
+    self.blockSignals(False)
+
+
 class StringStats(QWidget):
   startDrill = pyqtSignal(list)
   corpusTextReady = pyqtSignal('PyQt_PyObject')
@@ -73,16 +123,7 @@ class StringStats(QWidget):
     self._corpus_lbl.setStyleSheet('color: #c44;')
     self._corpus_lbl.hide()
 
-    ob = SettingsCombo('ana_which', [
-          ('wpm asc', 'slowest'),
-          ('wpm desc', 'fastest'),
-          ('viscosity desc', 'most hesitation'),
-          ('viscosity asc', 'least hesitation'),
-          ('accuracy asc', 'least accurate'),
-          ('misses desc', 'most mistyped'),
-          ('total desc', 'most common'),
-          ('damage desc', 'most damaging'),
-          ])
+    ob = AnalysisSortCombo()
 
     wc = SettingsCombo('ana_what', ['keys', 'trigrams', 'words'])
     lim = SettingsEdit('ana_many')
@@ -113,16 +154,31 @@ class StringStats(QWidget):
     cat = Settings.get('ana_what')
     count = Settings.get('ana_count')
     hist = time.time() - Settings.get('history') * 86400.0
+    if order == 'improved desc':
+      pool = max(limit * 10, 200)
+      sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', pool)
+      rows = DB.fetchall(sql, (hist, cat, count))
+      return rows, cat
     sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, order, limit)
     return DB.fetchall(sql, (hist, cat, count)), cat
 
+  def _enrich_word_rows(self, rows):
+    if not rows:
+      return rows
+    first = fetch_first_sample_wpm(DB, STAT_TYPE_WORD, [r[0] for r in rows])
+    return [list(r[:2]) + [lifetime_wpm_gain(r[1], first.get(r[0]))] + list(r[2:]) for r in rows]
+
   def update(self, *arg):
     self.clear_corpus_msg()
-    rows, cat = self._query_rows(Settings.get('ana_which'), Settings.get('ana_many'))
+    order = Settings.get('ana_which')
+    limit = Settings.get('ana_many')
+    rows, cat = self._query_rows(order, limit)
     self.model.set_words_mode(cat == 2)
     if cat == 2 and rows:
-      first = fetch_first_sample_wpm(DB, STAT_TYPE_WORD, [r[0] for r in rows])
-      rows = [list(r[:2]) + [lifetime_wpm_gain(r[1], first.get(r[0]))] + list(r[2:]) for r in rows]
+      rows = self._enrich_word_rows(rows)
+      if order == 'improved desc':
+        rows.sort(key=lambda r: r[2] if r[2] is not None else -999999, reverse=True)
+        rows = rows[:limit]
     self.model.setData(rows)
 
   def _targets_from_rows(self, rows, cat):

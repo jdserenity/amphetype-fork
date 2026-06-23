@@ -500,3 +500,21 @@ def test_widget_still_respects_require_space_when_enabled(qapp):
 
     w.insert(" ")  # the starter key
     assert doc.is_running()
+
+
+def test_continue_lesson_clears_progress_label(qapp):
+  import amphetype.Amphetype  # noqa: F401 — init app.settings for TyperWindow
+  from amphetype.typer import TyperWindow
+
+  tw = TyperWindow()
+  tw._awaiting_next = True
+  tw._pending_action = 'normal_next'
+  tw.updateLabel('You improved on <span>1</span> out of 2 words')
+  assert 'You improved' in tw._label.text()
+  assert 'Press ENTER' in tw._label.text()
+  emitted = []
+  tw.wantText.connect(lambda: emitted.append(1))
+  tw._continue_lesson()
+  assert 'You improved' not in tw._label.text()
+  assert 'Press ENTER' not in tw._label.text()
+  assert emitted == [1]

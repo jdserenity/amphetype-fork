@@ -9,7 +9,7 @@ from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RE
 from amphetype.timingtuple import RunStats
 from amphetype.word_progress import (
   analyze_run_progress, avg_wpm_bump, fetch_word_baselines, format_progress_html,
-  improved_word_spans, is_improved, lesson_words, lifetime_wpm_gain,
+  improved_word_spans, lesson_words, lifetime_wpm_gain, median_wpm_bump,
   progress_badges_for_run, word_wpm_from_slice,
 )
 
@@ -54,11 +54,14 @@ def _bl(wpm, *extra_spcs):
   return {'wpm': wpm, 'times': times}
 
 
-def test_is_improved_needs_one_whole_wpm():
-  assert is_improved(51.0, 50.0)
-  assert is_improved(50.9, 49.0)
-  assert not is_improved(50.9, 50.0)
-  assert not is_improved(50.0, 50.0)
+def test_median_wpm_bump_needs_one_whole_wpm():
+  run = _make_run('ab', spc=12.0 / 80.0)
+  assert median_wpm_bump(run[0:2], _bl(50.0)) == 11
+  run2 = _make_run('fast', spc=12.0 / 52.0)
+  times = [12.0 / 50.0] * 10
+  base = {'wpm': 50.0, 'times': times}
+  bump = median_wpm_bump(run2[0:4], base)
+  assert bump is None or bump < 1
 
 
 def test_avg_wpm_bump_single_prior_sample():
@@ -78,9 +81,10 @@ def test_no_badge_when_median_bump_is_zero():
   run = _make_run('fast', spc=12.0 / 52.0)
   times = [12.0 / 50.0] * 10
   base = {'wpm': 50.0, 'times': times}
-  assert is_improved(word_wpm_from_slice(run[0:4]), 50.0)
+  assert median_wpm_bump(run[0:4], base) is None or median_wpm_bump(run[0:4], base) < 1
   badges = progress_badges_for_run(run, {'fast': base}, 'fast')
   assert badges == []
+  assert improved_word_spans(run, {'fast': base}, 'fast') == []
   p = analyze_run_progress(run, {'fast': base}, 'fast')
   assert p.improved == 0
 

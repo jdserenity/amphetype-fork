@@ -28,7 +28,8 @@ from amphetype.speed_heatmap import (
 )
 from amphetype.word_progress import (
   analyze_run_progress, fetch_word_baselines, format_progress_html,
-  is_improved, lesson_words, progress_badges_for_run, word_spans, word_wpm_from_slice,
+  improved_word_spans, lesson_words, median_wpm_bump, progress_badges_for_run,
+  word_spans, word_wpm_from_slice,
 )
 from collections import defaultdict, Counter
 
@@ -697,16 +698,9 @@ class LessonDocument(QTextDocument):
     self.progress_badges_changed.emit()
 
   def apply_improved_word_styles(self, run, baselines):
-    from amphetype.word_progress import baseline_wpm, is_improved, word_spans, word_wpm_from_slice
-    for start, end, word in word_spans(self._match_text or ''):
-      sub = run[start:end]
-      if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
-        continue
-      base = baselines.get(word)
-      wpm = word_wpm_from_slice(sub)
-      if base is not None and wpm is not None and is_improved(wpm, baseline_wpm(base)):
-        for j in range(start, end):
-          self._style_match_index(j, self.style_progress)
+    for start, end, _wpm, _bump in improved_word_spans(run, baselines, self._match_text):
+      for j in range(start, end):
+        self._style_match_index(j, self.style_progress)
 
   def _drop_badges_from(self, match_index):
     n = len(self._progress_badges)
@@ -727,12 +721,12 @@ class LessonDocument(QTextDocument):
       if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
         return
       base = self._word_baselines.get(word)
-      wpm = word_wpm_from_slice(sub)
-      if base is not None and wpm is not None:
-        from amphetype.word_progress import baseline_wpm, is_improved
-        if is_improved(wpm, baseline_wpm(base)):
-          for j in range(start, end):
-            self._style_match_index(j, self.style_progress)
+      if base is None:
+        return
+      bump = median_wpm_bump(sub, base)
+      if bump is not None and bump >= 1:
+        for j in range(start, end):
+          self._style_match_index(j, self.style_progress)
       return
 
   def set_speed_heatmap(self, enabled, mode, stats):
@@ -1486,6 +1480,7 @@ class TyperWindow(QWidget):
     now = self._pending_now
     review_words = self._pending_review_words
     self._clear_awaiting()
+    self.updateLabel()
     if action == 'focus_repeat':
       if self._focus_drill:
         if not self._emit_focus_lesson(self._focus_drill):

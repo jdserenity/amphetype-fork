@@ -33,7 +33,7 @@ def fetch_word_stat_times(db, words):
 
 
 def fetch_word_baselines(db, words):
-  """All-time word WPM plus raw timing samples for average-shift deltas."""
+  """All-time word WPM plus raw timing samples for median-shift deltas."""
   if not words:
     return {}
   stats = fetch_speed_stats(db, hist_cutoff=0, stat_type=STAT_TYPE_WORD)
@@ -99,9 +99,11 @@ def avg_wpm_bump(old_times, new_spc):
   return int(new_wpm) - int(old_wpm)
 
 
-def is_improved(run_wpm, baseline_wpm_val):
-  """At least 1 whole WPM faster this run vs current baseline; fractional-only gains do not count."""
-  return int(run_wpm) >= int(baseline_wpm_val) + 1
+def median_wpm_bump(sub, base_entry):
+  spc = word_spc_from_slice(sub)
+  if spc is None:
+    return None
+  return avg_wpm_bump(baseline_times(base_entry), spc)
 
 
 class RunProgress:
@@ -126,17 +128,10 @@ class RunProgress:
 
 
 def _word_run_gain(sub, base_entry):
-  wpm = word_wpm_from_slice(sub)
-  if wpm is None:
+  bump = median_wpm_bump(sub, base_entry)
+  if bump is None or bump < 1:
     return None, None
-  base = baseline_wpm(base_entry)
-  if not is_improved(wpm, base):
-    return None, None
-  spc = word_spc_from_slice(sub)
-  bump = avg_wpm_bump(baseline_times(base_entry), spc)
-  if bump is None or bump <= 0:
-    return wpm, None
-  return wpm, bump
+  return word_wpm_from_slice(sub), bump
 
 
 def lifetime_wpm_gain(current_wpm, first_wpm):
@@ -147,7 +142,7 @@ def lifetime_wpm_gain(current_wpm, first_wpm):
 
 
 def improved_word_spans(run, baselines, match_text):
-  """Each improved word occurrence: (start, end, run_wpm, avg_bump)."""
+  """Each improved word occurrence: (start, end, run_wpm, median_bump)."""
   out = []
   for start, end, word in word_spans(match_text or ''):
     sub = run[start:end]
