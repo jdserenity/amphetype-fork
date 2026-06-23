@@ -96,6 +96,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     "practice_mode": 0,  # 0 = improve, 1 = book, 2 = corpus
     "practice_mode_v2": True,
+    "practice_mode_v3": True,
     "book_source_id": 0,
     "book_max_chars": 12000,
     "read_ahead_enabled": False,

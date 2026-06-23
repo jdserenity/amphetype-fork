@@ -110,11 +110,24 @@ def test_practice_mode_migration_from_legacy():
   s = _FakeSettings({'practice_mode': 2})
   ensure_practice_mode_migrated(s)
   assert s.get('practice_mode') == 0
-  assert s.get('practice_mode_v2') is True
+  assert s.get('practice_mode_v3') is True
 
 
-def test_practice_mode_migration_skips_when_v2():
+def test_practice_mode_migration_old_normal_stays_improve():
+  s = _FakeSettings({'practice_mode': 0})
+  ensure_practice_mode_migrated(s)
+  assert s.get('practice_mode') == 0
+
+
+def test_practice_mode_v3_fixes_v2_corpus_default():
   s = _FakeSettings({'practice_mode': 2, 'practice_mode_v2': True})
+  ensure_practice_mode_migrated(s)
+  assert s.get('practice_mode') == 0
+  assert s.get('practice_mode_v3') is True
+
+
+def test_practice_mode_migration_skips_when_v3():
+  s = _FakeSettings({'practice_mode': 2, 'practice_mode_v3': True})
   ensure_practice_mode_migrated(s)
   assert s.get('practice_mode') == 2
 

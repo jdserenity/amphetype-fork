@@ -18,14 +18,15 @@ OBLIVION_WPM = 32
 WPM_GREEN = '#00e676'
 PROGRESS_GREEN = WPM_GREEN
 PROGRESS_RED = '#d64545'
+PROGRESS_ORANGE = '#ff8c00'
 WPM_BUCKETS = (
-  (0, '#a855f7'),     # <32 (oblivion)
+  (0, '#a855f7'),     # 0–31 (oblivion)
   (32, '#d64545'),    # 32–54
   (55, '#ff8c00'),    # 55–77
   (78, '#ffd600'),    # 78–99
   (100, WPM_GREEN),   # 100+
 )
-WPM_BUCKET_LABELS = ('<32', '32–54', '55–77', '78–99', '100+')
+WPM_BUCKET_LABELS = ('<31', '32–54', '55–77', '78–99', '100+')
 
 _WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
 

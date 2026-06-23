@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_RED
+from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED
 from amphetype.timingtuple import RunStats
 from amphetype.word_progress import (
   analyze_run_progress, fetch_word_baselines, format_progress_html, is_improved,
@@ -91,10 +91,11 @@ def test_format_progress_html_zero_improved_is_red():
   assert '0</span> out of 1 words!' in html
 
 
-def test_format_progress_html_new_words_only_when_present():
-  p = analyze_run_progress(_make_run('fast', spc=12.0 / 80.0), {'fast': 50.0})
+def test_format_progress_html_new_words_orange():
+  p = analyze_run_progress(_make_run('newword', spc=0.1), {})
   html = format_progress_html(p)
-  assert 'new word' not in html
+  assert PROGRESS_ORANGE in html
+  assert '1</span> unique new word!' in html
 
 
 def test_format_progress_html_drill_note():

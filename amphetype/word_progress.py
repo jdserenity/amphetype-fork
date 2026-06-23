@@ -2,7 +2,7 @@
 
 import re
 
-from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_RED, fetch_speed_stats
+from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED, fetch_speed_stats
 from amphetype.stats_query import STAT_TYPE_WORD
 
 _WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
@@ -44,6 +44,10 @@ def word_wpm_from_slice(sub):
 def is_improved(run_wpm, baseline_wpm):
   """At least 1 whole WPM faster; fractional-only gains do not count."""
   return int(run_wpm) >= int(baseline_wpm) + 1
+
+
+def wpm_gain(run_wpm, baseline_wpm):
+  return int(run_wpm) - int(baseline_wpm)
 
 
 class RunProgress:
@@ -88,8 +92,8 @@ def format_progress_html(progress, stats_saved=True):
       imp_color, progress.improved, progress.known),
   ]
   if progress.new_count > 0:
-    lines.append('You typed %d unique new word%s!' % (
-      progress.new_count, '' if progress.new_count == 1 else 's'))
+    lines.append('You typed <span style="color:%s">%d</span> unique new word%s!' % (
+      PROGRESS_ORANGE, progress.new_count, '' if progress.new_count == 1 else 's'))
   if not stats_saved:
     lines.append('<i>Drill only — stats were not saved.</i>')
   return '<br />'.join(lines)

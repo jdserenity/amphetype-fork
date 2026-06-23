@@ -308,18 +308,25 @@ MODE_CORPUS = 'corpus'
 MODE_WEAKSPOT = MODE_IMPROVE
 MODE_NORMAL = MODE_CORPUS
 
-_LEGACY_PRACTICE_MODE = {0: 2, 1: 1, 2: 0}  # old normal/book/weakspot → corpus/book/improve
+_LEGACY_PRACTICE_MODE = {0: 0, 1: 1, 2: 0}  # old normal/weakspot → improve; book unchanged
 
 
 def ensure_practice_mode_migrated(settings):
+  if settings.contains('practice_mode_v3'):
+    return
   if settings.contains('practice_mode_v2'):
+    if settings.contains('practice_mode') and int(settings.value('practice_mode')) == 2:
+      settings.set('practice_mode', 0)
+    settings.set('practice_mode_v3', True)
     return
   if not settings.contains('practice_mode'):
     settings.set('practice_mode_v2', True)
+    settings.set('practice_mode_v3', True)
     return
   old = int(settings.value('practice_mode'))
   settings.set('practice_mode', _LEGACY_PRACTICE_MODE.get(old, 0))
   settings.set('practice_mode_v2', True)
+  settings.set('practice_mode_v3', True)
 
 
 def practice_mode_from_settings(val):
