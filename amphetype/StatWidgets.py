@@ -5,8 +5,7 @@ import time
 
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
-from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, fetch_oblivion_picks
-from amphetype.speed_heatmap import OBLIVION_WPM
+from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY
 from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
 from amphetype.Config import *
@@ -79,9 +78,7 @@ class StringStats(QWidget):
     Settings.signal_for("history").connect(self.update)
 
     self.setLayout(AmphBoxLayout([
-        ["Show", wc, "sorted by", ob, None,
-          AmphButton("Drill worst 3", self._drill_worst_3),
-          AmphButton("Drill 3 oblivion", self._drill_3_oblivion)],
+        ["Show", wc, "sorted by", ob, None],
         ["Limit list to", lim, "items and don't show items with a count less than", self.w_count, None],
         self._corpus_lbl,
         (self.stats, 1)
@@ -145,17 +142,3 @@ class StringStats(QWidget):
       self._drill_row(idx)
     elif picked == find_act:
       self._find_in_corpus(idx)
-
-  def _drill_worst_3(self):
-    rows, cat = self._query_rows('damage desc', 3)
-    if not rows:
-      return
-    self.startDrill.emit(self._targets_from_rows(rows[:3], cat))
-
-  def _drill_3_oblivion(self):
-    cat = Settings.get('ana_what')
-    hist = time.time() - Settings.get('history') * 86400.0
-    picks = fetch_oblivion_picks(DB, hist, cat, 3, OBLIVION_WPM)
-    if not picks:
-      return
-    self.startDrill.emit(self._targets_from_rows(picks, cat))

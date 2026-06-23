@@ -11,8 +11,10 @@ from amphetype.WeakSpotLessons import build_focus_lesson
 from amphetype.Config import Settings
 from amphetype.book_mode import (
   BookLessonBuilder, MODE_BOOK, format_book_progress, lesson_text_id,
-  practice_mode_from_settings, practice_mode_to_settings,
+  practice_mode_from_settings, practice_mode_to_settings, ensure_practice_mode_migrated,
+  MODE_IMPROVE, MODE_CORPUS,
 )
+from amphetype.improve_mode import IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, fetch_improve_submode_targets
 from amphetype.speed_heatmap import book_return_role
 from amphetype.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
@@ -38,9 +40,10 @@ LINE_SEP = '\u2028'
 # Lesson text backgrounds only for error highlighting; untyped/correct/inactive stay clear.
 _NO_FILL_STYLE_ATTRS = frozenset({'untyped', 'correct', 'inactive'})
 
-MODE_NORMAL = 'normal'
-MODE_WEAKSPOT = 'weakspot'
-_WEAKSPOT_BTN_LABEL = 'weakspot'
+MODE_NORMAL = MODE_CORPUS
+MODE_WEAKSPOT = MODE_IMPROVE
+_IMPROVE_BTN_LABEL = 'improve'
+_CORPUS_BTN_LABEL = 'corpus'
 _GENERATING_BTN_LABEL = 'generating…'
 
 
@@ -50,8 +53,8 @@ def lesson_completion_action(mode, is_lesson, auto_review, has_review_words, foc
     return 'focus_repeat'
   if mode == MODE_BOOK:
     return 'book_next'
-  if mode == MODE_WEAKSPOT:
-    return 'weakspot_next'
+  if mode == MODE_IMPROVE:
+    return 'improve_next'
   if not is_lesson and auto_review and has_review_words:
     return 'review'
   return 'normal_next'
@@ -816,9 +819,11 @@ class TyperWindow(QWidget):
     self._current_lesson = None
     self._read_ahead_on = False
     self._read_ahead_level = 0
-    self._mode = MODE_NORMAL
+    self._mode = MODE_IMPROVE
+    self._improve_submode = 0
     self._focus_drill = None
     self._focus_drill_wpm = {}
+    self._focus_drill_from_pa = False
     self._weakspot = WeakSpotLessonBuilder(self)
     self._weakspot.lessonReady.connect(self._on_weakspot_lesson)
     self._weakspot.busyChanged.connect(self._on_weakspot_busy)
@@ -879,27 +884,30 @@ class TyperWindow(QWidget):
       'QPushButton:hover { color: #888; }'
       'QPushButton[activeMode="true"] { color: #ffffff; }')
 
-    self._btn_normal = QPushButton('normal', flat=True)
+    self._btn_improve = QPushButton(_IMPROVE_BTN_LABEL, flat=True)
     self._btn_book = QPushButton('book', flat=True)
-    self._btn_weakspot = QPushButton('weakspot', flat=True)
+    self._btn_corpus = QPushButton(_CORPUS_BTN_LABEL, flat=True)
     self._btn_read_ahead = QPushButton('read ahead', flat=True)
     self._btn_read_ahead_level = QPushButton('normal', flat=True)
+    self._btn_improve_level = QPushButton('normal', flat=True)
     self._btn_heatmap = QPushButton('heatmap', flat=True)
     self._btn_heatmap.clicked.connect(self._toggleHeatmap)
     self._btn_heatmap_kind = QPushButton(flat=True)
     self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
-    for b in (self._btn_normal, self._btn_book, self._btn_weakspot, self._btn_read_ahead, self._btn_read_ahead_level):
+    for b in (self._btn_improve, self._btn_book, self._btn_corpus, self._btn_read_ahead,
+              self._btn_read_ahead_level, self._btn_improve_level):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setStyleSheet(self._mode_btn_style)
     for b in (self._btn_heatmap, self._btn_heatmap_kind):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
-    self._btn_normal.clicked.connect(lambda: self.set_practice_mode(MODE_NORMAL))
+    self._btn_improve.clicked.connect(self._on_improve_click)
+    self._btn_corpus.clicked.connect(lambda: self.set_practice_mode(MODE_CORPUS))
     self._btn_book.clicked.connect(lambda: self.set_practice_mode(MODE_BOOK))
-    self._btn_weakspot.clicked.connect(self._on_weakspot_click)
     self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
     self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
+    self._btn_improve_level.clicked.connect(self.cycle_improve_submode)
     self._weakspot_generating = False
 
     self._heatmap_legend = make_heatmap_legend()
@@ -914,10 +922,11 @@ class TyperWindow(QWidget):
     mode_lay = QHBoxLayout(mode_row)
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(0)
-    mode_lay.addWidget(self._btn_normal)
+    mode_lay.addWidget(self._btn_improve)
+    mode_lay.addWidget(self._btn_improve_level)
     mode_lay.addWidget(self._btn_book)
     mode_lay.addWidget(self._book_prog_lbl)
-    mode_lay.addWidget(self._btn_weakspot)
+    mode_lay.addWidget(self._btn_corpus)
     mode_lay.addWidget(self._btn_read_ahead)
     mode_lay.addWidget(self._btn_read_ahead_level)
     mode_lay.addWidget(self._btn_heatmap)
@@ -935,6 +944,8 @@ class TyperWindow(QWidget):
 
     self.S('background_color').bind_value(self._applyBackground, call=True)
     self.statsChanged.connect(self._weakspot.on_stats_changed)
+    self.S('improve_submode').bind_value(self._onImproveSubmodeSetting, call=True)
+    ensure_practice_mode_migrated(self._settings)
     self._apply_practice_mode_from_settings()
     self._apply_read_ahead_from_settings()
 
@@ -946,6 +957,45 @@ class TyperWindow(QWidget):
     enabled = bool(self._settings.get('read_ahead_enabled'))
     level = self.S['read_ahead_level']
     self._set_read_ahead_ui(enabled, level, refresh_doc=True)
+
+  def _onImproveSubmodeSetting(self, level):
+    self._set_improve_submode_ui(level)
+
+  def cycle_improve_submode(self):
+    if self._mode != MODE_IMPROVE:
+      return
+    level = (self._improve_submode + 1) % len(IMPROVE_SUBMODE_LABELS)
+    self._focus_drill_from_pa = False
+    self.S('improve_submode').set(level)
+    self._load_improve_lesson()
+
+  def _set_improve_submode_ui(self, level):
+    self._improve_submode = level
+    visible = self._mode == MODE_IMPROVE
+    self._btn_improve_level.setText(IMPROVE_SUBMODE_LABELS[level])
+    self._btn_improve_level.setVisible(visible)
+    if visible:
+      self._btn_improve_level.setStyleSheet(self._mode_btn_style)
+      self._btn_improve_level.setProperty('activeMode', True)
+      self._polish_mode_btn(self._btn_improve_level)
+
+  def _improve_hist_cutoff(self):
+    return time() - Settings.get('history') * 86400.0
+
+  def _load_improve_lesson(self):
+    submode = self._improve_submode
+    if submode == IMPROVE_SUBMODE_NORMAL:
+      self._focus_drill = None
+      self._focus_drill_wpm = {}
+      self._focus_drill_from_pa = False
+      self._weakspot.request_next_lesson(force=True)
+      return
+    targets = fetch_improve_submode_targets(
+      self.DB, submode, self._improve_hist_cutoff(), Settings.get('ana_count'))
+    if not targets:
+      self.updateLabel('No statistics yet — practice on corpus mode first.')
+      return
+    self._start_focus_drill(targets, from_pa=False)
 
   def toggle_read_ahead(self):
     enabled = not self._read_ahead_on
@@ -1072,7 +1122,7 @@ class TyperWindow(QWidget):
     epilogue = ('\n' + post[2]) if post is not None else ''
 
     self._doc.set_text(txt[2], prologue=prologue, epilogue=epilogue)
-    if self._mode == MODE_NORMAL:
+    if self._mode == MODE_CORPUS:
       self._schedule_typing_center()
     else:
       self._typer._pin_typing_center = False
@@ -1084,7 +1134,7 @@ class TyperWindow(QWidget):
     row = self.DB.fetchone('select name from source where rowid=?', (None,), (srcid,))
     text = format_source_attribution(row[0] if row else '')
     self._source_lbl.setText(text)
-    self._source_lbl.setVisible(bool(text) and self._mode == MODE_NORMAL)
+    self._source_lbl.setVisible(bool(text) and self._mode == MODE_CORPUS)
 
   def _update_book_footer(self, meta=None):
     if meta is None:
@@ -1143,29 +1193,33 @@ class TyperWindow(QWidget):
   def _apply_practice_mode_from_settings(self):
     mode = practice_mode_from_settings(self._settings.get('practice_mode'))
     self._set_mode_ui(mode, load=False)
-    if mode == MODE_WEAKSPOT:
-      self._weakspot.request_next_lesson(force=True)
+    if mode == MODE_IMPROVE:
+      self._load_improve_lesson()
     elif mode == MODE_BOOK:
       self._book.invalidate_cache()
       self._book.request_lesson(advance_chapter=False)
 
-  def _on_weakspot_click(self):
-    if self._mode == MODE_WEAKSPOT and self._focus_drill:
+  def _on_improve_click(self):
+    if self._mode == MODE_IMPROVE and (self._focus_drill or self._improve_submode != IMPROVE_SUBMODE_NORMAL):
       self._exit_focus_drill()
       return
-    self.set_practice_mode(MODE_WEAKSPOT)
+    self.set_practice_mode(MODE_IMPROVE)
 
   def _exit_focus_drill(self):
     self._focus_drill = None
     self._focus_drill_wpm = {}
+    self._focus_drill_from_pa = False
+    if self._improve_submode != IMPROVE_SUBMODE_NORMAL:
+      self.S('improve_submode').set(IMPROVE_SUBMODE_NORMAL)
     self._weakspot.request_next_lesson(force=True)
 
   def load_corpus_text(self, v):
-    """Open a corpus chunk in normal mode (from Performance Analysis Find in corpus)."""
+    """Open a corpus chunk in corpus mode (from Performance Analysis Find in corpus)."""
     self._focus_drill = None
     self._focus_drill_wpm = {}
-    self._settings.set('practice_mode', 0)
-    self._set_mode_ui(MODE_NORMAL, load=False)
+    self._focus_drill_from_pa = False
+    self._settings.set('practice_mode', practice_mode_to_settings(MODE_CORPUS))
+    self._set_mode_ui(MODE_CORPUS, load=False)
     self.setText(v)
 
   def _emit_focus_lesson(self, targets):
@@ -1174,42 +1228,51 @@ class TyperWindow(QWidget):
       targets, wordlist_path=wl, max_chars=Settings.get('max_chars'))
     if not lesson:
       return False
-    self._set_weakspot_footer_busy(False)
+    self._set_improve_footer_busy(False)
     self.needWeakspotLesson.emit(lesson)
     return True
 
-  def start_focus_drill(self, targets):
-    """Start weakspot focus drill on specific type targets from Performance Analysis."""
+  def _start_focus_drill(self, targets, from_pa=False):
     self._focus_drill = [(t[0], t[1]) for t in targets]
     self._focus_drill_wpm = {}
+    self._focus_drill_from_pa = from_pa
     for t in targets:
       if len(t) > 2 and t[2] is not None:
         self._focus_drill_wpm[t[1]] = t[2]
-    self._settings.set('practice_mode', 1)
-    self._set_mode_ui(MODE_WEAKSPOT, load=False)
     if not self._emit_focus_lesson(self._focus_drill):
       self._focus_drill = None
       self._focus_drill_wpm = {}
+      self._focus_drill_from_pa = False
       self.updateLabel('Could not build a drill for those targets.')
+      return False
+    return True
+
+  def start_focus_drill(self, targets):
+    """Start improve focus drill on specific type targets from Performance Analysis."""
+    self._settings.set('practice_mode', practice_mode_to_settings(MODE_IMPROVE))
+    self._set_mode_ui(MODE_IMPROVE, load=False)
+    if not self._start_focus_drill(targets, from_pa=True):
       return
 
   def set_practice_mode(self, mode):
     if mode == self._mode:
       return
-    if mode != MODE_WEAKSPOT:
+    if mode != MODE_IMPROVE:
       self._focus_drill = None
+      self._focus_drill_from_pa = False
     self._focus_drill_wpm = {}
     self._settings.set('practice_mode', practice_mode_to_settings(mode))
     self._set_mode_ui(mode, load=True)
 
   def _set_mode_ui(self, mode, load):
     self._mode = mode
-    for btn, m in ((self._btn_normal, MODE_NORMAL), (self._btn_book, MODE_BOOK), (self._btn_weakspot, MODE_WEAKSPOT)):
+    for btn, m in ((self._btn_improve, MODE_IMPROVE), (self._btn_book, MODE_BOOK), (self._btn_corpus, MODE_CORPUS)):
       btn.setStyleSheet(self._mode_btn_style)
       btn.setProperty('activeMode', mode == m)
       self._polish_mode_btn(btn)
+    self._set_improve_submode_ui(self._improve_submode)
     self._book_prog_lbl.setVisible(mode == MODE_BOOK)
-    if self._current_lesson and mode == MODE_NORMAL:
+    if self._current_lesson and mode == MODE_CORPUS:
       self._source_lbl.setCursor(Qt.ArrowCursor)
       self._update_source_label(self._current_lesson[1])
     elif mode == MODE_BOOK and self._book_meta:
@@ -1219,34 +1282,34 @@ class TyperWindow(QWidget):
       self._source_lbl.setCursor(Qt.ArrowCursor)
     if not load:
       return
-    if mode == MODE_WEAKSPOT:
-      self._weakspot.request_next_lesson(force=True)
+    if mode == MODE_IMPROVE:
+      self._load_improve_lesson()
     elif mode == MODE_BOOK:
       self._book.invalidate_cache()
       self._book.request_lesson(advance_chapter=False)
     else:
-      self._set_weakspot_footer_busy(False)
+      self._set_improve_footer_busy(False)
       self.wantText.emit()
 
-  def _set_weakspot_footer_busy(self, busy):
+  def _set_improve_footer_busy(self, busy):
     self._weakspot_generating = busy
-    if busy and self._mode == MODE_WEAKSPOT:
-      self._btn_weakspot.setText(_GENERATING_BTN_LABEL)
-      self._btn_weakspot.setEnabled(False)
+    if busy and self._mode == MODE_IMPROVE:
+      self._btn_improve.setText(_GENERATING_BTN_LABEL)
+      self._btn_improve.setEnabled(False)
     else:
-      self._btn_weakspot.setText(_WEAKSPOT_BTN_LABEL)
-      self._btn_weakspot.setEnabled(True)
+      self._btn_improve.setText(_IMPROVE_BTN_LABEL)
+      self._btn_improve.setEnabled(True)
 
   def _on_weakspot_busy(self, busy):
-    self._set_weakspot_footer_busy(busy)
+    self._set_improve_footer_busy(busy)
 
   def _on_weakspot_lesson(self, lesson):
-    if self._mode != MODE_WEAKSPOT:
+    if self._mode != MODE_IMPROVE:
       return
     if not lesson:
-      self.updateLabel('No statistics yet — practice on normal mode first.')
+      self.updateLabel('No statistics yet — practice on corpus mode first.')
       return
-    self._set_weakspot_footer_busy(False)
+    self._set_improve_footer_busy(False)
     self.needWeakspotLesson.emit(lesson)
 
   def updateLabel(self, msg=None):
@@ -1307,9 +1370,9 @@ class TyperWindow(QWidget):
     vals = collect_run_stat_rows(run, med_char, now, srcid)
 
     is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
-    write_stats = self._mode not in (MODE_WEAKSPOT,) and (not is_lesson or self._settings.get('use_lesson_stats'))
+    write_stats = self._mode not in (MODE_IMPROVE,) and (not is_lesson or self._settings.get('use_lesson_stats'))
 
-    if self._mode == MODE_WEAKSPOT:
+    if self._mode == MODE_IMPROVE:
       ws_src = self.DB.getSource('<Weakspot>', lesson=1)
       drill_vals = [(t, vis, w, 0, m, tp, data, ws_src) for t, vis, w, _c, m, tp, data, _s in vals]
       self.DB.executemany_('''
@@ -1363,9 +1426,9 @@ class TyperWindow(QWidget):
       self.setText(self._current_lesson)
     elif action == 'book_next':
       self._book.request_lesson(advance_chapter=False)
-    elif action == 'weakspot_next':
+    elif action == 'improve_next':
       self._weakspot.invalidate_cache()
-      self._weakspot.request_next_lesson(force=True)
+      self._load_improve_lesson()
     elif action == 'review':
       review_words.sort(key=lambda x: (x[4], x[0]), reverse=True)
       u = sum(x[4] != 0 for x in review_words)

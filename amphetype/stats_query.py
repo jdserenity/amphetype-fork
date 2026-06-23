@@ -92,3 +92,20 @@ def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=3, oblivion_wpm=30):
   if not pool:
     return []
   return random.sample(pool, min(n, len(pool)))
+
+
+def fetch_analysis_top(db, hist_cutoff, stat_type, order, limit, min_count=1):
+  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, order, limit)
+  return db.execute(sql, (hist_cutoff, stat_type, min_count)).fetchall()
+
+
+def fetch_slowest_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
+  return fetch_analysis_top(db, hist_cutoff, stat_type, 'wpm asc', n, min_count)[:n]
+
+
+def fetch_hesitant_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
+  return fetch_analysis_top(db, hist_cutoff, stat_type, 'viscosity desc', n, min_count)[:n]
+
+
+def fetch_damage_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
+  return fetch_analysis_top(db, hist_cutoff, stat_type, 'damage desc', n, min_count)[:n]

@@ -95,7 +95,8 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "str_extra": 10,
     "str_what": 'e',
 
-    "practice_mode": 0,  # 0 = normal, 1 = book, 2 = weakspot
+    "practice_mode": 0,  # 0 = improve, 1 = book, 2 = corpus
+    "practice_mode_v2": True,
     "book_source_id": 0,
     "book_max_chars": 12000,
     "read_ahead_enabled": False,
@@ -109,6 +110,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     'show_progress': True,
     'read_ahead_level': 0,  # 0 = normal, 1 = hard, 2 = easy (when read_ahead_enabled)
+    'improve_submode': 0,  # 0 = normal … 4 = damage (when practice mode is improve)
 
     'para_margin': 40,
     'para_lineheight': 1.0,

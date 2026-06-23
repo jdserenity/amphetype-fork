@@ -64,6 +64,8 @@ def test_string_stats_has_no_lesson_generator_button(qapp):
   texts = [b.text() for b in st.findChildren(QPushButton)]
   assert 'Send List to Lesson Generator' not in texts
   assert 'Update List' not in texts
+  assert 'Drill worst 3' not in texts
+  assert 'Drill 3 oblivion' not in texts
   assert not hasattr(st, 'lessonStrings')
 
 
