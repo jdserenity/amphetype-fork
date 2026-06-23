@@ -714,21 +714,6 @@ class _LessonPauseOverlay(QWidget):
     self.hide()
 
 
-class TyperCanvas(QWidget):
-  def __init__(self, typer, overlay, *args, **kwargs):
-    super().__init__(*args, objectName='TyperCanvas', **kwargs)
-    self._overlay = overlay
-    lay = QVBoxLayout(self)
-    lay.setContentsMargins(0, 0, 0, 0)
-    lay.addWidget(typer)
-    overlay.setParent(self)
-    overlay.hide()
-
-  def resizeEvent(self, evt):
-    super().resizeEvent(evt)
-    self._overlay.setGeometry(self.rect())
-
-
 class TyperWidget(QTextEdit):
   def __init__(self, settings, *args, text=None, **kwargs):
     # Need to set TextEditable flag to make the cursor the normal
@@ -954,7 +939,12 @@ class TyperWindow(QWidget):
     self._pause_overlay = _LessonPauseOverlay(None)
     self._pause_overlay.continueClicked.connect(self._doc.resume)
     self._pause_overlay.restartClicked.connect(self._restart_lesson)
-    self._canvas = TyperCanvas(self._typer, self._pause_overlay)
+    self._canvas = QWidget()
+    self._canvas.setObjectName('TyperCanvas')
+    self._canvas.setAutoFillBackground(False)
+    self._canvas.setLayout(FBoxLayout([self._typer]))
+    self._pause_overlay.setParent(self._canvas)
+    self._canvas.installEventFilter(self)
 
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -1122,6 +1112,8 @@ class TyperWindow(QWidget):
     self._doc.set_page_background(qcolor)
 
   def eventFilter(self, obj, evt):
+    if obj is self._canvas and evt.type() == QEvent.Resize:
+      self._pause_overlay.setGeometry(self._canvas.rect())
     if obj is self._source_lbl and self._mode == MODE_BOOK:
       if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton:
         self._show_book_menu()
@@ -1138,6 +1130,7 @@ class TyperWindow(QWidget):
     self._typer._pin_typing_center = False
 
   def _on_lesson_paused(self):
+    self._pause_overlay.setGeometry(self._canvas.rect())
     self._pause_overlay.show()
     self._pause_overlay.raise_()
     self._typer.updateStatus()
