@@ -683,6 +683,7 @@ class LessonDocument(QTextDocument):
 class _LessonPauseOverlay(QWidget):
   continueClicked = pyqtSignal()
   restartClicked = pyqtSignal()
+  newClicked = pyqtSignal()
 
   def __init__(self, parent):
     super().__init__(parent)
@@ -693,24 +694,27 @@ class _LessonPauseOverlay(QWidget):
     lay.addStretch(1)
     row = QHBoxLayout()
     row.addStretch(1)
+    btns = QVBoxLayout()
+    btns.setSpacing(10)
     btn_style = (
       'QPushButton { color: #ffffff; background: #444444; border: 1px solid #666666;'
-      ' padding: 8px 20px; font-size: 13px; }'
+      ' min-width: 120px; padding: 8px 20px; font-size: 13px; }'
       'QPushButton:hover { background: #555555; }')
-    self._btn_restart = QPushButton('Restart', flat=False)
     self._btn_continue = QPushButton('Continue', flat=False)
-    for b in (self._btn_restart, self._btn_continue):
+    self._btn_new = QPushButton('New', flat=False)
+    self._btn_restart = QPushButton('Restart', flat=False)
+    for b in (self._btn_continue, self._btn_new, self._btn_restart):
       b.setFocusPolicy(Qt.NoFocus)
       b.setCursor(Qt.PointingHandCursor)
       b.setStyleSheet(btn_style)
-    row.addWidget(self._btn_restart)
-    row.addSpacing(16)
-    row.addWidget(self._btn_continue)
+      btns.addWidget(b, 0, Qt.AlignHCenter)
+    row.addLayout(btns)
     row.addStretch(1)
     lay.addLayout(row)
     lay.addStretch(1)
-    self._btn_restart.clicked.connect(self.restartClicked.emit)
     self._btn_continue.clicked.connect(self.continueClicked.emit)
+    self._btn_new.clicked.connect(self.newClicked.emit)
+    self._btn_restart.clicked.connect(self.restartClicked.emit)
     self.hide()
 
 
@@ -939,6 +943,7 @@ class TyperWindow(QWidget):
     self._pause_overlay = _LessonPauseOverlay(None)
     self._pause_overlay.continueClicked.connect(self._doc.resume)
     self._pause_overlay.restartClicked.connect(self._restart_lesson)
+    self._pause_overlay.newClicked.connect(self._new_lesson)
     self._canvas = QWidget()
     self._canvas.setObjectName('TyperCanvas')
     self._canvas.setAutoFillBackground(False)
@@ -1145,6 +1150,29 @@ class TyperWindow(QWidget):
     self._doc.reset()
     self._typer.setFocus()
 
+  def _new_lesson(self):
+    self._pause_overlay.hide()
+    if self._doc.is_paused():
+      self._doc.resume()
+    self._request_new_lesson()
+    self._typer.setFocus()
+
+  def _request_new_lesson(self):
+    """Load a fresh exercise for the current practice mode."""
+    if self._mode == MODE_WEAKSPOT:
+      if self._focus_drill:
+        if not self._emit_focus_lesson(self._focus_drill):
+          self.updateLabel('Could not rebuild focus drill for those targets.')
+        return
+      self._weakspot.invalidate_cache()
+      self._weakspot.request_next_lesson(force=True)
+    elif self._mode == MODE_BOOK:
+      self._book.invalidate_cache()
+      self._book.request_lesson(advance_chapter=False)
+    else:
+      self._set_weakspot_footer_busy(False)
+      self.wantText.emit()
+
   def _schedule_typing_center(self):
     self._typer.setTextCursor(self._doc.cursor)
     self._typer._pin_typing_center = True
@@ -1317,14 +1345,7 @@ class TyperWindow(QWidget):
       self._source_lbl.setCursor(Qt.ArrowCursor)
     if not load:
       return
-    if mode == MODE_WEAKSPOT:
-      self._weakspot.request_next_lesson(force=True)
-    elif mode == MODE_BOOK:
-      self._book.invalidate_cache()
-      self._book.request_lesson(advance_chapter=False)
-    else:
-      self._set_weakspot_footer_busy(False)
-      self.wantText.emit()
+    self._request_new_lesson()
 
   def _set_weakspot_footer_busy(self, busy):
     self._weakspot_generating = busy
