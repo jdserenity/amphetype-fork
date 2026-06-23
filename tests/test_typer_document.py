@@ -500,3 +500,51 @@ def test_widget_still_respects_require_space_when_enabled(qapp):
 
     w.insert(" ")  # the starter key
     assert doc.is_running()
+
+
+def test_escape_pauses_and_resumes_running_lesson(qapp):
+  from PyQt5.QtGui import QFont, QKeyEvent
+  from PyQt5.QtCore import Qt
+  from amphetype.typer import TyperWidget, LessonDocument
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  w.setLesson(doc)
+  w.insert('h')
+  assert doc.is_running()
+  assert not doc.is_paused()
+
+  w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+  assert doc.is_paused()
+
+  w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+  assert not doc.is_paused()
+  assert doc.is_running()
+
+
+def test_pause_blocks_typing_until_resume(qapp):
+  from PyQt5.QtGui import QFont
+  from amphetype.typer import TyperWidget, LessonDocument
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  w.setLesson(doc)
+  w.insert('h')
+  doc.pause()
+  w.insert('i')
+  assert doc._run.index == 1
+  doc.resume()
+  w.insert('i')
+  assert doc.is_finished()
+
+
+def test_reset_clears_pause_state(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  doc.insert('h')
+  doc.pause()
+  doc.reset()
+  assert doc.is_ready()
+  assert not doc.is_paused()
