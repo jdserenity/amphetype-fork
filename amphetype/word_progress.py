@@ -1,6 +1,7 @@
 """Per-word progress vs historical baseline WPM."""
 
 import re
+from collections import defaultdict
 
 from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED, fetch_speed_stats
 from amphetype.stats_query import STAT_TYPE_WORD
@@ -16,31 +17,91 @@ def word_spans(text):
   return [(m.start(), m.end(), m.group(0)) for m in _WORD_RE.finditer(text or '')]
 
 
+def fetch_word_stat_times(db, words):
+  """Per-word spc samples in statistic (same pool as agg_median(time))."""
+  if not words:
+    return {}
+  qs = ','.join('?' * len(words))
+  rows = db.execute(
+    'select data, time from statistic where type=? and data in (%s)' % qs,
+    (STAT_TYPE_WORD, *words)).fetchall()
+  out = defaultdict(list)
+  for data, t in rows:
+    if t is not None and t > 0:
+      out[data].append(t)
+  return dict(out)
+
+
 def fetch_word_baselines(db, words):
-  """All-time word WPM for each word that exists in statistic (case-sensitive keys)."""
+  """All-time word WPM plus raw timing samples for average-shift deltas."""
   if not words:
     return {}
   stats = fetch_speed_stats(db, hist_cutoff=0, stat_type=STAT_TYPE_WORD)
-  return {w: stats[w]['wpm'] for w in words if w in stats}
+  times = fetch_word_stat_times(db, words)
+  return {
+    w: {'wpm': stats[w]['wpm'], 'times': times.get(w, [])}
+    for w in words if w in stats
+  }
 
 
-def word_wpm_from_slice(sub):
-  """WPM for a completed word; same whole-word spc as collect_run_stat_rows word bucket."""
+def baseline_wpm(entry):
+  if isinstance(entry, dict):
+    return entry['wpm']
+  return entry
+
+
+def baseline_times(entry):
+  if isinstance(entry, dict):
+    ts = entry.get('times') or []
+    if ts:
+      return list(ts)
+    wpm = entry.get('wpm')
+    if wpm:
+      return [12.0 / wpm]
+  elif entry:
+    return [12.0 / entry]
+  return []
+
+
+def word_spc_from_slice(sub):
   if not sub.is_complete():
     return None
   st = sub.stats
   if st is None or st[0] is None or st[0] <= 0:
     return None
-  return 12.0 / st[0]
+  return st[0]
 
 
-def is_improved(run_wpm, baseline_wpm):
-  """At least 1 whole WPM faster; fractional-only gains do not count."""
-  return int(run_wpm) >= int(baseline_wpm) + 1
+def word_wpm_from_slice(sub):
+  """WPM for a completed word; same whole-word spc as collect_run_stat_rows word bucket."""
+  spc = word_spc_from_slice(sub)
+  return None if spc is None else 12.0 / spc
 
 
-def wpm_gain(run_wpm, baseline_wpm):
-  return int(run_wpm) - int(baseline_wpm)
+def wpm_from_spc_samples(spcs):
+  from amphetype.timingtuple import median
+  if not spcs:
+    return None
+  m = median(list(spcs))
+  if m is None or m <= 0:
+    return None
+  return 12.0 / m
+
+
+def avg_wpm_bump(old_times, new_spc):
+  """Whole WPM gain if this run's sample were merged into the historical median pool."""
+  if not old_times or new_spc is None or new_spc <= 0:
+    return None
+  old_wpm = wpm_from_spc_samples(old_times)
+  new_wpm = wpm_from_spc_samples(old_times + [new_spc])
+  if old_wpm is None or new_wpm is None:
+    return None
+  return int(new_wpm) - int(old_wpm)
+
+
+def is_improved(run_wpm, baseline_wpm_val):
+  """At least 1 whole WPM faster this run vs current baseline; fractional-only gains do not count."""
+  return int(run_wpm) >= int(baseline_wpm_val) + 1
 
 
 class RunProgress:
@@ -64,17 +125,33 @@ class RunProgress:
     return int(round(self.gain_total / self.gain_count))
 
 
+def _word_run_gain(sub, base_entry):
+  wpm = word_wpm_from_slice(sub)
+  if wpm is None:
+    return None, None
+  base = baseline_wpm(base_entry)
+  if not is_improved(wpm, base):
+    return None, None
+  spc = word_spc_from_slice(sub)
+  bump = avg_wpm_bump(baseline_times(base_entry), spc)
+  if bump is None:
+    return None, None
+  return wpm, bump
+
+
 def improved_word_spans(run, baselines, match_text):
-  """Each improved word occurrence: (start, end, wpm, gain)."""
+  """Each improved word occurrence: (start, end, run_wpm, avg_bump)."""
   out = []
   for start, end, word in word_spans(match_text or ''):
     sub = run[start:end]
     if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
       continue
-    wpm = word_wpm_from_slice(sub)
     base = baselines.get(word)
-    if base is not None and wpm is not None and is_improved(wpm, base):
-      out.append((start, end, wpm, wpm_gain(wpm, base)))
+    if base is None:
+      continue
+    _wpm, bump = _word_run_gain(sub, base)
+    if bump is not None:
+      out.append((start, end, _wpm, bump))
   return out
 
 
@@ -92,10 +169,10 @@ def analyze_run_progress(run, baselines, match_text=None):
     base = baselines.get(word)
     if base is not None:
       known += 1
-      if is_improved(wpm, base):
+      _wpm, bump = _word_run_gain(sub, base)
+      if bump is not None:
         improved += 1
-        g = wpm_gain(wpm, base)
-        gain_total += g; gain_count += 1
+        gain_total += bump; gain_count += 1
     elif word not in seen_new:
       seen_new.add(word)
       new_words.append(word)

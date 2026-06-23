@@ -722,9 +722,11 @@ class LessonDocument(QTextDocument):
         return
       base = self._word_baselines.get(word)
       wpm = word_wpm_from_slice(sub)
-      if base is not None and wpm is not None and is_improved(wpm, base):
-        for j in range(start, end):
-          self._style_match_index(j, self.style_progress)
+      if base is not None and wpm is not None:
+        from amphetype.word_progress import baseline_wpm, is_improved
+        if is_improved(wpm, baseline_wpm(base)):
+          for j in range(start, end):
+            self._style_match_index(j, self.style_progress)
       return
 
   def set_speed_heatmap(self, enabled, mode, stats):
