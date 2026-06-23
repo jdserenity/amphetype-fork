@@ -124,7 +124,7 @@ class AmphetypeWindow(QMainWindow):
     tabs = self.centralWidget()
     if tabs is None or not self._session_clock.isVisible():
       return
-    y = tabs.tabBar().height() + 1
+    y = tabs.tabBar().height() - 1
     self._session_clock.adjustSize()
     self._session_clock.move(tabs.width() - self._session_clock.width() - 8, y)
     self._session_clock.raise_()
