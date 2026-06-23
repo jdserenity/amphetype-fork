@@ -2,7 +2,7 @@
   "name": "typing-program-website",
   "private": true,
   "scripts": {
-    "dev": "wrangler pages dev .",
+    "dev": "bash scripts/dev.sh",
     "deploy": "wrangler pages deploy . --project-name=typing-program"
   },
   "devDependencies": {

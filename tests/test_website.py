@@ -15,7 +15,10 @@ def index_html():
 
 
 def test_website_files_exist():
-  for path in (INDEX, WEBSITE / "styles.css", WEBSITE / "main.js", WEBSITE / "favicon.svg", WRANGLER):
+  for path in (
+    INDEX, WEBSITE / "styles.css", WEBSITE / "main.js", WEBSITE / "favicon.svg",
+    WEBSITE / "checkout.json", WEBSITE / "thanks.html", WRANGLER,
+  ):
     assert path.is_file(), f"missing {path.relative_to(REPO_ROOT)}"
 
 
@@ -26,6 +29,7 @@ def test_index_has_required_sections(index_html):
 
 def test_index_no_amphetype_branding(index_html):
   assert "amphetype" not in index_html.lower()
+  assert "colemak" not in index_html.lower()
 
 
 def test_index_pricing(index_html):
@@ -42,6 +46,21 @@ def test_index_meta_description(index_html):
 def test_index_links_stylesheet_and_script(index_html):
   assert 'href="styles.css"' in index_html
   assert 'src="main.js"' in index_html
+  assert 'data-checkout' in index_html
+
+
+def test_checkout_config():
+  cfg = json.loads((WEBSITE / "checkout.json").read_text(encoding="utf-8"))
+  assert "checkout_url" in cfg
+  assert cfg["checkout_url"].startswith("https://")
+
+
+def test_thanks_page_gated():
+  html = (WEBSITE / "thanks.html").read_text(encoding="utf-8")
+  thanks_js = (WEBSITE / "thanks.js").read_text(encoding="utf-8")
+  for fragment in ("thanks-ok", "thanks-denied", "thanks-loading", "thanks.js", "verify-order"):
+    assert fragment in html or fragment in thanks_js
+  assert (WEBSITE / "functions" / "api" / "verify-order.js").is_file()
 
 
 def test_wrangler_pages_config():

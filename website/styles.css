@@ -452,6 +452,56 @@ a:hover { color: var(--accent-hover); }
   color: var(--text-muted);
 }
 
+.checkout-notice {
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 165, 58, 0.35);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.checkout-notice code {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+/* Thanks */
+
+.thanks {
+  padding: 5rem 0 6rem;
+}
+
+.thanks-inner {
+  max-width: 36rem;
+}
+
+.thanks h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  letter-spacing: -0.02em;
+}
+
+.thanks-steps {
+  margin: 0 0 1.5rem;
+  padding-left: 1.2rem;
+  color: var(--text-muted);
+}
+
+.thanks-steps li { margin: 0.4rem 0; }
+
+.thanks-help {
+  margin: 0 0 1.5rem;
+  color: var(--text-muted);
+}
+
+.thanks-inner .btn + .btn {
+  margin-left: 0.75rem;
+}
+
 /* Footer */
 
 .site-footer {

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thank you — Typing Program That Helps You Type Better</title>
+  <meta name="description" content="Your purchase is complete. Check your email for your license key and download links.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="/">Typing Program That Helps You Type Better</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="thanks">
+      <div class="container thanks-inner">
+        <div id="thanks-loading">
+          <p class="eyebrow">One moment</p>
+          <h1>Confirming your purchase…</h1>
+        </div>
+        <div id="thanks-denied" hidden>
+          <p class="eyebrow">Access denied</p>
+          <h1>This page is for customers right after checkout</h1>
+          <p class="lead">If you just bought Typing Program, check your email — Lemon Squeezy sent your license key and download links there.</p>
+          <a class="btn btn-primary" href="/#pricing">Buy for $5</a>
+          <a class="btn btn-ghost" href="/">Back to home</a>
+        </div>
+        <div id="thanks-ok" hidden>
+          <p class="eyebrow">Purchase complete</p>
+          <h1>Check your email</h1>
+          <p class="lead">Lemon Squeezy sent your receipt, license key, and download links. Install the app for your operating system, then paste the license key when prompted on first launch.</p>
+          <ul class="thanks-steps">
+            <li>Open the email from Lemon Squeezy</li>
+            <li>Download the installer for Windows, macOS, or Linux</li>
+            <li>Run the app and enter your license key</li>
+          </ul>
+          <p class="thanks-help">Didn't get it? Check spam, or contact <a href="mailto:hello@typingprogram.app">hello@typingprogram.app</a> with your purchase email.</p>
+          <a class="btn btn-ghost" href="/">Back to home</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p class="footer-brand">Typing Program</p>
+      <p class="footer-copy">Typing Program That Helps You Type Better</p>
+    </div>
+  </footer>
+
+  <script src="thanks.js"></script>
+</body>
+</html>
