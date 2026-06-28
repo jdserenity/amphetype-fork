@@ -37,6 +37,14 @@ ANALYSIS_OUTER_SQL = """select data, 12.0/time as wpm,
   where total >= ?
   order by %s limit %d"""
 
+ANALYSIS_SEARCH_OUTER_SQL = """select data, 12.0/time as wpm,
+  100.0-100.0*mistakes/cast(total as real) as accuracy,
+  viscosity, total, mistakes, drilled,
+  total*time*time*(1.0+mistakes/total) as damage
+  from (%s)
+  where total >= ? and %s
+  order by %s"""
+
 # Heatmap WPM uses the same median-time pool as Analysis; damage uses counted rows only.
 SPEED_STATS_SQL = f"""select data,
   12.0 / agg_median(time) as wpm,
@@ -69,8 +77,41 @@ SPEED_STATS_ALL_TIME_SQL = f"""select data,
   where st.type = ?
   group by data"""
 
+STAT_TYPE_CHAR = 0
 STAT_TYPE_TRIGRAM = 1
 STAT_TYPE_WORD = 2
+
+ANALYSIS_ORDER_OPTIONS = (
+  ('wpm asc', 'slowest'),
+  ('wpm desc', 'fastest'),
+  ('viscosity desc', 'most hesitation'),
+  ('viscosity asc', 'least hesitation'),
+  ('accuracy asc', 'least accurate'),
+  ('misses desc', 'most mistyped'),
+  ('total desc', 'most common'),
+  ('damage desc', 'most damaging'),
+)
+ANALYSIS_ORDER_CLAUSES = frozenset(k for k, _ in ANALYSIS_ORDER_OPTIONS) | frozenset(['improved desc'])
+DEFAULT_ANALYSIS_ORDER = 'wpm asc'
+
+
+def analysis_order_clause(order):
+  return order if order in ANALYSIS_ORDER_CLAUSES else DEFAULT_ANALYSIS_ORDER
+
+
+def analysis_search_data_clause(stat_type):
+  if stat_type == STAT_TYPE_WORD:
+    return 'instr(lower(data), lower(?)) > 0'
+  return 'instr(data, ?) > 0'
+
+
+def fetch_analysis_search(db, hist_cutoff, stat_type, min_count, term, order):
+  term = (term or '').strip()
+  if not term:
+    return []
+  clause = analysis_search_data_clause(stat_type)
+  sql = ANALYSIS_SEARCH_OUTER_SQL % (STATS_AGG_SUBQUERY, clause, analysis_order_clause(order))
+  return db.execute(sql, (hist_cutoff, stat_type, min_count, term)).fetchall()
 
 
 def fetch_first_sample_wpm(db, stat_type, data_keys):

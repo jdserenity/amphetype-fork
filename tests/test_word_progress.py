@@ -40,8 +40,10 @@ def _test_db():
 def _make_run(text, spc=0.1):
   run = RunStats.make(text, started=1000.0)
   t = 1000.0
+  last = None
   for i in range(len(text)):
-    run[i].visit(True, t)
+    run[i].visit(True, last, t)
+    last = t
     t += spc
     run[i].last = t
     run.index = i + 1
@@ -103,8 +105,10 @@ def test_word_wpm_from_slice():
 def test_word_wpm_from_slice_uses_whole_word_not_char_median():
   run = RunStats.make('hello', started=1000.0)
   t = 1000.0
+  last = None
   for i in range(5):
-    run[i].visit(True, t)
+    run[i].visit(True, last, t)
+    last = t
     t += 0.5 if i == 0 else 0.05
     run[i].last = t
     run.index = i + 1
@@ -115,9 +119,9 @@ def test_word_wpm_from_slice_uses_whole_word_not_char_median():
 
 def test_word_wpm_from_slice_skips_incomplete():
   run = RunStats.make('ab', started=None)
-  run[0].visit(True, None)
+  run[0].visit(True, None, 1000.0)
   run[0].last = 1000.5
-  run[1].visit(True, 1000.5)
+  run[1].visit(True, 1000.0, 1000.5)
   run[1].last = 1000.55
   run.index = 2
   assert word_wpm_from_slice(run[0:2]) is None
@@ -149,13 +153,13 @@ def test_analyze_run_progress_improved_and_new():
 
 def test_analyze_run_progress_skips_mistyped_words():
   run = RunStats.make('bad', started=1000.0)
-  run[0].visit(False, 1000.0)
-  run[0].visit(True, 1001.0)
+  run[0].visit(False, None, 1000.0)
+  run[0].visit(True, 1000.0, 1001.0)
   run[0].last = 1001.0
   run.index = 1
-  run[1].visit(True, 1001.0)
+  run[1].visit(True, 1001.0, 1001.0)
   run[1].last = 1001.1
-  run[2].visit(True, 1001.1)
+  run[2].visit(True, 1001.0, 1001.1)
   run[2].last = 1001.2
   run.index = 3
   p = analyze_run_progress(run, {'bad': _bl(10.0)})

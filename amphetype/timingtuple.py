@@ -61,9 +61,7 @@ class CharEntry():
   def visited(self):
     return self.first is not None
 
-  def visit(self, correct, last_time):
-    now = timer()
-    
+  def visit(self, correct, last_time, now):
     if self.first_any is None:
       self.first_any = now
       
@@ -86,6 +84,8 @@ class RunStats(datatuple):
     assert len(text) > 0
     obj = RunStats(CharEntry(c) for c in text)
     obj.started = started
+    obj._pause_total = 0.0
+    obj._paused_at = None
     return obj
     
   def __new__(cls, cs):
@@ -95,6 +95,8 @@ class RunStats(datatuple):
       idx += 1
     self.index = idx
     self.started = None
+    self._pause_total = 0.0
+    self._paused_at = None
     return self
 
   def __repr__(self):
@@ -108,6 +110,24 @@ class RunStats(datatuple):
 
   def has_started(self):
     return self.started is not None
+
+  def is_paused(self):
+    return self._paused_at is not None
+
+  def _tnow(self):
+    t = timer()
+    if self._paused_at is not None:
+      t = self._paused_at
+    return t - self._pause_total
+
+  def pause(self):
+    if self._paused_at is None:
+      self._paused_at = timer()
+
+  def resume(self):
+    if self._paused_at is not None:
+      self._pause_total += timer() - self._paused_at
+      self._paused_at = None
 
   @property
   def current(self):
@@ -180,10 +200,13 @@ class RunStats(datatuple):
     return None
 
   def visit(self, correct):
+    if self.is_paused():
+      return
+    now = self._tnow()
     if self.previous:
-      self.current.visit(correct, self.previous.last)
+      self.current.visit(correct, self.previous.last, now)
     else:
-      self.current.visit(correct, self.started)
+      self.current.visit(correct, self.started, now)
 
   def advance(self, real=True):
     if not real:

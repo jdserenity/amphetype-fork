@@ -502,6 +502,130 @@ def test_widget_still_respects_require_space_when_enabled(qapp):
     assert doc.is_running()
 
 
+def test_escape_pauses_before_first_keystroke(qapp):
+  from PyQt5.QtGui import QFont, QKeyEvent
+  from PyQt5.QtCore import Qt
+  from amphetype.typer import TyperWidget, LessonDocument
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  w.setLesson(doc)
+  assert doc.is_ready()
+  assert not doc.is_paused()
+
+  w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+  assert doc.is_paused()
+  assert doc.is_ready()
+  w.insert('h')
+  assert doc.is_ready()
+
+  w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+  assert not doc.is_paused()
+  w.insert('h')
+  assert doc.is_running()
+
+
+def test_escape_pauses_and_resumes_running_lesson(qapp):
+  from PyQt5.QtGui import QFont, QKeyEvent
+  from PyQt5.QtCore import Qt
+  from amphetype.typer import TyperWidget, LessonDocument
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  w.setLesson(doc)
+  w.insert('h')
+  assert doc.is_running()
+  assert not doc.is_paused()
+
+  w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+  assert doc.is_paused()
+
+  w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+  assert not doc.is_paused()
+  assert doc.is_running()
+
+
+def test_pause_blocks_typing_until_resume(qapp):
+  from PyQt5.QtGui import QFont
+  from amphetype.typer import TyperWidget, LessonDocument
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  w.setLesson(doc)
+  w.insert('h')
+  doc.pause()
+  w.insert('i')
+  assert doc._run.index == 1
+  doc.resume()
+  w.insert('i')
+  assert doc.is_finished()
+
+
+def test_reset_clears_pause_state(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  doc.insert('h')
+  doc.pause()
+  doc.reset()
+  assert doc.is_ready()
+  assert not doc.is_paused()
+
+
+def test_pause_overlay_buttons_stacked_with_new(qapp):
+  from amphetype.typer import _LessonPauseOverlay
+
+  o = _LessonPauseOverlay(None)
+  fired = {'continue': 0, 'new': 0, 'restart': 0}
+  o.continueClicked.connect(lambda: fired.__setitem__('continue', fired['continue'] + 1))
+  o.newClicked.connect(lambda: fired.__setitem__('new', fired['new'] + 1))
+  o.restartClicked.connect(lambda: fired.__setitem__('restart', fired['restart'] + 1))
+  o._btn_continue.click()
+  o._btn_new.click()
+  o._btn_restart.click()
+  assert fired == {'continue': 1, 'new': 1, 'restart': 1}
+
+
+def test_request_new_lesson_per_mode(qapp):
+  from unittest.mock import MagicMock
+  from amphetype.typer import TyperWindow, MODE_NORMAL, MODE_BOOK, MODE_WEAKSPOT
+
+  w = TyperWindow.__new__(TyperWindow)
+  w._focus_drill = None
+  w._weakspot = MagicMock()
+  w._book = MagicMock()
+  w._set_weakspot_footer_busy = MagicMock()
+  w._set_improve_footer_busy = MagicMock()
+  w._load_improve_lesson = MagicMock()
+  w.wantText = MagicMock()
+  w._emit_focus_lesson = MagicMock(return_value=True)
+
+  w._mode = MODE_NORMAL
+  w._request_new_lesson()
+  w.wantText.emit.assert_called_once()
+  w._set_improve_footer_busy.assert_called_with(False)
+
+  w.wantText.reset_mock()
+  w._set_improve_footer_busy.reset_mock()
+  w._mode = MODE_BOOK
+  w._request_new_lesson()
+  w._book.invalidate_cache.assert_called_once()
+  w._book.request_lesson.assert_called_once_with(advance_chapter=False)
+
+  w._book.reset_mock()
+  w._load_improve_lesson.reset_mock()
+  w._mode = MODE_WEAKSPOT
+  w._request_new_lesson()
+  w._load_improve_lesson.assert_called_once()
+
+  w._load_improve_lesson.reset_mock()
+  w._focus_drill = [('word', 'the')]
+  w._request_new_lesson()
+  w._emit_focus_lesson.assert_called_once_with(w._focus_drill)
+
+
 def test_continue_lesson_clears_progress_label(qapp):
   import amphetype.Amphetype  # noqa: F401 — init app.settings for TyperWindow
   from amphetype.typer import TyperWindow

@@ -100,6 +100,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "book_source_id": 0,
     "book_max_chars": 12000,
     "read_ahead_enabled": False,
+    "show_session_timer": True,
   }
 
   typer_defaults = {
@@ -282,6 +283,7 @@ class SettingsCombo(QComboBox):
 
     prev = Settings.get(setting)
     self.idx2item = []
+    matched = False
     for i in range(len(lst)):
       if isinstance(lst[i], str):
         # not a tuple, use index as key
@@ -292,6 +294,10 @@ class SettingsCombo(QComboBox):
       self.idx2item.append(k)
       if k == prev:
         self.setCurrentIndex(i)
+        matched = True
+    if not matched and self.idx2item:
+      self.setCurrentIndex(0)
+      Settings.set(setting, self.idx2item[0])
 
     self.activated[int].connect(lambda x: Settings.set(setting, self.idx2item[x]))
 
@@ -469,6 +475,7 @@ class GeneralOptions(QWidget):
       None,
       [SettingsCheckBox("text_force_ascii", 'Force unicode to plain ASCII'), ('(‘fancy’ “quotes” → "normal" quotes, <code>æ</code> → <code>ae</code>, etc.)', 1)],
       SettingsCheckBox('auto_review', "Automatically review slow and mistyped words after texts."),
+      SettingsCheckBox('show_session_timer', "Show focused session timer in the top-right corner."),
       SettingsCheckBox('use_lesson_stats', "Save key/trigram/word statistics from generated lessons."),
       SettingsCheckBox('req_space', "Make SPACE mandatory before each session",
                         toolTip="""This is generally recommended because otherwise the timing of the very first character has to be inferred artificially (a median is used)."""),

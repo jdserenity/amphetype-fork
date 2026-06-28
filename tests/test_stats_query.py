@@ -8,8 +8,8 @@ import pytest
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.stats_query import (
   ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
-  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, count_unique_typed, fetch_first_sample_wpm,
-  fetch_oblivion_pool, fetch_oblivion_picks,
+  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, analysis_order_clause, count_unique_typed,
+  fetch_analysis_search, fetch_first_sample_wpm, fetch_oblivion_pool, fetch_oblivion_picks,
 )
 from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
 
@@ -124,6 +124,60 @@ class TestStatsAggregation(unittest.TestCase):
     self.assertEqual(set(rows), {'Lady', 'lady'})
     self.assertAlmostEqual(12.0 / rows['Lady'], 70.0)
     self.assertAlmostEqual(12.0 / rows['lady'], 25.0)
+
+  def test_fetch_analysis_search_words_case_insensitive(self):
+    conn = _test_db(); now = 1e9
+    conn.executemany(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      [
+        (now, 'from', STAT_TYPE_WORD, 0.5, 10, 0, 1.0, None),
+        (now, 'therefore', STAT_TYPE_WORD, 0.5, 8, 0, 1.0, None),
+        (now, 'the', STAT_TYPE_WORD, 0.5, 5, 0, 1.0, None),
+        (now, 'Lady', STAT_TYPE_WORD, 0.5, 5, 0, 1.0, None),
+      ])
+    hits = fetch_analysis_search(conn, 0, STAT_TYPE_WORD, 1, 'the', 'data asc')
+    self.assertEqual([r[0] for r in hits], ['the', 'therefore'])
+
+  def test_fetch_analysis_search_words_respects_min_count(self):
+    conn = _test_db(); now = 1e9
+    conn.executemany(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      [
+        (now, 'the', STAT_TYPE_WORD, 0.5, 5, 0, 1.0, None),
+        (now, 'there', STAT_TYPE_WORD, 0.5, 1, 0, 1.0, None),
+      ])
+    hits = fetch_analysis_search(conn, 0, STAT_TYPE_WORD, 3, 'the', 'data asc')
+    self.assertEqual([r[0] for r in hits], ['the'])
+
+  def test_fetch_analysis_search_trigram_case_sensitive(self):
+    conn = _test_db(); now = 1e9
+    conn.executemany(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      [
+        (now, 'The', STAT_TYPE_TRIGRAM, 0.5, 5, 0, 1.0, None),
+        (now, 'the', STAT_TYPE_TRIGRAM, 0.5, 5, 0, 1.0, None),
+      ])
+    hits = fetch_analysis_search(conn, 0, STAT_TYPE_TRIGRAM, 1, 'the', 'data asc')
+    self.assertEqual([r[0] for r in hits], ['the'])
+
+  def test_fetch_analysis_search_returns_all_matches_not_limited(self):
+    conn = _test_db(); now = 1e9
+    rows = [(now, 'w%02d' % i, STAT_TYPE_WORD, 0.5, 10, 0, 1.0, None) for i in range(40)]
+    conn.executemany(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      rows)
+    limited = conn.execute(
+      ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'data asc', 10),
+      (0, STAT_TYPE_WORD, 1)).fetchall()
+    self.assertEqual(len(limited), 10)
+    hits = fetch_analysis_search(conn, 0, STAT_TYPE_WORD, 1, 'w', 'data asc')
+    self.assertEqual(len(hits), 40)
+
+
+def test_analysis_order_clause_rejects_unknown_sort():
+  assert analysis_order_clause('improved desc') == 'improved desc'
+  assert analysis_order_clause('bogus desc') == 'wpm asc'
+  assert analysis_order_clause('damage desc') == 'damage desc'
 
 
 def test_fetch_first_sample_wpm():

@@ -5,7 +5,9 @@ import time
 
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
-from amphetype.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD, fetch_first_sample_wpm
+from amphetype.stats_query import (
+  ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD, analysis_order_clause,
+  fetch_analysis_search, fetch_first_sample_wpm)
 from amphetype.word_progress import lifetime_wpm_gain
 from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
@@ -13,7 +15,7 @@ from amphetype.Config import *
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from PyQt5.QtWidgets import QLabel, QMenu
+from PyQt5.QtWidgets import QLabel, QMenu, QLineEdit
 
 
 
@@ -128,6 +130,13 @@ class StringStats(QWidget):
     wc = SettingsCombo('ana_what', ['keys', 'trigrams', 'words'])
     lim = SettingsEdit('ana_many')
     self.w_count = SettingsEdit('ana_count')
+    self._baseline_rows = []
+    self._search_applied = None
+    self._search_edit = QLineEdit()
+    self._search_edit.setPlaceholderText('target…')
+    self._search_btn = AmphButton('Search', self._on_search_btn)
+    self._search_edit.textChanged.connect(self._sync_search_btn)
+    self._search_edit.returnPressed.connect(self._apply_search)
 
     Settings.signal_for("ana_which").connect(self.update)
     Settings.signal_for("ana_what").connect(self.update)
@@ -138,6 +147,7 @@ class StringStats(QWidget):
     self.setLayout(AmphBoxLayout([
         ["Show", wc, "sorted by", ob, None],
         ["Limit list to", lim, "items and don't show items with a count less than", self.w_count, None],
+        ["Search", self._search_edit, self._search_btn, None],
         self._corpus_lbl,
         (self.stats, 1)
       ]))
@@ -145,6 +155,39 @@ class StringStats(QWidget):
   def clear_corpus_msg(self):
     self._corpus_lbl.hide()
     self._corpus_lbl.clear()
+
+  def clear_search(self):
+    self._search_applied = None
+    self._search_edit.clear()
+    self.model.setData(self._baseline_rows)
+    self._sync_search_btn()
+
+  def _sync_search_btn(self):
+    term = self._search_edit.text()
+    if self._search_applied is not None and term == self._search_applied:
+      self._search_btn.setText('Clear')
+    else:
+      self._search_btn.setText('Search')
+
+  def _on_search_btn(self):
+    if self._search_btn.text() == 'Clear':
+      self.clear_search()
+    else:
+      self._apply_search()
+
+  def _apply_search(self):
+    term = self._search_edit.text().strip()
+    if not term:
+      return
+    rows = fetch_analysis_search(
+      DB, time.time() - Settings.get('history') * 86400.0,
+      Settings.get('ana_what'), Settings.get('ana_count'), term,
+      'total desc' if Settings.get('ana_which') == 'improved desc' else analysis_order_clause(Settings.get('ana_which')))
+    self._search_applied = term
+    cat = Settings.get('ana_what')
+    rows = self._finalize_rows(rows, cat, Settings.get('ana_which'))
+    self.model.setData(rows)
+    self._sync_search_btn()
 
   def _show_corpus_msg(self, msg):
     self._corpus_lbl.setText(msg)
@@ -159,7 +202,7 @@ class StringStats(QWidget):
       sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', pool)
       rows = DB.fetchall(sql, (hist, cat, count))
       return rows, cat
-    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, order, limit)
+    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_clause(order), limit)
     return DB.fetchall(sql, (hist, cat, count)), cat
 
   def _enrich_word_rows(self, rows):
@@ -168,18 +211,27 @@ class StringStats(QWidget):
     first = fetch_first_sample_wpm(DB, STAT_TYPE_WORD, [r[0] for r in rows])
     return [list(r[:2]) + [lifetime_wpm_gain(r[1], first.get(r[0]))] + list(r[2:]) for r in rows]
 
-  def update(self, *arg):
-    self.clear_corpus_msg()
-    order = Settings.get('ana_which')
-    limit = Settings.get('ana_many')
-    rows, cat = self._query_rows(order, limit)
+  def _finalize_rows(self, rows, cat, order, limit=None):
     self.model.set_words_mode(cat == 2)
     if cat == 2 and rows:
       rows = self._enrich_word_rows(rows)
       if order == 'improved desc':
         rows.sort(key=lambda r: r[2] if r[2] is not None else -999999, reverse=True)
-        rows = rows[:limit]
-    self.model.setData(rows)
+        if limit is not None:
+          rows = rows[:limit]
+    return rows
+
+  def update(self, *arg):
+    self.clear_corpus_msg()
+    order = Settings.get('ana_which')
+    limit = Settings.get('ana_many')
+    rows, cat = self._query_rows(order, limit)
+    rows = self._finalize_rows(rows, cat, order, limit)
+    self._baseline_rows = list(rows)
+    if self._search_applied is not None:
+      self._apply_search()
+    else:
+      self.model.setData(rows)
 
   def _targets_from_rows(self, rows, cat):
     kind = ana_what_kind(cat)

@@ -205,6 +205,8 @@ class LessonDocument(QTextDocument):
   sig_position = pyqtSignal(QTextCursor)
 
   started = pyqtSignal()
+  paused = pyqtSignal()
+  resumed = pyqtSignal()
   ready = pyqtSignal(str)
   completed = pyqtSignal('PyQt_PyObject')
   error = pyqtSignal(str)
@@ -231,6 +233,7 @@ class LessonDocument(QTextDocument):
     self._book_auto_returns = False
     self._book_chunks = None
     self._book_chunk_index = 0
+    self._pre_start_paused = False
     self._word_baselines = {}
     self._word_spans = []
     self._progress_badges = []
@@ -297,6 +300,7 @@ class LessonDocument(QTextDocument):
 
     self._run = None
     self._first_error = None
+    self._pre_start_paused = False
     self._progress_badges = []
     self._read_ahead_preview = bool(self._read_ahead_mode)
     self._read_ahead_revealed = set()
@@ -556,6 +560,31 @@ class LessonDocument(QTextDocument):
     """True if a lesson has started but not yet completed."""
     return self._run is not None and not self._run.is_complete()
 
+  def is_paused(self):
+    return self._pre_start_paused or (self._run is not None and self._run.is_paused())
+
+  def pause(self):
+    if self.is_paused() or self.is_finished():
+      return False
+    if self.is_ready():
+      self._pre_start_paused = True
+      self.paused.emit()
+      return True
+    self._run.pause()
+    self.paused.emit()
+    return True
+
+  def resume(self):
+    if not self.is_paused():
+      return False
+    if self._pre_start_paused:
+      self._pre_start_paused = False
+      self.resumed.emit()
+      return True
+    self._run.resume()
+    self.resumed.emit()
+    return True
+
   def is_finished(self):
     """True if a lesson has started and then completed."""
     return self._run is not None and self._run.is_complete()
@@ -571,6 +600,8 @@ class LessonDocument(QTextDocument):
     self.started.emit()
 
   def insert(self, char, overwrite=True, lenient=False):
+    if self.is_paused():
+      return
     if self.read_ahead_preview_pending():
       self.dismiss_read_ahead_preview()
     if self._run is None:
@@ -640,7 +671,7 @@ class LessonDocument(QTextDocument):
       self.cursor.movePosition(QTextCursor.NextCharacter)
 
   def backspace(self, by_word=False, protected=False):
-    if not self.is_running():
+    if not self.is_running() or self.is_paused():
       return
 
     mi = self._book_para_enter_index()
@@ -739,6 +770,43 @@ class LessonDocument(QTextDocument):
 
 ### WIDGET
 
+
+class _LessonPauseOverlay(QWidget):
+  continueClicked = pyqtSignal()
+  restartClicked = pyqtSignal()
+  newClicked = pyqtSignal()
+
+  def __init__(self, parent):
+    super().__init__(parent)
+    self.setAttribute(Qt.WA_StyledBackground, True)
+    self.setStyleSheet('background-color: rgba(0, 0, 0, 0.55);')
+    lay = QVBoxLayout(self)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addStretch(1)
+    row = QHBoxLayout()
+    row.addStretch(1)
+    btns = QVBoxLayout()
+    btns.setSpacing(10)
+    btn_style = (
+      'QPushButton { color: #ffffff; background: #444444; border: 1px solid #666666;'
+      ' min-width: 120px; padding: 8px 20px; font-size: 13px; }'
+      'QPushButton:hover { background: #555555; }')
+    self._btn_continue = QPushButton('Continue', flat=False)
+    self._btn_new = QPushButton('New', flat=False)
+    self._btn_restart = QPushButton('Restart', flat=False)
+    for b in (self._btn_continue, self._btn_new, self._btn_restart):
+      b.setFocusPolicy(Qt.NoFocus)
+      b.setCursor(Qt.PointingHandCursor)
+      b.setStyleSheet(btn_style)
+      btns.addWidget(b, 0, Qt.AlignHCenter)
+    row.addLayout(btns)
+    row.addStretch(1)
+    lay.addLayout(row)
+    lay.addStretch(1)
+    self._btn_continue.clicked.connect(self.continueClicked.emit)
+    self._btn_new.clicked.connect(self.newClicked.emit)
+    self._btn_restart.clicked.connect(self.restartClicked.emit)
+    self.hide()
 
 
 class TyperWidget(QTextEdit):
@@ -876,13 +944,23 @@ class TyperWidget(QTextEdit):
   def updateStatus(self):
     if self._lesson is None:
       return
-    self.setReadOnly(self._lesson.is_finished())
+    self.setReadOnly(self._lesson.is_finished() or self._lesson.is_paused())
+
+  def _toggle_pause(self):
+    if self._lesson.is_paused():
+      self._lesson.resume()
+    elif self._lesson.is_ready() or self._lesson.is_running():
+      self._lesson.pause()
 
   # Block mouse cursor movement. (Focus should still work.)
   def mousePressEvent(self, e):
+    if self._lesson and self._lesson.is_paused():
+      return
     pass
 
   def mouseReleaseEvent(self, e):
+    if self._lesson and self._lesson.is_paused():
+      return
     pass
 
   def keyPressEvent(self, evt):
@@ -896,14 +974,21 @@ class TyperWidget(QTextEdit):
         evt.accept()
         return
 
+    if evt.key() == Qt.Key_Escape:
+      if self._lesson.is_paused() or self._lesson.is_ready() or self._lesson.is_running():
+        self._toggle_pause()
+      evt.accept()
+      return
+
+    if self._lesson.is_paused():
+      evt.ignore()
+      return
+
     if evt.key() == Qt.Key_Backspace or evt.key() == Qt.Key_Back:
       by_word = bool(evt.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier))
       self.backspace(word=by_word)
     elif evt.key() == Qt.Key_Enter or evt.key() == Qt.Key_Return:
       self.insert(RETURN_CHAR)
-    elif evt.key() == Qt.Key_Escape:
-      self._on_awaiting_enter = None
-      self._lesson.reset()
     elif evt.text() and ord(evt.text()) >= 32:
       self.insert(evt.text())
     else:
@@ -913,7 +998,7 @@ class TyperWidget(QTextEdit):
     evt.accept()
 
   def insert(self, char):
-    if self._lesson is None or self._lesson.is_finished():
+    if self._lesson is None or self._lesson.is_finished() or self._lesson.is_paused():
       return
 
     if not self._lesson.is_running() and self._settings['require_space']:
@@ -924,7 +1009,7 @@ class TyperWidget(QTextEdit):
     self._lesson.insert(char, overwrite=self.overwriteMode(), lenient=self._settings['lenient_mode'])
 
   def backspace(self, word=False):
-    if self._lesson is None or not self._lesson.is_running():
+    if self._lesson is None or not self._lesson.is_running() or self._lesson.is_paused():
       return
     self._lesson.backspace(by_word=word, protected=self._settings['limit_backspace'])
 
@@ -993,6 +1078,8 @@ class TyperWindow(QWidget):
     doc.ready.connect(self.typingReady)
     doc.ready.connect(self._on_lesson_ready)
     doc.completed.connect(self.typingDone)
+    doc.paused.connect(self._on_lesson_paused)
+    doc.resumed.connect(self._on_lesson_resumed)
 
     self._typer.setLesson(doc)
     
@@ -1001,10 +1088,16 @@ class TyperWindow(QWidget):
     # Canvas wrapper: provides the uniform background color chosen by the user.
     # The TyperWidget inside it is transparent + borderless, so there is no
     # distinct "text entry box" — the styled lesson text just lives on the canvas.
+    self._pause_overlay = _LessonPauseOverlay(None)
+    self._pause_overlay.continueClicked.connect(self._doc.resume)
+    self._pause_overlay.restartClicked.connect(self._restart_lesson)
+    self._pause_overlay.newClicked.connect(self._new_lesson)
     self._canvas = QWidget()
     self._canvas.setObjectName('TyperCanvas')
-    canvas_lay = FBoxLayout([self._typer])
-    self._canvas.setLayout(canvas_lay)
+    self._canvas.setAutoFillBackground(False)
+    self._canvas.setLayout(FBoxLayout([self._typer]))
+    self._pause_overlay.setParent(self._canvas)
+    self._canvas.installEventFilter(self)
 
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -1218,6 +1311,8 @@ class TyperWindow(QWidget):
     self._doc.set_page_background(qcolor)
 
   def eventFilter(self, obj, evt):
+    if obj is self._canvas and evt.type() == QEvent.Resize:
+      self._pause_overlay.setGeometry(self._canvas.rect())
     if obj is self._source_lbl and self._mode == MODE_BOOK:
       if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton:
         self._show_book_menu()
@@ -1233,12 +1328,51 @@ class TyperWindow(QWidget):
   def _on_lesson_started(self):
     self._typer._pin_typing_center = False
 
+  def _on_lesson_paused(self):
+    self._pause_overlay.setGeometry(self._canvas.rect())
+    self._pause_overlay.show()
+    self._pause_overlay.raise_()
+    self._typer.updateStatus()
+
+  def _on_lesson_resumed(self):
+    self._pause_overlay.hide()
+    self._typer.updateStatus()
+    self._typer.setFocus()
+
+  def _restart_lesson(self):
+    self._pause_overlay.hide()
+    self._doc.reset()
+    self._typer.setFocus()
+
+  def _new_lesson(self):
+    self._pause_overlay.hide()
+    if self._doc.is_paused():
+      self._doc.resume()
+    self._request_new_lesson()
+    self._typer.setFocus()
+
+  def _request_new_lesson(self):
+    """Load a fresh exercise for the current practice mode."""
+    if self._mode in (MODE_WEAKSPOT, MODE_IMPROVE):
+      if self._focus_drill:
+        if not self._emit_focus_lesson(self._focus_drill):
+          self.updateLabel('Could not rebuild focus drill for those targets.')
+        return
+      self._load_improve_lesson()
+    elif self._mode == MODE_BOOK:
+      self._book.invalidate_cache()
+      self._book.request_lesson(advance_chapter=False)
+    else:
+      self._set_improve_footer_busy(False)
+      self.wantText.emit()
+
   def _schedule_typing_center(self):
     self._typer.setTextCursor(self._doc.cursor)
     self._typer._pin_typing_center = True
     QTimer.singleShot(0, self._typer._center_typing_when_ready)
 
   def typingReady(self, text):
+    self._pause_overlay.hide()
     self._prog_layout.setCurrentIndex(0)
     self._prog.setMaximum(len(text))
 
@@ -1519,15 +1653,11 @@ class TyperWindow(QWidget):
 
   def updateLabel(self, msg=None):
     text = []
-    # text.append("[This beta typer will not collect statistics currently, don't use it!]")
     if msg is not None:
       text.append('<big><b>' + msg + '</b></big>')
-      text.append('')
-
-    text.append("Press ESCAPE to cancel at any time.")
     if self._awaiting_next:
       text.append("Press ENTER to start the next exercise.")
-    self._label.setText('<br />'.join(text))
+    self._label.setText('<br />'.join(text) if text else '')
 
   def typingFailed(self, txt):
     self.updateLabel(txt)
