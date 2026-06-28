@@ -264,31 +264,38 @@ def test_aggregate_result_wpm_matches_total_chars_over_time():
 def test_average_result_wpm_weights_by_typing_time_not_run_count():
   conn = sqlite3.connect(':memory:')
   conn.executescript("""
-    create table text (id text primary key, source integer, text text, disabled integer);
-    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real);
+    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer);
   """)
   now = 1e9
-  conn.execute('insert into text (id, source, text) values (?,?,?)', ('a', 1, 'x' * 100))
-  conn.execute('insert into text (id, source, text) values (?,?,?)', ('b', 1, 'y' * 400))
   conn.executemany(
-    'insert into result (w,text_id,source,wpm,accuracy,viscosity) values (?,?,?,?,?,?)',
-    [(now, 'a', 1, 60.0, 1.0, 1.0), (now, 'b', 1, 80.0, 1.0, 1.0)])
+    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count) values (?,?,?,?,?,?,?)',
+    [(now, 'a', 1, 60.0, 1.0, 1.0, 100), (now, 'b', 1, 80.0, 1.0, 1.0, 400)])
   # 100 chars @ 60 WPM (20s) + 400 chars @ 80 WPM (60s) → 75 WPM, not mean(60,80)=70.
   assert average_result_wpm(conn, now - 86400) == pytest.approx(75.0)
   assert average_result_wpm(conn, now + 1) is None
 
 
+def test_average_result_wpm_median_when_char_count_missing():
+  conn = sqlite3.connect(':memory:')
+  conn.executescript("""
+    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer);
+  """)
+  now = 1e9
+  conn.executemany(
+    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count) values (?,?,?,?,?,?,?)',
+    [(now, 'bookhash1', 1, 60.0, 1.0, 1.0, None), (now, 'bookhash2', 1, 80.0, 1.0, 1.0, None)])
+  assert average_result_wpm(conn, now - 86400) == pytest.approx(70.0)
+
+
 def test_average_result_wpm_respects_history_window():
   conn = sqlite3.connect(':memory:')
   conn.executescript("""
-    create table text (id text primary key, source integer, text text, disabled integer);
-    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real);
+    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer);
   """)
   now = 1e9
-  conn.execute('insert into text (id, source, text) values (?,?,?)', ('a', 1, 'z' * 60))
   conn.executemany(
-    'insert into result (w,text_id,source,wpm,accuracy,viscosity) values (?,?,?,?,?,?)',
-    [(now, 'a', 1, 60.0, 1.0, 1.0), (now - 200000, 'a', 1, 30.0, 1.0, 1.0)])
+    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count) values (?,?,?,?,?,?,?)',
+    [(now, 'a', 1, 60.0, 1.0, 1.0, 60), (now - 200000, 'a', 1, 30.0, 1.0, 1.0, 60)])
   assert average_result_wpm(conn, now - 86400) == pytest.approx(60.0)
   assert average_result_wpm(conn, 0) == pytest.approx(40.0)
 

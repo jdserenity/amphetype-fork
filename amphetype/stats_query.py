@@ -59,10 +59,12 @@ SPEED_STATS_SQL = f"""select data,
 UNIQUE_TYPED_SQL = """select count(distinct data) from statistic
   where w >= ? and type = ?"""
 
-RESULT_WPM_ROWS_SQL = """select length(t.text) as chars, r.wpm
-  from result as r
-  inner join text as t on r.text_id = t.id
-  where r.w >= ? and r.wpm > 0 and length(t.text) > 0"""
+# WPM = (chars / seconds) * (60 / 5); five characters is the usual "word" in typing tests.
+WPM_CHARS_PER_WORD = 5
+WPM_SECONDS_FACTOR = 12.0  # 60.0 / WPM_CHARS_PER_WORD
+
+RESULT_WPM_ROWS_SQL = """select char_count, wpm from result
+  where w >= ? and wpm > 0"""
 
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   100.0-100.0*mistakes/cast(total as real) as accuracy,
@@ -147,21 +149,36 @@ def count_unique_typed(db, hist_cutoff, stat_type):
 
 
 def aggregate_result_wpm(total_chars, total_seconds):
-  """Overall WPM across runs: chars typed / elapsed seconds * 12 (same units as result.wpm)."""
+  """Overall WPM across runs: chars typed / elapsed seconds * (60/5)."""
   if not total_chars or not total_seconds:
     return None
-  return total_chars / total_seconds * 12.0
+  return total_chars / total_seconds * WPM_SECONDS_FACTOR
+
+
+def _median(vals):
+  if not vals:
+    return None
+  s = sorted(vals); n = len(s)
+  if n & 1:
+    return s[n // 2]
+  return (s[n // 2 - 1] + s[n // 2]) / 2.0
 
 
 def average_result_wpm(db, hist_cutoff):
-  """Character-total WPM for completed runs in the history window (from result + text length)."""
+  """Time-weighted WPM from stored per-run WPM + char_count; median fallback when char_count missing."""
   rows = db.execute(RESULT_WPM_ROWS_SQL, (hist_cutoff,)).fetchall()
-  total_chars = 0
-  total_seconds = 0.0
+  if not rows:
+    return None
+  total_chars = 0; total_seconds = 0.0; loose_wpms = []
   for chars, wpm in rows:
-    total_chars += chars
-    total_seconds += chars * 12.0 / wpm
-  return aggregate_result_wpm(total_chars, total_seconds)
+    if chars and chars > 0:
+      total_chars += chars
+      total_seconds += chars * WPM_SECONDS_FACTOR / wpm
+    else:
+      loose_wpms.append(wpm)
+  if total_chars > 0:
+    return aggregate_result_wpm(total_chars, total_seconds)
+  return _median(loose_wpms)
 
 
 def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):

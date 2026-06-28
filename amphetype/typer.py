@@ -1713,10 +1713,10 @@ class TyperWindow(QWidget):
 
     self.DB.execute('''
     insert into result
-    (w, text_id, source, wpm, accuracy, viscosity)
-    values (?,?,?, ?,?,?)
+    (w, text_id, source, wpm, accuracy, viscosity, char_count)
+    values (?,?,?, ?,?,?,?)
     ''', (now, textid, srcid,
-          wpm, acc, visc))
+          wpm, acc, visc, len(run)))
 
     self.DB.commit()
     # type (0: char, 1: trigram, 2: word)
