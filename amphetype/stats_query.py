@@ -59,6 +59,11 @@ SPEED_STATS_SQL = f"""select data,
 UNIQUE_TYPED_SQL = """select count(distinct data) from statistic
   where w >= ? and type = ?"""
 
+RESULT_WPM_ROWS_SQL = """select length(t.text) as chars, r.wpm
+  from result as r
+  inner join text as t on r.text_id = t.id
+  where r.w >= ? and r.wpm > 0 and length(t.text) > 0"""
+
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   100.0-100.0*mistakes/cast(total as real) as accuracy,
   viscosity, total, mistakes, drilled,
@@ -139,6 +144,24 @@ def fetch_first_sample_wpm(db, stat_type, data_keys):
 def count_unique_typed(db, hist_cutoff, stat_type):
   row = db.execute(UNIQUE_TYPED_SQL, (hist_cutoff, stat_type)).fetchone()
   return int(row[0]) if row else 0
+
+
+def aggregate_result_wpm(total_chars, total_seconds):
+  """Overall WPM across runs: chars typed / elapsed seconds * 12 (same units as result.wpm)."""
+  if not total_chars or not total_seconds:
+    return None
+  return total_chars / total_seconds * 12.0
+
+
+def average_result_wpm(db, hist_cutoff):
+  """Character-total WPM for completed runs in the history window (from result + text length)."""
+  rows = db.execute(RESULT_WPM_ROWS_SQL, (hist_cutoff,)).fetchall()
+  total_chars = 0
+  total_seconds = 0.0
+  for chars, wpm in rows:
+    total_chars += chars
+    total_seconds += chars * 12.0 / wpm
+  return aggregate_result_wpm(total_chars, total_seconds)
 
 
 def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):
