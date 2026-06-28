@@ -20,7 +20,7 @@ if _qt_app is None:
   _qt_app = QApplication(sys.argv)
 
 from amphetype.typer import (
-  LessonDocument, RETURN_CHAR, MODE_NORMAL, MODE_WEAKSPOT, Cursor,
+  LessonDocument, RETURN_CHAR, MODE_CORPUS, MODE_IMPROVE, Cursor,
   format_source_attribution, lesson_completion_action, _NO_FILL_STYLE_ATTRS,
 )
 from amphetype.book_mode import MODE_BOOK
@@ -28,13 +28,13 @@ from amphetype.book_mode import MODE_BOOK
 
 def test_lesson_completion_action():
     assert lesson_completion_action(MODE_BOOK, False, False, False) == 'book_next'
-    assert lesson_completion_action(MODE_NORMAL, False, False, False) == 'normal_next'
-    assert lesson_completion_action(MODE_WEAKSPOT, False, False, False) == 'weakspot_next'
-    assert lesson_completion_action(MODE_WEAKSPOT, True, False, False) == 'weakspot_next'
-    assert lesson_completion_action(MODE_NORMAL, True, False, False) == 'normal_next'
-    assert lesson_completion_action(MODE_NORMAL, False, True, True) == 'review'
-    assert lesson_completion_action(MODE_WEAKSPOT, False, True, True) == 'weakspot_next'
-    assert lesson_completion_action(MODE_WEAKSPOT, False, False, False, focus_drill=True) == 'focus_repeat'
+    assert lesson_completion_action(MODE_CORPUS, False, False, False) == 'normal_next'
+    assert lesson_completion_action(MODE_IMPROVE, False, False, False) == 'improve_next'
+    assert lesson_completion_action(MODE_IMPROVE, True, False, False) == 'improve_next'
+    assert lesson_completion_action(MODE_CORPUS, True, False, False) == 'normal_next'
+    assert lesson_completion_action(MODE_CORPUS, False, True, True) == 'review'
+    assert lesson_completion_action(MODE_IMPROVE, False, True, True) == 'improve_next'
+    assert lesson_completion_action(MODE_IMPROVE, False, False, False, focus_drill=True) == 'focus_repeat'
 
 
 def test_format_source_attribution():
@@ -597,28 +597,48 @@ def test_request_new_lesson_per_mode(qapp):
   w._weakspot = MagicMock()
   w._book = MagicMock()
   w._set_weakspot_footer_busy = MagicMock()
+  w._set_improve_footer_busy = MagicMock()
+  w._load_improve_lesson = MagicMock()
   w.wantText = MagicMock()
   w._emit_focus_lesson = MagicMock(return_value=True)
 
   w._mode = MODE_NORMAL
   w._request_new_lesson()
   w.wantText.emit.assert_called_once()
-  w._set_weakspot_footer_busy.assert_called_with(False)
+  w._set_improve_footer_busy.assert_called_with(False)
 
   w.wantText.reset_mock()
-  w._set_weakspot_footer_busy.reset_mock()
+  w._set_improve_footer_busy.reset_mock()
   w._mode = MODE_BOOK
   w._request_new_lesson()
   w._book.invalidate_cache.assert_called_once()
   w._book.request_lesson.assert_called_once_with(advance_chapter=False)
 
   w._book.reset_mock()
+  w._load_improve_lesson.reset_mock()
   w._mode = MODE_WEAKSPOT
   w._request_new_lesson()
-  w._weakspot.invalidate_cache.assert_called_once()
-  w._weakspot.request_next_lesson.assert_called_once_with(force=True)
+  w._load_improve_lesson.assert_called_once()
 
-  w._weakspot.reset_mock()
+  w._load_improve_lesson.reset_mock()
   w._focus_drill = [('word', 'the')]
   w._request_new_lesson()
   w._emit_focus_lesson.assert_called_once_with(w._focus_drill)
+
+
+def test_continue_lesson_clears_progress_label(qapp):
+  import amphetype.Amphetype  # noqa: F401 — init app.settings for TyperWindow
+  from amphetype.typer import TyperWindow
+
+  tw = TyperWindow()
+  tw._awaiting_next = True
+  tw._pending_action = 'normal_next'
+  tw.updateLabel('You improved on <span>1</span> out of 2 words')
+  assert 'You improved' in tw._label.text()
+  assert 'Press ENTER' in tw._label.text()
+  emitted = []
+  tw.wantText.connect(lambda: emitted.append(1))
+  tw._continue_lesson()
+  assert 'You improved' not in tw._label.text()
+  assert 'Press ENTER' not in tw._label.text()
+  assert emitted == [1]

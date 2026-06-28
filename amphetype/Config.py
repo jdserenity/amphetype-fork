@@ -61,7 +61,6 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "num_rand": 50,
     "graph_what": 3,
     "req_space": True,
-    "show_last": True,
     "show_xaxis": False,
     "chrono_x": False,
     "dampen_graph": False,
@@ -95,7 +94,9 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "str_extra": 10,
     "str_what": 'e',
 
-    "practice_mode": 0,  # 0 = normal, 1 = book, 2 = weakspot
+    "practice_mode": 0,  # 0 = improve, 1 = book, 2 = corpus
+    "practice_mode_v2": True,
+    "practice_mode_v3": True,
     "book_source_id": 0,
     "book_max_chars": 12000,
     "read_ahead_enabled": False,
@@ -110,6 +111,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     'show_progress': True,
     'read_ahead_level': 0,  # 0 = normal, 1 = hard, 2 = easy (when read_ahead_enabled)
+    'improve_submode': 0,  # 0 = normal … 4 = damage (when practice mode is improve)
 
     'para_margin': 40,
     'para_lineheight': 1.0,
@@ -473,7 +475,6 @@ class GeneralOptions(QWidget):
       None,
       [SettingsCheckBox("text_force_ascii", 'Force unicode to plain ASCII'), ('(‘fancy’ “quotes” → "normal" quotes, <code>æ</code> → <code>ae</code>, etc.)', 1)],
       SettingsCheckBox('auto_review', "Automatically review slow and mistyped words after texts."),
-      SettingsCheckBox('show_last', "Show last result(s) above text in the Typer."),
       SettingsCheckBox('show_session_timer', "Show focused session timer in the top-right corner."),
       SettingsCheckBox('use_lesson_stats', "Save key/trigram/word statistics from generated lessons."),
       SettingsCheckBox('req_space', "Make SPACE mandatory before each session",

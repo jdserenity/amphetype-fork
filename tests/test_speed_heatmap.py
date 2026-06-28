@@ -13,15 +13,15 @@ def test_spc_to_wpm():
 
 
 def test_wpm_color_buckets():
-  assert wpm_color(29) == WPM_BUCKETS[0][1]
-  assert wpm_color(29.9) == WPM_BUCKETS[0][1]
-  assert wpm_color(30) == WPM_BUCKETS[1][1]
-  assert wpm_color(59.9) == WPM_BUCKETS[1][1]
-  assert wpm_color(60) == WPM_BUCKETS[2][1]
-  assert wpm_color(89.9) == WPM_BUCKETS[2][1]
-  assert wpm_color(90) == WPM_BUCKETS[3][1]
-  assert wpm_color(119.9) == WPM_BUCKETS[3][1]
-  assert wpm_color(120) == WPM_BUCKETS[4][1]
+  assert wpm_color(31) == WPM_BUCKETS[0][1]
+  assert wpm_color(31.9) == WPM_BUCKETS[0][1]
+  assert wpm_color(32) == WPM_BUCKETS[1][1]
+  assert wpm_color(54.9) == WPM_BUCKETS[1][1]
+  assert wpm_color(55) == WPM_BUCKETS[2][1]
+  assert wpm_color(77.9) == WPM_BUCKETS[2][1]
+  assert wpm_color(78) == WPM_BUCKETS[3][1]
+  assert wpm_color(99.9) == WPM_BUCKETS[3][1]
+  assert wpm_color(100) == WPM_BUCKETS[4][1]
   assert wpm_color(200) == WPM_BUCKETS[4][1]
 
 
@@ -40,9 +40,9 @@ def test_heatmap_legend_widget_spacing(qapp):
 
 
 def test_wpm_color_q_is_bright_stoplight():
-  oblivion, slow, fast = wpm_color_q(20), wpm_color_q(50), wpm_color_q(140)
+  oblivion, mid, fast = wpm_color_q(20), wpm_color_q(50), wpm_color_q(110)
   assert oblivion.name() == '#a855f7'
-  assert slow.name() == '#d64545'
+  assert mid.name() == '#d64545'
   assert fast.name() == '#00e676'
 
 

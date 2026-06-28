@@ -5,8 +5,10 @@ import time
 
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
-from amphetype.stats_query import ANALYSIS_OUTER_SQL, ANALYSIS_ORDER_OPTIONS, STATS_AGG_SUBQUERY, analysis_order_clause, fetch_analysis_search, fetch_oblivion_picks
-from amphetype.speed_heatmap import OBLIVION_WPM
+from amphetype.stats_query import (
+  ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD, analysis_order_clause,
+  fetch_analysis_search, fetch_first_sample_wpm)
+from amphetype.word_progress import lifetime_wpm_gain
 from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
 from amphetype.Config import *
@@ -18,10 +20,26 @@ from PyQt5.QtWidgets import QLabel, QMenu, QLineEdit
 
 
 class WordModel(AmphModel):
-  def signature(self):
+  def __init__(self):
     self.words = []
-    return (["Type target", "Speed", "Accuracy", "Hesitation", "Count", "Mistakes", "Drilled", "Impact"],
-        [None, "%.1f wpm", "%.1f%%", "%.1f", None, None, None, "%.1f"])
+    self._words_mode = False
+    super(WordModel, self).__init__()
+
+  def signature(self):
+    hdr = ["Type target", "Speed", "Accuracy", "Hesitation", "Count", "Mistakes", "Drilled", "Impact"]
+    fmt = [None, "%.1f wpm", "%.1f%%", "%.1f", None, None, None, "%.1f"]
+    if self._words_mode:
+      hdr = hdr[:2] + ["Improved"] + hdr[2:]
+      fmt = fmt[:2] + ["%+d"] + fmt[2:]
+    return (hdr, fmt)
+
+  def set_words_mode(self, on):
+    on = bool(on)
+    if on == self._words_mode:
+      return
+    self._words_mode = on
+    self.head, self.fmt = self.signature()
+    self.cols = len(self.head)
 
   def populateData(self, idx):
     if len(idx) != 0:
@@ -34,6 +52,56 @@ class WordModel(AmphModel):
     self.reset()
 
 
+
+
+class AnalysisSortCombo(QComboBox):
+  SORT_OPTIONS = [
+    ('wpm asc', 'slowest'),
+    ('wpm desc', 'fastest'),
+    ('viscosity desc', 'most hesitation'),
+    ('viscosity asc', 'least hesitation'),
+    ('accuracy asc', 'least accurate'),
+    ('misses desc', 'most mistyped'),
+    ('total desc', 'most common'),
+    ('damage desc', 'most damaging'),
+    ('improved desc', 'most improved'),
+  ]
+
+  def __init__(self):
+    super(AnalysisSortCombo, self).__init__()
+    self._keys = []
+    Settings.signal_for('ana_what').connect(self._sync_items)
+    Settings.signal_for('ana_which').connect(self._sync_selection)
+    self.activated[int].connect(lambda idx: Settings.set('ana_which', self._keys[idx]))
+    self._sync_items()
+
+  def _words_only(self):
+    return Settings.get('ana_what') == 2
+
+  def _sync_items(self):
+    words = self._words_only()
+    cur = Settings.get('ana_which')
+    if not words and cur == 'improved desc':
+      Settings.set('ana_which', 'damage desc')
+      cur = 'damage desc'
+    self.blockSignals(True)
+    self.clear()
+    self._keys = []
+    for k, v in self.SORT_OPTIONS:
+      if k == 'improved desc' and not words:
+        continue
+      self.addItem(v)
+      self._keys.append(k)
+    self._sync_selection()
+    self.blockSignals(False)
+
+  def _sync_selection(self):
+    cur = Settings.get('ana_which')
+    if cur not in self._keys:
+      return
+    self.blockSignals(True)
+    self.setCurrentIndex(self._keys.index(cur))
+    self.blockSignals(False)
 
 
 class StringStats(QWidget):
@@ -57,7 +125,7 @@ class StringStats(QWidget):
     self._corpus_lbl.setStyleSheet('color: #c44;')
     self._corpus_lbl.hide()
 
-    ob = SettingsCombo('ana_which', ANALYSIS_ORDER_OPTIONS)
+    ob = AnalysisSortCombo()
 
     wc = SettingsCombo('ana_what', ['keys', 'trigrams', 'words'])
     lim = SettingsEdit('ana_many')
@@ -77,9 +145,7 @@ class StringStats(QWidget):
     Settings.signal_for("history").connect(self.update)
 
     self.setLayout(AmphBoxLayout([
-        ["Show", wc, "sorted by", ob, None,
-          AmphButton("Drill worst 3", self._drill_worst_3),
-          AmphButton("Drill 3 oblivion", self._drill_3_oblivion)],
+        ["Show", wc, "sorted by", ob, None],
         ["Limit list to", lim, "items and don't show items with a count less than", self.w_count, None],
         ["Search", self._search_edit, self._search_btn, None],
         self._corpus_lbl,
@@ -115,8 +181,11 @@ class StringStats(QWidget):
       return
     rows = fetch_analysis_search(
       DB, time.time() - Settings.get('history') * 86400.0,
-      Settings.get('ana_what'), Settings.get('ana_count'), term, analysis_order_clause(Settings.get('ana_which')))
+      Settings.get('ana_what'), Settings.get('ana_count'), term,
+      'total desc' if Settings.get('ana_which') == 'improved desc' else analysis_order_clause(Settings.get('ana_which')))
     self._search_applied = term
+    cat = Settings.get('ana_what')
+    rows = self._finalize_rows(rows, cat, Settings.get('ana_which'))
     self.model.setData(rows)
     self._sync_search_btn()
 
@@ -128,12 +197,36 @@ class StringStats(QWidget):
     cat = Settings.get('ana_what')
     count = Settings.get('ana_count')
     hist = time.time() - Settings.get('history') * 86400.0
+    if order == 'improved desc':
+      pool = max(limit * 10, 200)
+      sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', pool)
+      rows = DB.fetchall(sql, (hist, cat, count))
+      return rows, cat
     sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_clause(order), limit)
     return DB.fetchall(sql, (hist, cat, count)), cat
 
+  def _enrich_word_rows(self, rows):
+    if not rows:
+      return rows
+    first = fetch_first_sample_wpm(DB, STAT_TYPE_WORD, [r[0] for r in rows])
+    return [list(r[:2]) + [lifetime_wpm_gain(r[1], first.get(r[0]))] + list(r[2:]) for r in rows]
+
+  def _finalize_rows(self, rows, cat, order, limit=None):
+    self.model.set_words_mode(cat == 2)
+    if cat == 2 and rows:
+      rows = self._enrich_word_rows(rows)
+      if order == 'improved desc':
+        rows.sort(key=lambda r: r[2] if r[2] is not None else -999999, reverse=True)
+        if limit is not None:
+          rows = rows[:limit]
+    return rows
+
   def update(self, *arg):
     self.clear_corpus_msg()
-    rows, _ = self._query_rows(analysis_order_clause(Settings.get('ana_which')), Settings.get('ana_many'))
+    order = Settings.get('ana_which')
+    limit = Settings.get('ana_many')
+    rows, cat = self._query_rows(order, limit)
+    rows = self._finalize_rows(rows, cat, order, limit)
     self._baseline_rows = list(rows)
     if self._search_applied is not None:
       self._apply_search()
@@ -178,17 +271,3 @@ class StringStats(QWidget):
       self._drill_row(idx)
     elif picked == find_act:
       self._find_in_corpus(idx)
-
-  def _drill_worst_3(self):
-    rows, cat = self._query_rows('damage desc', 3)
-    if not rows:
-      return
-    self.startDrill.emit(self._targets_from_rows(rows[:3], cat))
-
-  def _drill_3_oblivion(self):
-    cat = Settings.get('ana_what')
-    hist = time.time() - Settings.get('history') * 86400.0
-    picks = fetch_oblivion_picks(DB, hist, cat, 3, OBLIVION_WPM)
-    if not picks:
-      return
-    self.startDrill.emit(self._targets_from_rows(picks, cat))

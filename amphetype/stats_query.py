@@ -91,7 +91,7 @@ ANALYSIS_ORDER_OPTIONS = (
   ('total desc', 'most common'),
   ('damage desc', 'most damaging'),
 )
-ANALYSIS_ORDER_CLAUSES = frozenset(k for k, _ in ANALYSIS_ORDER_OPTIONS)
+ANALYSIS_ORDER_CLAUSES = frozenset(k for k, _ in ANALYSIS_ORDER_OPTIONS) | frozenset(['improved desc'])
 DEFAULT_ANALYSIS_ORDER = 'wpm asc'
 
 
@@ -114,6 +114,24 @@ def fetch_analysis_search(db, hist_cutoff, stat_type, min_count, term, order):
   return db.execute(sql, (hist_cutoff, stat_type, min_count, term)).fetchall()
 
 
+def fetch_first_sample_wpm(db, stat_type, data_keys):
+  """WPM from each key's earliest statistic row (all-time first typing)."""
+  if not data_keys:
+    return {}
+  qs = ','.join('?' * len(data_keys))
+  rows = db.execute(
+    '''select s.data, min(12.0 / s.time)
+    from statistic s
+    inner join (
+      select data, min(w) as fw from statistic
+      where type=? and data in (%s)
+      group by data
+    ) x on s.data = x.data and s.w = x.fw and s.type=?
+    group by s.data''' % qs,
+    (stat_type, *data_keys, stat_type)).fetchall()
+  return {d: w for d, w in rows}
+
+
 def count_unique_typed(db, hist_cutoff, stat_type):
   row = db.execute(UNIQUE_TYPED_SQL, (hist_cutoff, stat_type)).fetchone()
   return int(row[0]) if row else 0
@@ -133,3 +151,20 @@ def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=3, oblivion_wpm=30):
   if not pool:
     return []
   return random.sample(pool, min(n, len(pool)))
+
+
+def fetch_analysis_top(db, hist_cutoff, stat_type, order, limit, min_count=1):
+  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, order, limit)
+  return db.execute(sql, (hist_cutoff, stat_type, min_count)).fetchall()
+
+
+def fetch_slowest_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
+  return fetch_analysis_top(db, hist_cutoff, stat_type, 'wpm asc', n, min_count)[:n]
+
+
+def fetch_hesitant_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
+  return fetch_analysis_top(db, hist_cutoff, stat_type, 'viscosity desc', n, min_count)[:n]
+
+
+def fetch_damage_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
+  return fetch_analysis_top(db, hist_cutoff, stat_type, 'damage desc', n, min_count)[:n]

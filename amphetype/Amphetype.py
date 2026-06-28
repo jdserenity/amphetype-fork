@@ -109,7 +109,7 @@ class AmphetypeWindow(QMainWindow):
       self._session_timer.resume()
 
     pm = Settings.get('practice_mode')
-    if pm == 0:
+    if pm == 2:
       tm.nextText()
     elif pm == 1:
       tw._book.request_lesson(advance_chapter=False)

@@ -302,17 +302,44 @@ def format_book_progress(chapter_label, chunk_index, chunk_count):
   return '%s · %d/%d' % (chapter_label, chunk_index + 1, chunk_count)
 
 
+MODE_IMPROVE = 'improve'
+MODE_CORPUS = 'corpus'
+# Legacy aliases used in a few internal code paths.
+MODE_WEAKSPOT = MODE_IMPROVE
+MODE_NORMAL = MODE_CORPUS
+
+_LEGACY_PRACTICE_MODE = {0: 0, 1: 1, 2: 0}  # old normal/weakspot → improve; book unchanged
+
+
+def ensure_practice_mode_migrated(settings):
+  if settings.contains('practice_mode_v3'):
+    return
+  if settings.contains('practice_mode_v2'):
+    if settings.contains('practice_mode') and int(settings.value('practice_mode')) == 2:
+      settings.set('practice_mode', 0)
+    settings.set('practice_mode_v3', True)
+    return
+  if not settings.contains('practice_mode'):
+    settings.set('practice_mode_v2', True)
+    settings.set('practice_mode_v3', True)
+    return
+  old = int(settings.value('practice_mode'))
+  settings.set('practice_mode', _LEGACY_PRACTICE_MODE.get(old, 0))
+  settings.set('practice_mode_v2', True)
+  settings.set('practice_mode_v3', True)
+
+
 def practice_mode_from_settings(val):
   v = int(val)
-  if v >= 2:
-    return 'weakspot'
+  if v == 2:
+    return MODE_CORPUS
   if v == 1:
     return MODE_BOOK
-  return 'normal'
+  return MODE_IMPROVE
 
 
 def practice_mode_to_settings(mode):
-  if mode == 'weakspot':
+  if mode == MODE_CORPUS:
     return 2
   if mode == MODE_BOOK:
     return 1

@@ -8,12 +8,15 @@ from amphetype.Data import AmphDatabase
 from amphetype.book_mode import (
   BookCatalog,
   done_chunk_count,
+  ensure_practice_mode_migrated,
   format_book_progress,
   get_book_progress,
   is_chapter_header,
   lesson_text_id,
   list_book_sources,
   mark_chunk_done,
+  MODE_CORPUS,
+  MODE_IMPROVE,
   partition_chapter,
   practice_mode_from_settings,
   practice_mode_to_settings,
@@ -78,11 +81,55 @@ def test_lesson_text_id_stable():
 
 
 def test_practice_mode_settings_mapping():
-  assert practice_mode_from_settings(0) == 'normal'
+  assert practice_mode_from_settings(0) == MODE_IMPROVE
   assert practice_mode_from_settings(1) == 'book'
-  assert practice_mode_from_settings(2) == 'weakspot'
+  assert practice_mode_from_settings(2) == MODE_CORPUS
   assert practice_mode_to_settings('book') == 1
-  assert practice_mode_to_settings('weakspot') == 2
+  assert practice_mode_to_settings(MODE_IMPROVE) == 0
+  assert practice_mode_to_settings(MODE_CORPUS) == 2
+
+
+class _FakeSettings:
+  def __init__(self, data=None):
+    self._data = dict(data or {})
+
+  def contains(self, key):
+    return key in self._data
+
+  def value(self, key):
+    return self._data[key]
+
+  def get(self, key):
+    return self._data[key]
+
+  def set(self, key, val):
+    self._data[key] = val
+
+
+def test_practice_mode_migration_from_legacy():
+  s = _FakeSettings({'practice_mode': 2})
+  ensure_practice_mode_migrated(s)
+  assert s.get('practice_mode') == 0
+  assert s.get('practice_mode_v3') is True
+
+
+def test_practice_mode_migration_old_normal_stays_improve():
+  s = _FakeSettings({'practice_mode': 0})
+  ensure_practice_mode_migrated(s)
+  assert s.get('practice_mode') == 0
+
+
+def test_practice_mode_v3_fixes_v2_corpus_default():
+  s = _FakeSettings({'practice_mode': 2, 'practice_mode_v2': True})
+  ensure_practice_mode_migrated(s)
+  assert s.get('practice_mode') == 0
+  assert s.get('practice_mode_v3') is True
+
+
+def test_practice_mode_migration_skips_when_v3():
+  s = _FakeSettings({'practice_mode': 2, 'practice_mode_v3': True})
+  ensure_practice_mode_migrated(s)
+  assert s.get('practice_mode') == 2
 
 
 def _mem_db():
