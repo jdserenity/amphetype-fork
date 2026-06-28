@@ -24,11 +24,11 @@ from amphetype.read_ahead import (
 from amphetype.Data import Statistic
 from amphetype.speed_heatmap import (
   MODE_LABELS, char_heatmap_colors, fetch_speed_stats, make_heatmap_legend, mode_stat_type,
-  PROGRESS_GREEN,
+  PROGRESS_GREEN, PROGRESS_ORANGE,
 )
 from amphetype.word_progress import (
   analyze_run_progress, fetch_word_baselines, format_progress_html,
-  improved_word_spans, lesson_words, median_wpm_bump, progress_badges_for_run,
+  improved_word_spans, lesson_words, median_wpm_bump, new_word_spans, progress_badges_for_run,
   word_spans, word_wpm_from_slice,
 )
 from collections import defaultdict, Counter
@@ -238,6 +238,7 @@ class LessonDocument(QTextDocument):
     self._word_spans = []
     self._progress_badges = []
     self.style_progress = text_style(kerning=False, color=QBrush(QColor(PROGRESS_GREEN)))
+    self.style_progress_new = text_style(kerning=False, color=QBrush(QColor(PROGRESS_ORANGE)))
     self.set_text('default text')
 
   def _book_plain_display(self, text):
@@ -476,6 +477,19 @@ class LessonDocument(QTextDocument):
       self._cursor_to_match_index(self._run.index)
       self.progress.emit(self._run.index)
 
+  def _consume_trailing_whitespace(self):
+    """Auto-complete trailing whitespace so the last letter ends the lesson."""
+    while self._run and not self._run.is_complete() and self._run.current:
+      rest = self._match_text[self._run.index:]
+      if not rest or not all(c.isspace() for c in rest):
+        break
+      mi = self._run.index
+      self._run.visit(True)
+      self._run.advance(True)
+      self._style_match_index(mi, self.style_correct)
+      self._cursor_to_match_index(self._run.index)
+      self.progress.emit(mi)
+
   def _book_para_enter_index(self):
     if not self._book_auto_returns or not self._run or not self._run.current:
       return None
@@ -534,6 +548,7 @@ class LessonDocument(QTextDocument):
       self._run.advance(True)
       self._cursor_to_match_index(self._run.index)
       self._consume_auto_returns()
+      self._consume_trailing_whitespace()
       self._finish_book_insert()
       return
 
@@ -554,6 +569,7 @@ class LessonDocument(QTextDocument):
     self._run.advance(True)
     self._cursor_to_match_index(self._run.index)
     self._consume_auto_returns()
+    self._consume_trailing_whitespace()
     self._finish_book_insert()
 
   def is_running(self):
@@ -656,6 +672,7 @@ class LessonDocument(QTextDocument):
       self._consume_auto_returns()
     if correct and should_advance:
       self._maybe_style_completed_word()
+      self._consume_trailing_whitespace()
 
     if self.is_finished():
       self.completed.emit(self._run)
@@ -732,6 +749,11 @@ class LessonDocument(QTextDocument):
     for start, end, _wpm, _bump in improved_word_spans(run, baselines, self._match_text):
       for j in range(start, end):
         self._style_match_index(j, self.style_progress)
+
+  def apply_new_word_styles(self, run, baselines):
+    for start, end in new_word_spans(run, baselines, self._match_text):
+      for j in range(start, end):
+        self._style_match_index(j, self.style_progress_new)
 
   def _drop_badges_from(self, match_index):
     n = len(self._progress_badges)
@@ -1603,6 +1625,7 @@ class TyperWindow(QWidget):
     baselines = self._doc._word_baselines
     match_text = self._doc._match_text
     progress = analyze_run_progress(run, baselines, match_text)
+    self._doc.apply_new_word_styles(run, baselines)
     self._doc.apply_improved_word_styles(run, baselines)
     self._doc.set_progress_badges(progress_badges_for_run(run, baselines, match_text))
     self._awaiting_next = True

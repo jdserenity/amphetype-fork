@@ -175,6 +175,18 @@ def test_insert_correct_chars_advances_and_completes(qapp):
     assert run.is_complete()
 
 
+def test_trailing_whitespace_auto_completes_after_last_letter(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hello ")
+  done = []
+  doc.completed.connect(lambda r: done.append(r))
+  for ch in "hello":
+    doc.insert(ch)
+  assert doc.is_finished()
+  assert len(done) == 1
+  assert doc._run.text == "hello "
+
+
 def test_insert_error_blocks_in_non_lenient(qapp):
     doc = LessonDocument(QFont("Arial", 12))
     doc.set_text("abc")
