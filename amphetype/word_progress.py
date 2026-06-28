@@ -141,6 +141,19 @@ def lifetime_wpm_gain(current_wpm, first_wpm):
   return int(current_wpm) - int(first_wpm)
 
 
+def new_word_spans(run, baselines, match_text):
+  """Each first-time word occurrence: (start, end)."""
+  out = []
+  for start, end, word in word_spans(match_text or ''):
+    if word in baselines:
+      continue
+    sub = run[start:end]
+    if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
+      continue
+    out.append((start, end))
+  return out
+
+
 def improved_word_spans(run, baselines, match_text):
   """Each improved word occurrence: (start, end, run_wpm, median_bump)."""
   out = []

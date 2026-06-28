@@ -10,7 +10,7 @@ from amphetype.timingtuple import RunStats
 from amphetype.word_progress import (
   analyze_run_progress, avg_wpm_bump, fetch_word_baselines, format_progress_html,
   improved_word_spans, lesson_words, lifetime_wpm_gain, median_wpm_bump,
-  progress_badges_for_run, word_wpm_from_slice,
+  new_word_spans, progress_badges_for_run, word_wpm_from_slice,
 )
 
 
@@ -132,6 +132,12 @@ def test_progress_badges_for_run():
   badges = progress_badges_for_run(run, {'fast': _bl(50.0), 'slow': _bl(90.0)}, 'fast slow')
   assert len(badges) == 1
   assert badges[0][2] == 11
+
+
+def test_new_word_spans():
+  run = _make_run('fast newword', spc=12.0 / 80.0)
+  spans = new_word_spans(run, {'fast': _bl(50.0)}, 'fast newword')
+  assert spans == [(5, 12)]
 
 
 def test_improved_word_spans_includes_last_word():
