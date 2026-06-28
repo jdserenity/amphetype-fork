@@ -113,6 +113,36 @@ def test_string_stats_most_improved_sort(qapp, monkeypatch):
   assert st.model.words[1][2] == 10
 
 
+def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
+  st = StringStats()
+  pool_rows = [
+    ('once', 50.0, 80.0, 90.0, 1.0, 0, 0, 0, 50.0),
+  ]
+
+  def fake_get(key):
+    return {
+      'ana_which': 'wpm asc',
+      'ana_many': 10,
+      'ana_what': 2,
+      'ana_count': 1,
+      'history': 365,
+    }.get(key, 0)
+
+  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
+  monkeypatch.setattr('amphetype.StatWidgets.DB.fetchall', lambda sql, args: pool_rows)
+  monkeypatch.setattr(
+    'amphetype.StatWidgets.fetch_first_sample_wpm',
+    lambda db, tp, keys: {'once': 30.0})
+  st.update()
+  assert st.model.words[0][2] is None
+
+
+def test_main_window_title(qapp):
+  from amphetype.Amphetype import AmphetypeWindow
+  w = AmphetypeWindow()
+  assert w.windowTitle() == 'Typing Program That Helps You Type Better'
+
+
 def test_analysis_sort_combo_hides_most_improved_for_keys(qapp, monkeypatch):
   from amphetype.StatWidgets import AnalysisSortCombo
 

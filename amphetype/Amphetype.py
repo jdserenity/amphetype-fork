@@ -47,7 +47,7 @@ class AmphetypeWindow(QMainWindow):
   def __init__(self, *args):
     super().__init__(*args)
 
-    self.setWindowTitle("Amphetype")
+    self.setWindowTitle('Typing Program That Helps You Type Better')
 
     self.quitSc = QShortcut(QKeySequence('Ctrl+Q'), self)
     self.quitSc.activated.connect(QApplication.instance().quit)
