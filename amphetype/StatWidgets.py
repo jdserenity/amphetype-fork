@@ -209,7 +209,13 @@ class StringStats(QWidget):
     if not rows:
       return rows
     first = fetch_first_sample_wpm(DB, STAT_TYPE_WORD, [r[0] for r in rows])
-    return [list(r[:2]) + [lifetime_wpm_gain(r[1], first.get(r[0]))] + list(r[2:]) for r in rows]
+    out = []
+    for r in rows:
+      imp = None
+      if r[4] >= 2:
+        imp = lifetime_wpm_gain(r[1], first.get(r[0]))
+      out.append(list(r[:2]) + [imp] + list(r[2:]))
+    return out
 
   def _finalize_rows(self, rows, cat, order, limit=None):
     self.model.set_words_mode(cat == 2)

@@ -192,6 +192,20 @@ def test_fetch_first_sample_wpm():
   assert first['slow'] == pytest.approx(30.0)
 
 
+def test_fetch_first_sample_wpm_ignores_drill_rows():
+  conn = _test_db(); now = 1e9
+  conn.execute('insert into source (name, disabled, discount) values (?,?,?)', ('<Weakspot>', 1, 1))
+  ws = conn.execute('select rowid from source where name=?', ('<Weakspot>',)).fetchone()[0]
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now - 1000, 'once', STAT_TYPE_WORD, 12.0 / 40.0, 1, 0, 1.0, None),
+      (now - 500, 'once', STAT_TYPE_WORD, 12.0 / 80.0, 0, 0, 1.0, ws),
+    ])
+  first = fetch_first_sample_wpm(conn, STAT_TYPE_WORD, ['once'])
+  assert first['once'] == pytest.approx(40.0)
+
+
 def test_fetch_oblivion_pool_returns_all_under_threshold():
   conn = _test_db(); now = 1e9
   rows = []

@@ -115,19 +115,23 @@ def fetch_analysis_search(db, hist_cutoff, stat_type, min_count, term, order):
 
 
 def fetch_first_sample_wpm(db, stat_type, data_keys):
-  """WPM from each key's earliest statistic row (all-time first typing)."""
+  """WPM from each key's earliest counted statistic row (all-time first typing)."""
   if not data_keys:
     return {}
   qs = ','.join('?' * len(data_keys))
   rows = db.execute(
     '''select s.data, min(12.0 / s.time)
     from statistic s
+    left join source as src on s.source = src.rowid
     inner join (
-      select data, min(w) as fw from statistic
-      where type=? and data in (%s)
-      group by data
+      select st.data, min(st.w) as fw from statistic st
+      left join source as src2 on st.source = src2.rowid
+      where st.type=? and st.data in (%s)
+        and %s and st.count > 0
+      group by st.data
     ) x on s.data = x.data and s.w = x.fw and s.type=?
-    group by s.data''' % qs,
+    where %s and s.count > 0
+    group by s.data''' % (qs, _STAT_IS_COUNTED.replace('src', 'src2'), _STAT_IS_COUNTED),
     (stat_type, *data_keys, stat_type)).fetchall()
   return {d: w for d, w in rows}
 
