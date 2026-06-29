@@ -1710,13 +1710,14 @@ class TyperWindow(QWidget):
     textid, srcid, _ = self._current_lesson
     wpm, visc, acc = run.result(accuracy=True)
     secs_per_char = 1.0 / run.per_sec
+    duration = run.duration
 
     self.DB.execute('''
     insert into result
-    (w, text_id, source, wpm, accuracy, viscosity, char_count)
-    values (?,?,?, ?,?,?,?)
+    (w, text_id, source, wpm, accuracy, viscosity, char_count, duration)
+    values (?,?,?, ?,?,?,?,?)
     ''', (now, textid, srcid,
-          wpm, acc, visc, len(run)))
+          wpm, acc, visc, len(run), duration))
 
     self.DB.commit()
     # type (0: char, 1: trigram, 2: word)

@@ -8,8 +8,8 @@ import pytest
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.stats_query import (
   ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
-  STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_result_wpm, analysis_order_clause,
-  average_typing_wpm, count_unique_typed, perf_hist_cutoff,
+  STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm,
+  aggregate_session_wpm_from_results, analysis_order_clause, count_unique_typed, perf_hist_cutoff,
   fetch_analysis_search, fetch_first_sample_wpm, fetch_oblivion_pool, fetch_oblivion_picks,
 )
 from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
@@ -255,52 +255,35 @@ def test_fetch_oblivion_picks_falls_back_all_time():
   assert len(picks) == 3
 
 
-def test_aggregate_result_wpm_matches_total_chars_over_time():
-  # 100 chars @ 60 WPM → 20s; 400 chars @ 80 WPM → 60s → 500 chars in 80s → 75 WPM.
-  assert aggregate_result_wpm(500, 80) == pytest.approx(75.0)
-  assert aggregate_result_wpm(0, 10) is None
+def test_aggregate_session_wpm_matches_total_chars_over_time():
+  # 100 chars in 20s + 400 chars in 60s → 500 chars in 80s → 75 WPM.
+  assert aggregate_session_wpm(500, 80) == pytest.approx(75.0)
+  assert aggregate_session_wpm(0, 10) is None
 
 
-def test_average_typing_wpm_from_counted_char_stats():
-  conn = _test_db(); now = 1e9
-  book = _add_source(conn, 'Novel')
-  conn.executemany(
-    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    [
-      (now, 'a', STAT_TYPE_CHAR, 0.10, 100, 0, 1.0, book),
-      (now, 'b', STAT_TYPE_CHAR, 0.15, 300, 0, 1.0, book),
-    ])
-  # 100 @ 0.10 s/char + 300 @ 0.15 s/char → mean 0.1375 s/char → 87.3 WPM.
-  assert average_typing_wpm(conn, now - 86400) == pytest.approx(87.27272727272727)
-
-
-def test_average_typing_wpm_ignores_weakspot_drill_rows():
-  conn = _test_db(); now = 1e9
-  book = _add_source(conn, 'Novel')
-  weak = _add_source(conn, '<Weakspot>', 1)
-  conn.executemany(
-    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    [
-      (now, 'a', STAT_TYPE_CHAR, 0.10, 50, 0, 1.0, book),
-      (now, 'a', STAT_TYPE_CHAR, 0.40, 0, 0, 1.0, weak),
-    ])
-  assert average_typing_wpm(conn, now - 86400) == pytest.approx(120.0)
-
-
-def test_average_typing_wpm_falls_back_to_corpus_results():
+def test_aggregate_session_wpm_from_results():
   conn = sqlite3.connect(':memory:')
   conn.executescript("""
-    create table source (name text, disabled integer, discount integer);
-    create table statistic (w real, data text, type integer, time real, count integer, mistakes integer, viscosity real, source integer);
-    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer);
+    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer, duration real);
   """)
   now = 1e9
-  conn.execute('insert into source (name, discount) values (?,?)', ('Novel', None))
-  sid = conn.execute('select rowid from source').fetchone()[0]
-  conn.execute(
-    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count) values (?,?,?,?,?,?,?)',
-    (now, 't1', sid, 80.0, 1.0, 1.0, 200))
-  assert average_typing_wpm(conn, now - 86400) == pytest.approx(80.0)
+  conn.executemany(
+    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count,duration) values (?,?,?,?,?,?,?,?)',
+    [(now, 'a', 1, 60.0, 1.0, 1.0, 100, 20.0), (now, 'b', 1, 80.0, 1.0, 1.0, 400, 60.0)])
+  assert aggregate_session_wpm_from_results(conn, now - 86400) == pytest.approx(75.0)
+  assert aggregate_session_wpm_from_results(conn, now + 1) is None
+
+
+def test_aggregate_session_wpm_from_results_skips_rows_without_duration():
+  conn = sqlite3.connect(':memory:')
+  conn.executescript("""
+    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer, duration real);
+  """)
+  now = 1e9
+  conn.executemany(
+    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count,duration) values (?,?,?,?,?,?,?,?)',
+    [(now, 'a', 1, 60.0, 1.0, 1.0, 100, None), (now, 'b', 1, 80.0, 1.0, 1.0, 400, 60.0)])
+  assert aggregate_session_wpm_from_results(conn, now - 86400) == pytest.approx(80.0)
 
 
 def test_count_unique_typed_respects_history_window():

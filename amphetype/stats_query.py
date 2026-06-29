@@ -71,18 +71,9 @@ STAT_TYPE_WORD = 2
 WPM_CHARS_PER_WORD = 5
 WPM_SECONDS_FACTOR = 12.0  # 60.0 / WPM_CHARS_PER_WORD
 
-COUNTED_CHAR_SPEED_SQL = f"""select
-  sum(case when {_STAT_IS_COUNTED} then st.count else 0 end),
-  sum(case when {_STAT_IS_COUNTED} then st.count * st.time else 0 end)
-  from statistic as st
-  left join source as src on st.source = src.rowid
-  where st.w >= ? and st.type = {STAT_TYPE_CHAR}"""
-
-RESULT_WPM_FALLBACK_SQL = """select r.wpm from result as r
-  left join source as s on r.source = s.rowid
-  where r.w >= ? and r.wpm > 0
-    and coalesce(s.discount, 0) = 0
-    and coalesce(s.name, '') != '<Weakspot>'"""
+SESSION_WPM_TOTALS_SQL = """select sum(char_count), sum(duration)
+  from result
+  where w >= ? and char_count > 0 and duration > 0"""
 
 
 def perf_hist_cutoff(now=None, history_days=None):
@@ -168,30 +159,19 @@ def count_unique_typed(db, hist_cutoff, stat_type):
   return int(row[0]) if row else 0
 
 
-def aggregate_result_wpm(total_chars, total_seconds):
-  """Overall WPM across runs: chars typed / elapsed seconds * (60/5)."""
+def aggregate_session_wpm(total_chars, total_seconds):
+  """Session WPM across finished lessons: total chars / total typing seconds * (60/5)."""
   if not total_chars or not total_seconds:
     return None
   return total_chars / total_seconds * WPM_SECONDS_FACTOR
 
 
-def _median(vals):
-  if not vals:
+def aggregate_session_wpm_from_results(db, hist_cutoff):
+  """Sum char_count and duration from result rows that recorded both at lesson end."""
+  row = db.execute(SESSION_WPM_TOTALS_SQL, (hist_cutoff,)).fetchone()
+  if not row:
     return None
-  s = sorted(vals); n = len(s)
-  if n & 1:
-    return s[n // 2]
-  return (s[n // 2 - 1] + s[n // 2]) / 2.0
-
-
-def average_typing_wpm(db, hist_cutoff):
-  """Mean WPM from counted per-character timing samples (same pool as Stats speed column)."""
-  row = db.execute(COUNTED_CHAR_SPEED_SQL, (hist_cutoff,)).fetchone()
-  n, time_weighted = (row[0] or 0), (row[1] or 0)
-  if n > 0 and time_weighted > 0:
-    return WPM_SECONDS_FACTOR / (time_weighted / n)
-  rows = db.execute(RESULT_WPM_FALLBACK_SQL, (hist_cutoff,)).fetchall()
-  return _median([r[0] for r in rows])
+  return aggregate_session_wpm(row[0] or 0, row[1] or 0)
 
 
 def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):
