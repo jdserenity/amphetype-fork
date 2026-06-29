@@ -62,7 +62,6 @@ class AmphetypeWindow(QMainWindow):
     tm.gotoText.connect(lambda: tabs.setCurrentIndex(0))
 
     pa = PerformanceAnalysis()
-    tm.refreshSources.connect(pa.refreshSources)
     pa.gotoText.connect(lambda: tabs.setCurrentIndex(0))
     tabs.addTab(pa, "Performance Analysis")
 

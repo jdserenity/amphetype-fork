@@ -4,6 +4,10 @@ Drill rows (<Weakspot>, count=0) update median time/hesitation but not count,
 mistakes, or damage frequency. Drill mistakes are tracked separately.
 """
 
+import time
+
+from amphetype.Config import Settings
+
 # Legacy: omit discounted sources entirely (heatmap, etc.).
 STAT_OMIT_DISCOUNTED = "(st.source is null or src.discount is null)"
 
@@ -59,12 +63,32 @@ SPEED_STATS_SQL = f"""select data,
 UNIQUE_TYPED_SQL = """select count(distinct data) from statistic
   where w >= ? and type = ?"""
 
+STAT_TYPE_CHAR = 0
+STAT_TYPE_TRIGRAM = 1
+STAT_TYPE_WORD = 2
+
 # WPM = (chars / seconds) * (60 / 5); five characters is the usual "word" in typing tests.
 WPM_CHARS_PER_WORD = 5
 WPM_SECONDS_FACTOR = 12.0  # 60.0 / WPM_CHARS_PER_WORD
 
-RESULT_WPM_ROWS_SQL = """select char_count, wpm from result
-  where w >= ? and wpm > 0"""
+COUNTED_CHAR_SPEED_SQL = f"""select
+  sum(case when {_STAT_IS_COUNTED} then st.count else 0 end),
+  sum(case when {_STAT_IS_COUNTED} then st.count * st.time else 0 end)
+  from statistic as st
+  left join source as src on st.source = src.rowid
+  where st.w >= ? and st.type = {STAT_TYPE_CHAR}"""
+
+RESULT_WPM_FALLBACK_SQL = """select r.wpm from result as r
+  left join source as s on r.source = s.rowid
+  where r.w >= ? and r.wpm > 0
+    and coalesce(s.discount, 0) = 0
+    and coalesce(s.name, '') != '<Weakspot>'"""
+
+
+def perf_hist_cutoff(now=None, history_days=None):
+  now = time.time() if now is None else now
+  days = Settings.get('history') if history_days is None else history_days
+  return now - days * 86400.0
 
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   100.0-100.0*mistakes/cast(total as real) as accuracy,
@@ -83,10 +107,6 @@ SPEED_STATS_ALL_TIME_SQL = f"""select data,
   left join source as src on st.source = src.rowid
   where st.type = ?
   group by data"""
-
-STAT_TYPE_CHAR = 0
-STAT_TYPE_TRIGRAM = 1
-STAT_TYPE_WORD = 2
 
 ANALYSIS_ORDER_OPTIONS = (
   ('wpm asc', 'slowest'),
@@ -164,21 +184,14 @@ def _median(vals):
   return (s[n // 2 - 1] + s[n // 2]) / 2.0
 
 
-def average_result_wpm(db, hist_cutoff):
-  """Time-weighted WPM from stored per-run WPM + char_count; median fallback when char_count missing."""
-  rows = db.execute(RESULT_WPM_ROWS_SQL, (hist_cutoff,)).fetchall()
-  if not rows:
-    return None
-  total_chars = 0; total_seconds = 0.0; loose_wpms = []
-  for chars, wpm in rows:
-    if chars and chars > 0:
-      total_chars += chars
-      total_seconds += chars * WPM_SECONDS_FACTOR / wpm
-    else:
-      loose_wpms.append(wpm)
-  if total_chars > 0:
-    return aggregate_result_wpm(total_chars, total_seconds)
-  return _median(loose_wpms)
+def average_typing_wpm(db, hist_cutoff):
+  """Mean WPM from counted per-character timing samples (same pool as Stats speed column)."""
+  row = db.execute(COUNTED_CHAR_SPEED_SQL, (hist_cutoff,)).fetchone()
+  n, time_weighted = (row[0] or 0), (row[1] or 0)
+  if n > 0 and time_weighted > 0:
+    return WPM_SECONDS_FACTOR / (time_weighted / n)
+  rows = db.execute(RESULT_WPM_FALLBACK_SQL, (hist_cutoff,)).fetchall()
+  return _median([r[0] for r in rows])
 
 
 def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):

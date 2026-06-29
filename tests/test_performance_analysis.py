@@ -1,13 +1,10 @@
-"""Tests for consolidated Performance Analysis tab."""
-
-import re
+"""Tests for Performance Analysis tab."""
 
 import pytest
 
-from amphetype.Performance import perf_hist_cutoff, PerformanceHistory
 from amphetype.PerformanceAnalysis import PerformanceAnalysis
-from amphetype.StatWidgets import StringStats, WordModel
-from amphetype.stats_query import STAT_TYPE_WORD
+from amphetype.StatWidgets import StringStats, WordModel, AnalysisSortCombo
+from amphetype.stats_query import STAT_TYPE_WORD, perf_hist_cutoff
 
 
 def _sample_rows():
@@ -23,28 +20,8 @@ def test_perf_hist_cutoff():
   assert perf_hist_cutoff(now=now, history_days=30) == now - 30 * 86400.0
 
 
-def test_performance_history_sql_uses_history_window(qapp, monkeypatch):
-  captured = []
-
-  def fake_fetchall(sql, *args):
-    captured.append(sql)
-    return []
-
-  monkeypatch.setattr('amphetype.Performance.DB.fetchall', fake_fetchall)
-  ph = PerformanceHistory()
-  captured.clear()
-  ph.updateData()
-  result_sql = [s for s in captured if 'from result' in s]
-  assert result_sql
-  m = re.search(r'r\.w >= ([\d.]+)', result_sql[0])
-  assert m
-  cutoff = float(m.group(1))
-  assert cutoff == pytest.approx(perf_hist_cutoff(), abs=1.0)
-
-
 def test_performance_analysis_composes_sections(qapp):
   pa = PerformanceAnalysis()
-  assert isinstance(pa.ph, PerformanceHistory)
   assert isinstance(pa.st, StringStats)
 
 
@@ -52,19 +29,27 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   monkeypatch.setattr(
     'amphetype.PerformanceAnalysis.count_unique_typed',
     lambda db, hist, tp: 42 if tp == 2 else 17)
+  monkeypatch.setattr(
+    'amphetype.PerformanceAnalysis.average_typing_wpm',
+    lambda db, hist: 88.5)
   pa = PerformanceAnalysis()
   pa.updateAll()
   assert pa._words_lbl.text() == 'Unique words typed: 42'
   assert pa._trigrams_lbl.text() == 'Unique trigrams typed: 17'
+  assert pa._wpm_lbl.text() == 'Average WPM: 88.5'
 
 
-def test_performance_analysis_has_stats_and_progress_subtabs(qapp):
+def test_performance_analysis_is_stats_only(qapp):
   pa = PerformanceAnalysis()
-  labels = [pa.subtabs.tabText(i) for i in range(pa.subtabs.count())]
-  assert labels == ["Stats", "Progress"]
-  assert pa.subtabs.currentIndex() == 0
-  assert pa.subtabs.widget(0) is pa.st
-  assert pa.subtabs.widget(1) is pa.ph
+  assert pa.st is not None
+  assert not hasattr(pa, 'subtabs')
+  assert not hasattr(pa, 'ph')
+
+
+def test_string_stats_search_on_toolbar_row(qapp):
+  st = StringStats()
+  # Search shares the Show / sorted-by row (four rows total, not five).
+  assert st.layout().count() == 4
 
 
 def test_string_stats_has_no_lesson_generator_button(qapp):
@@ -144,8 +129,6 @@ def test_main_window_title(qapp):
 
 
 def test_analysis_sort_combo_hides_most_improved_for_keys(qapp, monkeypatch):
-  from amphetype.StatWidgets import AnalysisSortCombo
-
   store = {'ana_what': 0, 'ana_which': 'improved desc'}
 
   def fake_get(key):
@@ -162,8 +145,6 @@ def test_analysis_sort_combo_hides_most_improved_for_keys(qapp, monkeypatch):
 
 
 def test_analysis_sort_combo_shows_most_improved_for_words(qapp, monkeypatch):
-  from amphetype.StatWidgets import AnalysisSortCombo
-
   monkeypatch.setattr('amphetype.StatWidgets.Settings.get', lambda k: {'ana_what': 2, 'ana_which': 'improved desc'}.get(k, 0))
   combo = AnalysisSortCombo()
   assert 'most improved' in [combo.itemText(i) for i in range(combo.count())]
