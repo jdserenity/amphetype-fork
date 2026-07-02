@@ -80,7 +80,7 @@ class CharEntry():
 
 # Keystroke gaps longer than this are considered idle time (distraction, afk)
 # and are capped when computing WPM so they don't unfairly tank your speed.
-IDLE_THRESHOLD = 2.0  # seconds
+IDLE_THRESHOLD = 3.0  # seconds
 
 
 class RunStats(datatuple):
