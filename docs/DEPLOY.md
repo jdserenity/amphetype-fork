@@ -65,6 +65,43 @@ Preview deployments are created automatically for other branches/PRs.
 
 **Optional:** set `TYPING_PROGRAM_CHECKOUT_URL` so the in-app “Buy” button matches your checkout link.
 
+## Packaging (installers for sale)
+
+Turns the app into a self-contained download so buyers need no Python. Tool: **PyInstaller** (recipe in `amphetype.spec`, launcher `amphetype/main_entry.py`).
+
+**Key rule:** PyInstaller can only build for the OS it runs on. A Windows build must run on Windows, a Mac build on a Mac, a Linux build on Linux. There is no cross-compile.
+
+### Build (any platform)
+
+From repo root, in the Python 3.11 venv (`docs/DEPLOY.md` → Dev), with build tools installed:
+
+```sh
+uv pip install pyinstaller pillow
+pyinstaller amphetype.spec --noconfirm --clean
+```
+
+- macOS → `dist/Amphetype.app`
+- Windows / Linux → `dist/Amphetype/` (whole folder is the app; the launcher is `Amphetype`/`Amphetype.exe` inside)
+
+`pillow` lets PyInstaller convert `amphetype.ico` into the icon each OS wants.
+
+### Smoke-test the build
+
+Run the frozen binary with the license skipped and logging to stdout; it should open a window and load the bundled sample texts:
+
+```sh
+# macOS
+TYPING_PROGRAM_SKIP_LICENSE=1 AMPH_LOGFILE=- dist/Amphetype.app/Contents/MacOS/Amphetype
+```
+
+If it exits immediately with "directory ... data not found" or "file ... VERSION not found", the spec failed to copy bundled files — check the `datas` block in `amphetype.spec`.
+
+### Ship
+
+Upload the per-OS installer to Lemon Squeezy → product → **Files**; LS emails download links to buyers (see the Lemon Squeezy section above). v1 ships **unsigned**, so buyers see an OS "unverified developer" warning; document the click-through for them until code signing is added.
+
+**Not yet wired up (open work — see `docs/TODO.md`):** friendly installers (`.dmg` / Inno Setup `.exe` / AppImage), a GitHub Actions config to build all three OSes on a release tag, and code signing.
+
 ## Dev (local)
 
 Requires Python 3.11 (PyQt5 does not install reliably on 3.12+).
