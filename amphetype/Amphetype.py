@@ -153,7 +153,7 @@ class AmphetypeWindow(QMainWindow):
     super().changeEvent(evt)
 
   def sizeHint(self):
-    return QSize(880, 475)
+    return QSize(1100, 712)
 
 class AboutWidget(QTextBrowser):
   def __init__(self, *args):
