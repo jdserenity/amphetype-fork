@@ -600,6 +600,63 @@ def test_pause_overlay_buttons_stacked_with_new(qapp):
   assert fired == {'continue': 1, 'new': 1, 'restart': 1}
 
 
+def _pause_key(key):
+  from PyQt5.QtGui import QKeyEvent
+  from PyQt5.QtCore import Qt
+  return QKeyEvent(QKeyEvent.KeyPress, key, Qt.NoModifier)
+
+
+def test_pause_overlay_arrow_keys_cycle_selection(qapp):
+  from PyQt5.QtCore import Qt
+  from amphetype.typer import _LessonPauseOverlay
+
+  o = _LessonPauseOverlay(None)
+  assert o.selected_index() == 0
+  assert o.handle_key(_pause_key(Qt.Key_Down))
+  assert o.selected_index() == 1
+  assert o.handle_key(_pause_key(Qt.Key_Right))
+  assert o.selected_index() == 2
+  assert o.handle_key(_pause_key(Qt.Key_Down))
+  assert o.selected_index() == 0
+  assert o.handle_key(_pause_key(Qt.Key_Up))
+  assert o.selected_index() == 2
+  assert o.handle_key(_pause_key(Qt.Key_Left))
+  assert o.selected_index() == 1
+
+
+def test_pause_overlay_enter_activates_selection(qapp):
+  from PyQt5.QtCore import Qt
+  from amphetype.typer import _LessonPauseOverlay
+
+  o = _LessonPauseOverlay(None)
+  fired = {'continue': 0, 'new': 0, 'restart': 0}
+  o.continueClicked.connect(lambda: fired.__setitem__('continue', fired['continue'] + 1))
+  o.newClicked.connect(lambda: fired.__setitem__('new', fired['new'] + 1))
+  o.restartClicked.connect(lambda: fired.__setitem__('restart', fired['restart'] + 1))
+  o.handle_key(_pause_key(Qt.Key_Down))
+  assert o.handle_key(_pause_key(Qt.Key_Return))
+  assert fired == {'continue': 0, 'new': 1, 'restart': 0}
+
+
+def test_typer_arrow_keys_navigate_pause_menu(qapp):
+  from PyQt5.QtCore import Qt
+  from PyQt5.QtGui import QFont
+  from amphetype.typer import TyperWidget, LessonDocument, _LessonPauseOverlay
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  w.setLesson(doc)
+  overlay = _LessonPauseOverlay(None)
+  w._pause_overlay = overlay
+  doc.pause()
+  assert overlay.selected_index() == 0
+  w.keyPressEvent(_pause_key(Qt.Key_Down))
+  assert overlay.selected_index() == 1
+  w.keyPressEvent(_pause_key(Qt.Key_Left))
+  assert overlay.selected_index() == 0
+
+
 def test_request_new_lesson_per_mode(qapp):
   from unittest.mock import MagicMock
   from amphetype.typer import TyperWindow, MODE_NORMAL, MODE_BOOK, MODE_WEAKSPOT
