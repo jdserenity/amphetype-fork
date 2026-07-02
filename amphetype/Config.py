@@ -119,7 +119,8 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     'speed_heatmap': False,
     'speed_heatmap_mode': 0,
-    'typing_sound': 'type-1',  # '' = off; stem under data/sounds (e.g. type-1)
+    'typing_sound': 'type-1',  # '' = off; stem under data/sounds
+    'typing_error_sound': 'error-1',
   }
 
   typer_color_defaults = {
@@ -424,33 +425,45 @@ class TyperSoundOptions(QGroupBox):
     super().__init__(*args, title='Typing sounds', flat=False, **kwargs)
     self._S = S
     self._preview = TypingSoundPlayer()
-    self._combo = QComboBox()
-    self._combo.addItem('None', '')
-    for sid in list_sound_ids():
-      self._combo.addItem(format_sound_label(sid), sid)
-    cur = S['typing_sound']
-    idx = self._combo.findData(cur)
-    if idx < 0 and cur:
-      self._combo.addItem(format_sound_label(cur), cur)
-      idx = self._combo.findData(cur)
-    self._combo.setCurrentIndex(idx if idx >= 0 else 0)
-    self._combo.activated.connect(self._on_pick)
-    self._preview_btn = AmphButton('Preview', self._preview_current)
-    self._preview.configure(S['typing_sound'])
+    self._type_combo = self._make_combo('typing_sound')
+    self._err_combo = self._make_combo('typing_error_sound')
+    self._sync_preview()
     self.setLayout(FBoxLayout([
-      'Short keystroke sounds while typing. Pick a sound or None.',
-      [self._combo, self._preview_btn, None],
+      'Keystroke sounds while typing. Correct and error are chosen separately; pick None to mute either.',
+      ['Correct keystroke', self._type_combo, AmphButton('Preview', self._preview_type), None],
+      ['Error keystroke', self._err_combo, AmphButton('Preview', self._preview_error), None],
     ]))
 
-  def _on_pick(self, idx):
-    sid = self._combo.itemData(idx)
-    self._S('typing_sound').set(sid)
-    self._preview.configure(sid)
-    self._preview.play_keystroke()
+  def _make_combo(self, setting_key):
+    combo = QComboBox()
+    combo.addItem('None', '')
+    for sid in list_sound_ids():
+      combo.addItem(format_sound_label(sid), sid)
+    cur = self._S[setting_key]
+    idx = combo.findData(cur)
+    if idx < 0 and cur:
+      combo.addItem(format_sound_label(cur), cur)
+      idx = combo.findData(cur)
+    combo.setCurrentIndex(idx if idx >= 0 else 0)
+    combo.activated.connect(lambda i, k=setting_key, c=combo: self._on_pick(k, c, i))
+    return combo
 
-  def _preview_current(self):
-    self._preview.configure(self._S['typing_sound'])
-    self._preview.play_keystroke()
+  def _on_pick(self, setting_key, combo, idx):
+    sid = combo.itemData(idx)
+    self._S(setting_key).set(sid)
+    self._sync_preview()
+    self._preview.play_keystroke(setting_key == 'typing_sound')
+
+  def _sync_preview(self):
+    self._preview.configure(self._S['typing_sound'], self._S['typing_error_sound'])
+
+  def _preview_type(self):
+    self._sync_preview()
+    self._preview.play_keystroke(True)
+
+  def _preview_error(self):
+    self._sync_preview()
+    self._preview.play_keystroke(False)
 
 class TyperOptions(QWidget):
   def __init__(self, *args, **kwargs):

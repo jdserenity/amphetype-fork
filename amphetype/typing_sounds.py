@@ -1,25 +1,20 @@
 """Typing keystroke sounds (bundled audio under data/sounds)."""
 
-from pathlib import Path
-
 from PyQt5.QtCore import QUrl
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer, QSoundEffect
 
-from amphetype import AMPH_DIR, DATA_DIR
+from amphetype import DATA_DIR
 
 AUDIO_EXTS = ('.wav', '.ogg', '.mp3')
-_DEFAULT_SOUND_ID = 'type-1'
+_DEFAULT_TYPE_SOUND = 'type-1'
+_DEFAULT_ERROR_SOUND = 'error-1'
+# QSoundEffect 0..1; QMediaPlayer 0..100
+_WAV_VOLUME = 0.22
+_OGG_VOLUME = 22
 
 
 def sounds_directory():
-  """Directory containing keystroke sound files (packaged, then dev assets/)."""
-  packaged = DATA_DIR / 'sounds'
-  if packaged.is_dir() and any(packaged.iterdir()):
-    return packaged
-  dev = AMPH_DIR.parent / 'assets' / 'sounds'
-  if dev.is_dir():
-    return dev
-  return packaged
+  return DATA_DIR / 'sounds'
 
 
 def list_sound_ids():
@@ -55,29 +50,26 @@ def resolve_sound_path(sound_id):
   return None
 
 
-def paired_error_sound_id(sound_id):
-  """error-N for type-N selections; None otherwise."""
-  if not sound_id or not sound_id.startswith('type-'):
-    return None
-  suffix = sound_id[5:]
-  if not suffix:
-    return None
-  err_id = f'error-{suffix}'
-  return err_id if resolve_sound_path(err_id) else None
-
-
 def default_typing_sound_id():
-  if resolve_sound_path(_DEFAULT_SOUND_ID):
-    return _DEFAULT_SOUND_ID
+  if resolve_sound_path(_DEFAULT_TYPE_SOUND):
+    return _DEFAULT_TYPE_SOUND
   ids = list_sound_ids()
   return ids[0] if ids else ''
+
+
+def default_typing_error_sound_id():
+  if resolve_sound_path(_DEFAULT_ERROR_SOUND):
+    return _DEFAULT_ERROR_SOUND
+  return ''
 
 
 class _OggBurstPlayer:
   """Low-overlap OGG playback via a small QMediaPlayer pool."""
 
-  def __init__(self, pool=3):
+  def __init__(self, pool=3, volume=_OGG_VOLUME):
     self._players = [QMediaPlayer() for _ in range(pool)]
+    for p in self._players:
+      p.setVolume(volume)
     self._i = 0
 
   def play(self, path):
@@ -88,29 +80,26 @@ class _OggBurstPlayer:
 
 
 class TypingSoundPlayer:
-  """Plays the user's chosen keystroke sound (and paired error sound when present)."""
+  """Plays independently chosen correct- and error-keystroke sounds."""
 
   def __init__(self):
-    self._enabled = False
     self._type_wav = QSoundEffect()
     self._err_wav = QSoundEffect()
+    self._type_wav.setVolume(_WAV_VOLUME)
+    self._err_wav.setVolume(_WAV_VOLUME)
     self._type_ogg = _OggBurstPlayer()
     self._err_ogg = _OggBurstPlayer()
     self._type_path = None
     self._err_path = None
 
-  def configure(self, sound_id):
-    self._enabled = bool(sound_id)
-    self._type_path = resolve_sound_path(sound_id)
-    err_id = paired_error_sound_id(sound_id)
-    self._err_path = resolve_sound_path(err_id) if err_id else None
+  def configure(self, type_sound_id='', error_sound_id=''):
+    self._type_path = resolve_sound_path(type_sound_id)
+    self._err_path = resolve_sound_path(error_sound_id)
     self._bind_effect(self._type_wav, self._type_path)
     self._bind_effect(self._err_wav, self._err_path)
 
   def play_keystroke(self, correct=True):
-    if not self._enabled:
-      return
-    path = self._type_path if correct else (self._err_path or self._type_path)
+    path = self._type_path if correct else self._err_path
     if path is None:
       return
     self._play_path(path, self._type_wav if correct else self._err_wav,

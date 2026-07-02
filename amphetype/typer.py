@@ -860,7 +860,9 @@ class TyperWidget(QTextEdit):
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
     settings('overwrite_mode').bind_value(self.setOverwriteMode)
-    settings('typing_sound').bind_value(self._sounds.configure)
+    settings('typing_sound').bind_change(self._reload_sounds)
+    settings('typing_error_sound').bind_change(self._reload_sounds)
+    self._reload_sounds()
     configure_transparent_typer(self)
     settings('background_color').bind_value(lambda v: configure_transparent_typer(self))
 
@@ -970,6 +972,9 @@ class TyperWidget(QTextEdit):
 
   def _on_key_typed(self, correct):
     self._sounds.play_keystroke(correct)
+
+  def _reload_sounds(self, *_):
+    self._sounds.configure(self._settings['typing_sound'], self._settings['typing_error_sound'])
 
   def _repaint_badges(self):
     self.viewport().update()
