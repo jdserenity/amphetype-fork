@@ -45,6 +45,12 @@ def test_format_sound_label():
   assert format_sound_label('type-1') == 'type 1'
 
 
+def test_typing_sound_player_plays_float_wav_error(qapp):
+  player = TypingSoundPlayer()
+  player.configure('type-1', 'error-1')
+  player.play_keystroke(False)
+
+
 def test_typing_sound_player_independent_type_and_error(qapp):
   player = TypingSoundPlayer()
   player.configure('type-1', '')

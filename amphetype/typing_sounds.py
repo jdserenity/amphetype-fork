@@ -1,16 +1,14 @@
 """Typing keystroke sounds (bundled audio under data/sounds)."""
 
 from PyQt5.QtCore import QUrl
-from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer, QSoundEffect
+from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 
 from amphetype import DATA_DIR
 
 AUDIO_EXTS = ('.wav', '.ogg', '.mp3')
 _DEFAULT_TYPE_SOUND = 'type-1'
 _DEFAULT_ERROR_SOUND = 'error-1'
-# QSoundEffect 0..1; QMediaPlayer 0..100
-_WAV_VOLUME = 0.22
-_OGG_VOLUME = 22
+_MEDIA_VOLUME = 22  # QMediaPlayer 0..100
 
 
 def sounds_directory():
@@ -63,10 +61,10 @@ def default_typing_error_sound_id():
   return ''
 
 
-class _OggBurstPlayer:
-  """Low-overlap OGG playback via a small QMediaPlayer pool."""
+class _MediaBurstPlayer:
+  """Overlapping short clips via a small QMediaPlayer pool (handles float/stereo WAV, OGG, etc.)."""
 
-  def __init__(self, pool=3, volume=_OGG_VOLUME):
+  def __init__(self, pool=3, volume=_MEDIA_VOLUME):
     self._players = [QMediaPlayer() for _ in range(pool)]
     for p in self._players:
       p.setVolume(volume)
@@ -83,37 +81,17 @@ class TypingSoundPlayer:
   """Plays independently chosen correct- and error-keystroke sounds."""
 
   def __init__(self):
-    self._type_wav = QSoundEffect()
-    self._err_wav = QSoundEffect()
-    self._type_wav.setVolume(_WAV_VOLUME)
-    self._err_wav.setVolume(_WAV_VOLUME)
-    self._type_ogg = _OggBurstPlayer()
-    self._err_ogg = _OggBurstPlayer()
+    self._type_player = _MediaBurstPlayer()
+    self._err_player = _MediaBurstPlayer()
     self._type_path = None
     self._err_path = None
 
   def configure(self, type_sound_id='', error_sound_id=''):
     self._type_path = resolve_sound_path(type_sound_id)
     self._err_path = resolve_sound_path(error_sound_id)
-    self._bind_effect(self._type_wav, self._type_path)
-    self._bind_effect(self._err_wav, self._err_path)
 
   def play_keystroke(self, correct=True):
     path = self._type_path if correct else self._err_path
     if path is None:
       return
-    self._play_path(path, self._type_wav if correct else self._err_wav,
-                    self._type_ogg if correct else self._err_ogg)
-
-  def _bind_effect(self, effect, path):
-    if path is None or path.suffix.lower() != '.wav':
-      effect.setSource(QUrl())
-      return
-    effect.setSource(QUrl.fromLocalFile(str(path.resolve())))
-
-  def _play_path(self, path, wav_fx, ogg_player):
-    if path.suffix.lower() == '.wav':
-      if not wav_fx.source().isEmpty():
-        wav_fx.play()
-      return
-    ogg_player.play(path)
+    (self._type_player if correct else self._err_player).play(path)
