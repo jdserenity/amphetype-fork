@@ -432,6 +432,8 @@ class TyperSoundOptions(QGroupBox):
     self._space_combo = self._make_combo('typing_space_sound', 'space')
     self._vol = QSlider(Qt.Horizontal)
     self._vol.setRange(0, 100)
+    self._vol.setMinimumWidth(280)
+    self._vol.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed))
     self._vol.setValue(int(S['typing_sound_volume']))
     self._vol.valueChanged.connect(S('typing_sound_volume').set)
     self._no_sounds_btn = AmphButton('No sounds', self._clear_all_sounds)
