@@ -15,5 +15,5 @@ def test_main_window_default_size_hint(qapp):
   import amphetype.Amphetype as A
 
   hint = A.AmphetypeWindow().sizeHint()
-  assert hint.width() == 1100
-  assert hint.height() == 950
+  assert hint.width() == 880
+  assert hint.height() == 475
