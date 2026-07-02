@@ -119,6 +119,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     'speed_heatmap': False,
     'speed_heatmap_mode': 0,
+    'typing_sound': 'type-1',  # '' = off; stem under data/sounds (e.g. type-1)
   }
 
   typer_color_defaults = {
@@ -382,6 +383,7 @@ class SelectCSSBox(QComboBox):
 
 
 from amphetype.layout import FBoxLayout
+from amphetype.typing_sounds import TypingSoundPlayer, format_sound_label, list_sound_ids
 
 class TyperInputOptions(QGroupBox):
   def __init__(self, S, *args, **kwargs):
@@ -417,6 +419,39 @@ class TyperInputOptions(QGroupBox):
                 toolTip="""Turning this on will prevent backspace from going back over any correct input. Works best for overwrite mode."""),
       ]))
 
+class TyperSoundOptions(QGroupBox):
+  def __init__(self, S, *args, **kwargs):
+    super().__init__(*args, title='Typing sounds', flat=False, **kwargs)
+    self._S = S
+    self._preview = TypingSoundPlayer()
+    self._combo = QComboBox()
+    self._combo.addItem('None', '')
+    for sid in list_sound_ids():
+      self._combo.addItem(format_sound_label(sid), sid)
+    cur = S['typing_sound']
+    idx = self._combo.findData(cur)
+    if idx < 0 and cur:
+      self._combo.addItem(format_sound_label(cur), cur)
+      idx = self._combo.findData(cur)
+    self._combo.setCurrentIndex(idx if idx >= 0 else 0)
+    self._combo.activated.connect(self._on_pick)
+    self._preview_btn = AmphButton('Preview', self._preview_current)
+    self._preview.configure(S['typing_sound'])
+    self.setLayout(FBoxLayout([
+      'Short keystroke sounds while typing. Pick a sound or None.',
+      [self._combo, self._preview_btn, None],
+    ]))
+
+  def _on_pick(self, idx):
+    sid = self._combo.itemData(idx)
+    self._S('typing_sound').set(sid)
+    self._preview.configure(sid)
+    self._preview.play_keystroke()
+
+  def _preview_current(self):
+    self._preview.configure(self._S['typing_sound'])
+    self._preview.play_keystroke()
+
 class TyperOptions(QWidget):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
@@ -431,6 +466,7 @@ class TyperOptions(QWidget):
       ['Paragraph margin (px)', S('para_margin').spin_box(0, 100), None],
       ['Line spacing', S('para_lineheight').spin_box(0.6, 4.0, 0.05), None],
       TyperInputOptions(S),
+      TyperSoundOptions(S),
       TyperColors(C),
       None,
     ]))

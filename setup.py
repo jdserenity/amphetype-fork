@@ -57,7 +57,8 @@ setup(
       "data/texts/*.txt",
       "data/css/*.qss",
       "data/about.html",
-      "data/wordlists/*.txt"
+      "data/wordlists/*.txt",
+      "data/sounds/*",
     ],
   },
   include_package_data=True,

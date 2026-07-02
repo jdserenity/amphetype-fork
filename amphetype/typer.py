@@ -31,6 +31,7 @@ from amphetype.word_progress import (
   improved_word_spans, lesson_words, median_wpm_bump, new_word_spans, progress_badges_for_run,
   word_spans, word_wpm_from_slice,
 )
+from amphetype.typing_sounds import TypingSoundPlayer
 from collections import defaultdict, Counter
 
 from time import time
@@ -212,6 +213,7 @@ class LessonDocument(QTextDocument):
   error = pyqtSignal(str)
   progress = pyqtSignal(int)
   progress_badges_changed = pyqtSignal()
+  key_typed = pyqtSignal(bool)  # True = correct keystroke, False = error
 
   def __init__(self, font, *args, **kwargs):
     super().__init__(*args, undoRedoEnabled=False, **kwargs)
@@ -540,6 +542,7 @@ class LessonDocument(QTextDocument):
         self._run.visit(False)
         c.insertText(RETURN_CHAR, self.style_error)
         self._finish_book_insert()
+        self.key_typed.emit(False)
         return
       self._run.visit(True)
       self.progress.emit(mi)
@@ -550,6 +553,7 @@ class LessonDocument(QTextDocument):
       self._consume_auto_returns()
       self._consume_trailing_whitespace()
       self._finish_book_insert()
+      self.key_typed.emit(True)
       return
 
     if not correct:
@@ -561,6 +565,7 @@ class LessonDocument(QTextDocument):
       c.insertText(RETURN_CHAR, self.style_error)
       self._cursor_to_match_index(mi)
       self._finish_book_insert()
+      self.key_typed.emit(False)
       return
 
     self._run.visit(True)
@@ -571,6 +576,7 @@ class LessonDocument(QTextDocument):
     self._consume_auto_returns()
     self._consume_trailing_whitespace()
     self._finish_book_insert()
+    self.key_typed.emit(True)
 
   def is_running(self):
     """True if a lesson has started but not yet completed."""
@@ -643,6 +649,7 @@ class LessonDocument(QTextDocument):
       style = self.style_anyerror if correct else self.style_error
       self.actual_insert(char, style, overwrite=should_advance)
       self._refresh_untyped_styles()
+      self.key_typed.emit(correct)
       return
 
     # Update timing data.
@@ -679,6 +686,7 @@ class LessonDocument(QTextDocument):
     else:
       self._refresh_untyped_styles()
       self.sig_position.emit(self.cursor)
+    self.key_typed.emit(correct)
 
   def actual_insert(self, char, style, overwrite=True):
     self.cursor.insertText(char, style)
@@ -848,9 +856,11 @@ class TyperWidget(QTextEdit):
     self._lesson = None
     self._pin_typing_center = False
     self._on_awaiting_enter = None
+    self._sounds = TypingSoundPlayer()
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
     settings('overwrite_mode').bind_value(self.setOverwriteMode)
+    settings('typing_sound').bind_value(self._sounds.configure)
     configure_transparent_typer(self)
     settings('background_color').bind_value(lambda v: configure_transparent_typer(self))
 
@@ -942,6 +952,7 @@ class TyperWidget(QTextEdit):
       self._lesson.ready.disconnect(self.updateStatus)
       self._lesson.completed.disconnect(self.updateStatus)
       self._lesson.progress_badges_changed.disconnect(self._repaint_badges)
+      self._lesson.key_typed.disconnect(self._on_key_typed)
 
     if self.document() != lesson:
       w = self.cursorWidth() # Layout thingamajig resets cursor width.
@@ -954,7 +965,11 @@ class TyperWidget(QTextEdit):
     lesson.ready.connect(self.updateStatus)
     lesson.completed.connect(self.updateStatus)
     lesson.progress_badges_changed.connect(self._repaint_badges)
+    lesson.key_typed.connect(self._on_key_typed)
     self._lesson = lesson
+
+  def _on_key_typed(self, correct):
+    self._sounds.play_keystroke(correct)
 
   def _repaint_badges(self):
     self.viewport().update()
