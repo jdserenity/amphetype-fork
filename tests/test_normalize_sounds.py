@@ -32,3 +32,35 @@ def test_gain_db_for_peak_silent():
 
 def test_gain_db_for_peak_target():
   assert _norm.gain_db_for_peak(-12.0) == pytest.approx(6.0)
+
+
+def test_cleanup_audio_filter_includes_trim_and_fade():
+  af = _norm.cleanup_audio_filter()
+  assert 'silenceremove' in af
+  assert 'afade' in af
+  assert 'highpass' in af
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='ffmpeg required')
+def test_bundled_error_sound_is_short():
+  src = SOUNDS_DIR / 'error-1.wav'
+  if not src.is_file():
+    pytest.skip('error-1.wav not bundled')
+  assert _norm.measure_duration_sec(src) < 0.15
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='ffmpeg required')
+def test_trim_shortens_padded_sample(tmp_path):
+  src = SOUNDS_DIR / 'type-1.wav'
+  if not src.is_file():
+    pytest.skip('type-1.wav not bundled')
+  padded = tmp_path / 'padded.wav'
+  _norm._run_ffmpeg([
+    'ffmpeg', '-hide_banner', '-y', '-i', str(src),
+    '-af', 'apad=pad_dur=0.4', '-c:a', 'pcm_s16le', str(padded),
+  ])
+  before = _norm.measure_duration_sec(padded)
+  _norm.normalize_file(padded)
+  after = _norm.measure_duration_sec(padded)
+  assert before > 0.3
+  assert after < before * 0.6

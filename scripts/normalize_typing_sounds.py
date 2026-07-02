@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Peak-normalize keystroke sounds in data/sounds/ to a common level.
+"""Clean and peak-normalize keystroke sounds in data/sounds/.
+
+Trims leading/trailing silence, applies a short fade-out, high-passes rumble,
+then peak-normalizes to a common level.
 
   python scripts/normalize_typing_sounds.py
 
@@ -17,6 +20,25 @@ SOUNDS_DIR = ROOT / 'data' / 'sounds'
 AUDIO_EXTS = {'.wav', '.ogg', '.mp3'}
 TARGET_PEAK_DB = -6.0
 SILENT_PEAK_THRESHOLD = -70.0
+FADE_OUT_SEC = 0.012
+TRIM_THRESHOLD_DB = -45
+TRIM_MIN_SILENCE_SEC = 0.003
+HIGHPASS_HZ = 100
+
+
+def cleanup_audio_filter():
+  """ffmpeg -af chain: trim silence tails, fade out, drop low rumble."""
+  t = TRIM_THRESHOLD_DB
+  s = TRIM_MIN_SILENCE_SEC
+  f = FADE_OUT_SEC
+  hp = HIGHPASS_HZ
+  return (
+    f'highpass=f={hp},'
+    f'silenceremove=start_periods=1:start_silence={s}:start_threshold={t}dB:'
+    f'stop_periods=-1:stop_silence={s}:stop_threshold={t}dB,'
+    f'areverse,silenceremove=start_periods=1:start_silence={s}:start_threshold={t}dB,areverse,'
+    f'areverse,afade=t=in:st=0:d={f},areverse'
+  )
 
 
 def measure_peak_db(path):
@@ -31,52 +53,65 @@ def measure_peak_db(path):
   return float(m.group(1))
 
 
+def measure_duration_sec(path):
+  p = subprocess.run(
+    ['ffprobe', '-hide_banner', '-show_entries', 'format=duration',
+     '-of', 'default=noprint_wrappers=1:nokey=1', str(path)],
+    capture_output=True, text=True)
+  if p.returncode != 0:
+    raise RuntimeError(f'ffprobe failed for {path}:\n{p.stderr}')
+  return float(p.stdout.strip())
+
+
 def gain_db_for_peak(current_peak_db, target=TARGET_PEAK_DB):
   if current_peak_db <= SILENT_PEAK_THRESHOLD:
     return None
   return target - current_peak_db
 
 
-def normalize_file(path, target=TARGET_PEAK_DB, dry_run=False):
-  peak = measure_peak_db(path)
-  gain = gain_db_for_peak(peak, target)
-  if gain is None:
-    print(f'skip {path.name}: near-silent (peak {peak:.1f} dB)')
-    return False
-  if abs(gain) < 0.05:
-    print(f'ok   {path.name}: peak {peak:.1f} dB (already near target)')
-    return False
-  print(f'norm {path.name}: peak {peak:.1f} dB → gain {gain:+.1f} dB')
-  if dry_run:
-    return True
-  tmp = path.with_name(f'{path.stem}.norm.tmp{path.suffix}')
-  ext = path.suffix.lower()
-  gain_af = ['-af', f'volume={gain:.4f}dB']
-  if ext == '.ogg':
-    # Vorbis encoder is unavailable on many ffmpeg builds; store as WAV instead.
-    tmp = path.with_name(f'{path.stem}.norm.tmp.wav')
-    out_args = gain_af + ['-c:a', 'pcm_s16le']
-  elif ext == '.wav':
-    out_args = gain_af + ['-c:a', 'pcm_s16le']
-  else:
-    out_args = gain_af
-  cmd = ['ffmpeg', '-hide_banner', '-y', '-i', str(path)] + out_args + [str(tmp)]
+def _run_ffmpeg(cmd):
   p = subprocess.run(cmd, capture_output=True, text=True)
   if p.returncode != 0:
-    tmp.unlink(missing_ok=True)
-    raise RuntimeError(f'normalize failed for {path}:\n{p.stderr}')
-  new_peak = measure_peak_db(tmp)
-  if ext == '.ogg':
+    raise RuntimeError(p.stderr)
+
+
+def normalize_file(path, target=TARGET_PEAK_DB, dry_run=False):
+  before_dur = measure_duration_sec(path)
+  if dry_run:
+    print(f'proc {path.name}: {before_dur * 1000:.0f} ms')
+    return True
+  tmp = path.with_name(f'{path.stem}.norm.tmp.wav')
+  tmp2 = path.with_name(f'{path.stem}.norm.tmp2.wav')
+  try:
+    _run_ffmpeg([
+      'ffmpeg', '-hide_banner', '-y', '-i', str(path),
+      '-af', cleanup_audio_filter(), '-c:a', 'pcm_s16le', str(tmp),
+    ])
+    peak = measure_peak_db(tmp)
+    gain = gain_db_for_peak(peak, target)
+    if gain is None:
+      print(f'skip {path.name}: near-silent after trim (peak {peak:.1f} dB)')
+      return False
+    _run_ffmpeg([
+      'ffmpeg', '-hide_banner', '-y', '-i', str(tmp),
+      '-af', f'volume={gain:.4f}dB', '-c:a', 'pcm_s16le', str(tmp2),
+    ])
+    after_dur = measure_duration_sec(tmp2)
+    new_peak = measure_peak_db(tmp2)
     final = path.with_suffix('.wav')
     if final.exists() and final != path:
       final.unlink()
-    tmp.replace(final)
-    path.unlink(missing_ok=True)
-    print(f'     {path.name} → {final.name}: peak {new_peak:.1f} dB')
-  else:
-    tmp.replace(path)
-    print(f'     {path.name}: new peak {new_peak:.1f} dB')
-  return True
+    tmp2.replace(final)
+    if path != final and path.exists():
+      path.unlink(missing_ok=True)
+    print(
+      f'ok   {final.name}: {before_dur * 1000:.0f} ms → {after_dur * 1000:.0f} ms,'
+      f' peak {new_peak:.1f} dB'
+    )
+    return True
+  finally:
+    tmp.unlink(missing_ok=True)
+    tmp2.unlink(missing_ok=True)
 
 
 def main(argv=None):
@@ -95,7 +130,10 @@ def main(argv=None):
   for path in files:
     if normalize_file(path, dry_run=dry_run):
       changed += 1
-  print(f'done ({changed} file{"s" if changed != 1 else ""} adjusted, target peak {TARGET_PEAK_DB} dB)')
+  print(
+    f'done ({changed} file{"s" if changed != 1 else ""} processed,'
+    f' trim + {int(FADE_OUT_SEC * 1000)} ms fade, target peak {TARGET_PEAK_DB} dB)'
+  )
   return 0
 
 
