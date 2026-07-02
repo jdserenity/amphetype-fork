@@ -4,6 +4,10 @@ Drill rows (<Weakspot>, count=0) update median time/hesitation but not count,
 mistakes, or damage frequency. Drill mistakes are tracked separately.
 """
 
+import time
+
+from amphetype.Config import Settings
+
 # Legacy: omit discounted sources entirely (heatmap, etc.).
 STAT_OMIT_DISCOUNTED = "(st.source is null or src.discount is null)"
 
@@ -59,6 +63,24 @@ SPEED_STATS_SQL = f"""select data,
 UNIQUE_TYPED_SQL = """select count(distinct data) from statistic
   where w >= ? and type = ?"""
 
+STAT_TYPE_CHAR = 0
+STAT_TYPE_TRIGRAM = 1
+STAT_TYPE_WORD = 2
+
+# WPM = (chars / seconds) * (60 / 5); five characters is the usual "word" in typing tests.
+WPM_CHARS_PER_WORD = 5
+WPM_SECONDS_FACTOR = 12.0  # 60.0 / WPM_CHARS_PER_WORD
+
+SESSION_WPM_TOTALS_SQL = """select sum(char_count), sum(duration)
+  from result
+  where w >= ? and char_count > 0 and duration > 0"""
+
+
+def perf_hist_cutoff(now=None, history_days=None):
+  now = time.time() if now is None else now
+  days = Settings.get('history') if history_days is None else history_days
+  return now - days * 86400.0
+
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   100.0-100.0*mistakes/cast(total as real) as accuracy,
   viscosity, total, mistakes, drilled,
@@ -76,10 +98,6 @@ SPEED_STATS_ALL_TIME_SQL = f"""select data,
   left join source as src on st.source = src.rowid
   where st.type = ?
   group by data"""
-
-STAT_TYPE_CHAR = 0
-STAT_TYPE_TRIGRAM = 1
-STAT_TYPE_WORD = 2
 
 ANALYSIS_ORDER_OPTIONS = (
   ('wpm asc', 'slowest'),
@@ -139,6 +157,21 @@ def fetch_first_sample_wpm(db, stat_type, data_keys):
 def count_unique_typed(db, hist_cutoff, stat_type):
   row = db.execute(UNIQUE_TYPED_SQL, (hist_cutoff, stat_type)).fetchone()
   return int(row[0]) if row else 0
+
+
+def aggregate_session_wpm(total_chars, total_seconds):
+  """Session WPM across finished lessons: total chars / total typing seconds * (60/5)."""
+  if not total_chars or not total_seconds:
+    return None
+  return total_chars / total_seconds * WPM_SECONDS_FACTOR
+
+
+def aggregate_session_wpm_from_results(db, hist_cutoff):
+  """Sum char_count and duration from result rows that recorded both at lesson end."""
+  row = db.execute(SESSION_WPM_TOTALS_SQL, (hist_cutoff,)).fetchone()
+  if not row:
+    return None
+  return aggregate_session_wpm(row[0] or 0, row[1] or 0)
 
 
 def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):

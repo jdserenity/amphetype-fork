@@ -238,3 +238,26 @@ class AmphEdit(QLineEdit):
     self.editingFinished.connect(callback)
 
 
+def centered_frame_origin(screen_rect, frame_width, frame_height):
+  """Top-left (x, y) for a window frame centered in screen_rect (QRect-like)."""
+  return (
+    screen_rect.x() + (screen_rect.width() - frame_width) // 2,
+    screen_rect.y() + (screen_rect.height() - frame_height) // 2,
+  )
+
+
+def center_widget_on_screen(widget, screen=None):
+  """Move widget so its frame is centered on the screen's usable area."""
+  app = QApplication.instance()
+  if app is None:
+    return
+  if screen is None:
+    screen = app.primaryScreen()
+  if screen is None:
+    return
+  geo = screen.availableGeometry()
+  frame = widget.frameGeometry()
+  frame.moveCenter(geo.center())
+  widget.move(frame.topLeft())
+
+

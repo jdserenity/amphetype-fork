@@ -38,6 +38,7 @@ from amphetype.Lesson import LessonGenerator
 
 from amphetype.typer import TyperWindow
 from amphetype.session_timer import FocusedSessionTimer, SessionTimerLabel
+from amphetype.QtUtil import center_widget_on_screen
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -61,7 +62,6 @@ class AmphetypeWindow(QMainWindow):
     tm.gotoText.connect(lambda: tabs.setCurrentIndex(0))
 
     pa = PerformanceAnalysis()
-    tm.refreshSources.connect(pa.refreshSources)
     pa.gotoText.connect(lambda: tabs.setCurrentIndex(0))
     tabs.addTab(pa, "Performance Analysis")
 
@@ -103,6 +103,7 @@ class AmphetypeWindow(QMainWindow):
     tabs.installEventFilter(self)
 
     self.setCentralWidget(tabs)
+    self._window_placed = False
     Settings.signal_for('show_session_timer').connect(lambda *_: self._apply_session_clock_visible())
     self._apply_session_clock_visible()
     if self.isActiveWindow():
@@ -136,6 +137,9 @@ class AmphetypeWindow(QMainWindow):
 
   def showEvent(self, evt):
     super().showEvent(evt)
+    if not self._window_placed:
+      center_widget_on_screen(self)
+      self._window_placed = True
     self._reposition_session_clock()
 
   def changeEvent(self, evt):

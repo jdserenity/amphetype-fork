@@ -8,7 +8,8 @@ import pytest
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.stats_query import (
   ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
-  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, analysis_order_clause, count_unique_typed,
+  STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm,
+  aggregate_session_wpm_from_results, analysis_order_clause, count_unique_typed, perf_hist_cutoff,
   fetch_analysis_search, fetch_first_sample_wpm, fetch_oblivion_pool, fetch_oblivion_picks,
 )
 from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
@@ -252,6 +253,37 @@ def test_fetch_oblivion_picks_falls_back_all_time():
     ])
   picks = fetch_oblivion_picks(conn, now - 86400, STAT_TYPE_WORD, 3, OBLIVION_WPM)
   assert len(picks) == 3
+
+
+def test_aggregate_session_wpm_matches_total_chars_over_time():
+  # 100 chars in 20s + 400 chars in 60s → 500 chars in 80s → 75 WPM.
+  assert aggregate_session_wpm(500, 80) == pytest.approx(75.0)
+  assert aggregate_session_wpm(0, 10) is None
+
+
+def test_aggregate_session_wpm_from_results():
+  conn = sqlite3.connect(':memory:')
+  conn.executescript("""
+    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer, duration real);
+  """)
+  now = 1e9
+  conn.executemany(
+    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count,duration) values (?,?,?,?,?,?,?,?)',
+    [(now, 'a', 1, 60.0, 1.0, 1.0, 100, 20.0), (now, 'b', 1, 80.0, 1.0, 1.0, 400, 60.0)])
+  assert aggregate_session_wpm_from_results(conn, now - 86400) == pytest.approx(75.0)
+  assert aggregate_session_wpm_from_results(conn, now + 1) is None
+
+
+def test_aggregate_session_wpm_from_results_skips_rows_without_duration():
+  conn = sqlite3.connect(':memory:')
+  conn.executescript("""
+    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer, duration real);
+  """)
+  now = 1e9
+  conn.executemany(
+    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count,duration) values (?,?,?,?,?,?,?,?)',
+    [(now, 'a', 1, 60.0, 1.0, 1.0, 100, None), (now, 'b', 1, 80.0, 1.0, 1.0, 400, 60.0)])
+  assert aggregate_session_wpm_from_results(conn, now - 86400) == pytest.approx(80.0)
 
 
 def test_count_unique_typed_respects_history_window():
