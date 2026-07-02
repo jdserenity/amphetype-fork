@@ -119,6 +119,9 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     'speed_heatmap': False,
     'speed_heatmap_mode': 0,
+    'typing_sound': 'type-1',  # '' = off; type-* under data/sounds
+    'typing_error_sound': 'error-1',  # error-*
+    'typing_sound_volume': 50,  # 0..100
   }
 
   typer_color_defaults = {
@@ -382,6 +385,7 @@ class SelectCSSBox(QComboBox):
 
 
 from amphetype.layout import FBoxLayout
+from amphetype.typing_sounds import TypingSoundPlayer, format_sound_label, list_sound_ids
 
 class TyperInputOptions(QGroupBox):
   def __init__(self, S, *args, **kwargs):
@@ -417,6 +421,72 @@ class TyperInputOptions(QGroupBox):
                 toolTip="""Turning this on will prevent backspace from going back over any correct input. Works best for overwrite mode."""),
       ]))
 
+class TyperSoundOptions(QGroupBox):
+  def __init__(self, S, *args, **kwargs):
+    super().__init__(*args, title='Typing sounds', flat=False, **kwargs)
+    self._S = S
+    self._preview = TypingSoundPlayer()
+    self._type_combo = self._make_combo('typing_sound', 'type')
+    self._err_combo = self._make_combo('typing_error_sound', 'error')
+    self._vol = QSlider(Qt.Horizontal)
+    self._vol.setRange(0, 100)
+    self._vol.setMinimumWidth(280)
+    self._vol.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed))
+    self._vol.setValue(int(S['typing_sound_volume']))
+    self._vol.valueChanged.connect(S('typing_sound_volume').set)
+    self._no_sounds_btn = AmphButton('No sounds', self._clear_all_sounds)
+    self._sync_preview()
+    self.setLayout(FBoxLayout([
+      'Keystroke sounds while typing. Each list only shows matching files (type-*, error-*).',
+      [self._no_sounds_btn, None],
+      ['Correct keystroke', self._type_combo, AmphButton('Preview', self._preview_type), None],
+      ['Error keystroke', self._err_combo, AmphButton('Preview', self._preview_error), None],
+      ['Volume', self._vol, None],
+    ]))
+
+  def _make_combo(self, setting_key, category):
+    combo = QComboBox()
+    combo.addItem('None', '')
+    allowed = set(list_sound_ids(category))
+    for sid in sorted(allowed):
+      combo.addItem(format_sound_label(sid), sid)
+    cur = self._S[setting_key]
+    if cur and cur not in allowed:
+      self._S(setting_key).set('')
+      cur = ''
+    idx = combo.findData(cur)
+    combo.setCurrentIndex(idx if idx >= 0 else 0)
+    combo.activated.connect(lambda i, k=setting_key, c=combo: self._on_pick(k, c, i))
+    return combo
+
+  def _on_pick(self, setting_key, combo, idx):
+    sid = combo.itemData(idx)
+    self._S(setting_key).set(sid)
+    self._sync_preview()
+    if setting_key == 'typing_error_sound':
+      self._preview.play_keystroke(False)
+    else:
+      self._preview.play_keystroke(True)
+
+  def _clear_all_sounds(self):
+    for k in ('typing_sound', 'typing_error_sound'):
+      self._S(k).set('')
+    for combo in (self._type_combo, self._err_combo):
+      combo.setCurrentIndex(0)
+    self._sync_preview()
+
+  def _sync_preview(self):
+    self._preview.configure(
+      self._S['typing_sound'], self._S['typing_error_sound'], self._S['typing_sound_volume'])
+
+  def _preview_type(self):
+    self._sync_preview()
+    self._preview.play_keystroke(True)
+
+  def _preview_error(self):
+    self._sync_preview()
+    self._preview.play_keystroke(False)
+
 class TyperOptions(QWidget):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
@@ -431,6 +501,7 @@ class TyperOptions(QWidget):
       ['Paragraph margin (px)', S('para_margin').spin_box(0, 100), None],
       ['Line spacing', S('para_lineheight').spin_box(0.6, 4.0, 0.05), None],
       TyperInputOptions(S),
+      TyperSoundOptions(S),
       TyperColors(C),
       None,
     ]))

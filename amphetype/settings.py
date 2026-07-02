@@ -94,6 +94,13 @@ class FBoolVar(FValueVar):
     raise TypeError(f'invalid type given for bool variable {type(val)}')
 
 
+class FStringVar(FValueVar):
+  onValue = pyqtSignal(str)
+
+  def convert(self, val):
+    return '' if val is None else str(val)
+
+
 class FChoiceVar(FValueVar):
   onValue = pyqtSignal(int)
   
@@ -168,6 +175,8 @@ class FSettings(QSettings):
       obj = FColorVar(parent, name, actual)
     elif isinstance(val, bool):
       obj = FBoolVar(parent, name, actual)
+    elif isinstance(val, str):
+      obj = FStringVar(parent, name, actual)
     else:
       raise RuntimeError(f'unknown type {type(val)} for {name}')
 

@@ -38,6 +38,7 @@ from amphetype.Lesson import LessonGenerator
 
 from amphetype.typer import TyperWindow
 from amphetype.session_timer import FocusedSessionTimer, SessionTimerLabel
+from amphetype.fwidgets import scroll_widget
 from amphetype.QtUtil import center_widget_on_screen
 
 from PyQt5.QtCore import *
@@ -82,9 +83,9 @@ class AmphetypeWindow(QMainWindow):
     pa.loadCorpusText.connect(tw.load_corpus_text)
 
     pw = QTabWidget()
-    pw.addTab(GeneralOptions(), "General Options")
-    pw.addTab(TyperOptions(), "Typer Options")
-    pw.addTab(tm, "Sources")
+    pw.addTab(scroll_widget(GeneralOptions()), "General Options")
+    pw.addTab(scroll_widget(TyperOptions()), "Typer Options")
+    pw.addTab(scroll_widget(tm), "Sources")
     prefs_tab = get_app_meta_int(DB, PREFERENCES_TAB_KEY, 0)
     if 0 <= prefs_tab < pw.count():
       pw.setCurrentIndex(prefs_tab)

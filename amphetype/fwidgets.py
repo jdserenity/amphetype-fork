@@ -24,6 +24,17 @@ class FColorButton(QPushButton):
     self.setIcon(QIcon(pix))
 
 
+def scroll_widget(w):
+  """Wrap a tall/wide settings page so QTabWidget min size stays small."""
+  sa = QScrollArea()
+  sa.setWidgetResizable(True)
+  sa.setWidget(w)
+  sa.setFrameShape(QFrame.NoFrame)
+  sa.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+  sa.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+  return sa
+
+
 class FStackedWidget(QStackedWidget):
   def __init__(self, contents, *args, **kwargs):
     super().__init__(*args, **kwargs)

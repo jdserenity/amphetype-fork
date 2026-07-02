@@ -284,6 +284,9 @@ class _FakeTyperSettings:
         self._vals.setdefault('limit_backspace', False)
         self._vals.setdefault('show_progress', False)
         self._vals.setdefault('background_color', QColor('white'))
+        self._vals.setdefault('typing_sound', '')
+        self._vals.setdefault('typing_error_sound', '')
+        self._vals.setdefault('typing_sound_volume', 50)
 
     def __getitem__(self, k):
         return self._vals[k]
