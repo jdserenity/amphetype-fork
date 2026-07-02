@@ -285,7 +285,6 @@ class _FakeTyperSettings:
         self._vals.setdefault('background_color', QColor('white'))
         self._vals.setdefault('typing_sound', '')
         self._vals.setdefault('typing_error_sound', '')
-        self._vals.setdefault('typing_space_sound', '')
         self._vals.setdefault('typing_sound_volume', 50)
 
     def __getitem__(self, k):

@@ -6,7 +6,7 @@ from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from amphetype import DATA_DIR
 
 AUDIO_EXTS = ('.wav', '.ogg', '.mp3')
-_SOUND_PREFIXES = {'type': 'type-', 'error': 'error-', 'space': 'space-'}
+_SOUND_PREFIXES = {'type': 'type-', 'error': 'error-'}
 _DEFAULT_TYPE_SOUND = 'type-1'
 _DEFAULT_ERROR_SOUND = 'error-1'
 _DEFAULT_VOLUME = 50  # QMediaPlayer 0..100
@@ -24,7 +24,7 @@ def _all_sound_ids():
 
 
 def list_sound_ids(category=None):
-  """Sound stems; category is 'type', 'error', 'space', or None for all."""
+  """Sound stems; category is 'type', 'error', or None for all."""
   ids = _all_sound_ids()
   if category is not None:
     prefix = _SOUND_PREFIXES[category]
@@ -85,34 +85,23 @@ class _MediaBurstPlayer:
 
 
 class TypingSoundPlayer:
-  """Plays independently chosen correct-, error-, and space-keystroke sounds."""
+  """Plays independently chosen correct- and error-keystroke sounds."""
 
   def __init__(self):
     self._type_player = _MediaBurstPlayer()
     self._err_player = _MediaBurstPlayer()
-    self._space_player = _MediaBurstPlayer()
     self._type_path = None
     self._err_path = None
-    self._space_path = None
 
-  def configure(self, type_sound_id='', error_sound_id='', space_sound_id='', volume=_DEFAULT_VOLUME):
+  def configure(self, type_sound_id='', error_sound_id='', volume=_DEFAULT_VOLUME):
     self._type_path = resolve_sound_path(type_sound_id)
     self._err_path = resolve_sound_path(error_sound_id)
-    self._space_path = resolve_sound_path(space_sound_id)
     self._type_player.set_volume(volume)
     self._err_player.set_volume(volume)
-    self._space_player.set_volume(volume)
 
-  def play_keystroke(self, correct=True, char=''):
-    if not correct:
-      path = self._err_path
-      player = self._err_player
-    elif char == ' ' and self._space_path:
-      path = self._space_path
-      player = self._space_player
-    else:
-      path = self._type_path
-      player = self._type_player
+  def play_keystroke(self, correct=True):
+    path = self._type_path if correct else self._err_path
+    player = self._type_player if correct else self._err_player
     if path is None:
       return
     player.play(path)
