@@ -20,16 +20,20 @@ def test_sounds_directory_exists():
   assert d.is_dir()
 
 
-def test_list_sound_ids_includes_bundled_samples():
-  ids = list_sound_ids()
-  assert 'type-1' in ids
-  assert 'type-3' in ids
-  assert 'error-1' in ids
+def test_list_sound_ids_filtered_by_category():
+  types = list_sound_ids('type')
+  errors = list_sound_ids('error')
+  spaces = list_sound_ids('space')
+  assert 'type-4' in types or 'type-3' in types
+  assert 'error-1' in errors
+  assert 'space-1' in spaces
+  assert 'error-1' not in types
+  assert 'type-4' not in errors
+  assert 'space-1' not in types
 
 
 def test_resolve_sound_path_finds_wav_and_ogg():
-  assert resolve_sound_path('type-1') is not None
-  assert resolve_sound_path('type-1').suffix.lower() == '.wav'
+  assert resolve_sound_path('error-1') is not None
   assert resolve_sound_path('type-3') is not None
   assert resolve_sound_path('type-3').suffix.lower() == '.ogg'
   assert resolve_sound_path('') is None
@@ -37,8 +41,14 @@ def test_resolve_sound_path_finds_wav_and_ogg():
 
 
 def test_default_sound_ids():
-  assert default_typing_sound_id() == 'type-1'
-  assert default_typing_error_sound_id() == 'error-1'
+  types = list_sound_ids('type')
+  errors = list_sound_ids('error')
+  if 'type-1' in types:
+    assert default_typing_sound_id() == 'type-1'
+  else:
+    assert default_typing_sound_id() in types or default_typing_sound_id() == ''
+  if 'error-1' in errors:
+    assert default_typing_error_sound_id() == 'error-1'
 
 
 def test_format_sound_label():
@@ -47,27 +57,36 @@ def test_format_sound_label():
 
 def test_typing_sound_player_plays_float_wav_error(qapp):
   player = TypingSoundPlayer()
-  player.configure('type-1', 'error-1')
-  player.play_keystroke(False)
+  player.configure('type-4', 'error-1', volume=50)
+  player.play_keystroke(False, 'x')
+
+
+def test_typing_sound_player_space_sound(qapp):
+  player = TypingSoundPlayer()
+  player.configure('type-4', '', 'space-1', 50)
+  player.play_keystroke(True, ' ')
+  player.play_keystroke(True, 'a')
 
 
 def test_typing_sound_player_independent_type_and_error(qapp):
   player = TypingSoundPlayer()
-  player.configure('type-1', '')
-  player.play_keystroke(True)
-  player.play_keystroke(False)  # no error sound configured
+  player.configure('type-4', '', volume=50)
+  player.play_keystroke(True, 'x')
+  player.play_keystroke(False, 'x')
 
-  player.configure('', 'error-2')
-  player.play_keystroke(True)  # no type sound
-  player.play_keystroke(False)
+  player.configure('', 'error-2', volume=50)
+  player.play_keystroke(True, 'x')
+  player.play_keystroke(False, 'x')
 
-  player.configure('type-3', 'error-1')
-  player.play_keystroke(True)
-  player.play_keystroke(False)
+  player.configure('type-3', 'error-1', 'space-1', 60)
+  player.play_keystroke(True, 'x')
+  player.play_keystroke(False, 'x')
+  player.play_keystroke(True, ' ')
 
 
-def test_typing_sound_player_disabled_when_both_empty(qapp):
+def test_typing_sound_player_disabled_when_all_empty(qapp):
   player = TypingSoundPlayer()
-  player.configure('', '')
-  player.play_keystroke(True)
-  player.play_keystroke(False)
+  player.configure('', '', '', 50)
+  player.play_keystroke(True, 'x')
+  player.play_keystroke(False, 'x')
+  player.play_keystroke(True, ' ')

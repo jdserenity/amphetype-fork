@@ -119,8 +119,10 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     'speed_heatmap': False,
     'speed_heatmap_mode': 0,
-    'typing_sound': 'type-1',  # '' = off; stem under data/sounds
-    'typing_error_sound': 'error-1',
+    'typing_sound': 'type-1',  # '' = off; type-* under data/sounds
+    'typing_error_sound': 'error-1',  # error-*
+    'typing_space_sound': '',  # space-*
+    'typing_sound_volume': 50,  # 0..100
   }
 
   typer_color_defaults = {
@@ -425,25 +427,35 @@ class TyperSoundOptions(QGroupBox):
     super().__init__(*args, title='Typing sounds', flat=False, **kwargs)
     self._S = S
     self._preview = TypingSoundPlayer()
-    self._type_combo = self._make_combo('typing_sound')
-    self._err_combo = self._make_combo('typing_error_sound')
+    self._type_combo = self._make_combo('typing_sound', 'type')
+    self._err_combo = self._make_combo('typing_error_sound', 'error')
+    self._space_combo = self._make_combo('typing_space_sound', 'space')
+    self._vol = QSlider(Qt.Horizontal)
+    self._vol.setRange(0, 100)
+    self._vol.setValue(int(S['typing_sound_volume']))
+    self._vol.valueChanged.connect(S('typing_sound_volume').set)
+    self._no_sounds_btn = AmphButton('No sounds', self._clear_all_sounds)
     self._sync_preview()
     self.setLayout(FBoxLayout([
-      'Keystroke sounds while typing. Correct and error are chosen separately; pick None to mute either.',
+      'Keystroke sounds while typing. Each list only shows matching files (type-*, error-*, space-*).',
+      [self._no_sounds_btn, None],
       ['Correct keystroke', self._type_combo, AmphButton('Preview', self._preview_type), None],
       ['Error keystroke', self._err_combo, AmphButton('Preview', self._preview_error), None],
+      ['Spacebar', self._space_combo, AmphButton('Preview', self._preview_space), None],
+      ['Volume', self._vol, None],
     ]))
 
-  def _make_combo(self, setting_key):
+  def _make_combo(self, setting_key, category):
     combo = QComboBox()
     combo.addItem('None', '')
-    for sid in list_sound_ids():
+    allowed = set(list_sound_ids(category))
+    for sid in sorted(allowed):
       combo.addItem(format_sound_label(sid), sid)
     cur = self._S[setting_key]
+    if cur and cur not in allowed:
+      self._S(setting_key).set('')
+      cur = ''
     idx = combo.findData(cur)
-    if idx < 0 and cur:
-      combo.addItem(format_sound_label(cur), cur)
-      idx = combo.findData(cur)
     combo.setCurrentIndex(idx if idx >= 0 else 0)
     combo.activated.connect(lambda i, k=setting_key, c=combo: self._on_pick(k, c, i))
     return combo
@@ -452,18 +464,36 @@ class TyperSoundOptions(QGroupBox):
     sid = combo.itemData(idx)
     self._S(setting_key).set(sid)
     self._sync_preview()
-    self._preview.play_keystroke(setting_key == 'typing_sound')
+    if setting_key == 'typing_error_sound':
+      self._preview.play_keystroke(False, 'x')
+    elif setting_key == 'typing_space_sound':
+      self._preview.play_keystroke(True, ' ')
+    else:
+      self._preview.play_keystroke(True, 'x')
+
+  def _clear_all_sounds(self):
+    for k in ('typing_sound', 'typing_error_sound', 'typing_space_sound'):
+      self._S(k).set('')
+    for combo in (self._type_combo, self._err_combo, self._space_combo):
+      combo.setCurrentIndex(0)
+    self._sync_preview()
 
   def _sync_preview(self):
-    self._preview.configure(self._S['typing_sound'], self._S['typing_error_sound'])
+    self._preview.configure(
+      self._S['typing_sound'], self._S['typing_error_sound'], self._S['typing_space_sound'],
+      self._S['typing_sound_volume'])
 
   def _preview_type(self):
     self._sync_preview()
-    self._preview.play_keystroke(True)
+    self._preview.play_keystroke(True, 'x')
 
   def _preview_error(self):
     self._sync_preview()
-    self._preview.play_keystroke(False)
+    self._preview.play_keystroke(False, 'x')
+
+  def _preview_space(self):
+    self._sync_preview()
+    self._preview.play_keystroke(True, ' ')
 
 class TyperOptions(QWidget):
   def __init__(self, *args, **kwargs):
