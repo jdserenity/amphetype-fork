@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import *
 from amphetype.settings import *
 from amphetype.layout import FBoxLayout
 from amphetype.fwidgets import FStackedWidget
-from amphetype.timingtuple import RunStats, collect_run_stat_rows
+from amphetype.timingtuple import RunStats, collect_run_stat_rows, IDLE_THRESHOLD
 from amphetype.WeakSpot import WeakSpotLessonBuilder
 from amphetype.WeakSpotLessons import build_focus_lesson
 from amphetype.Config import Settings
@@ -806,6 +806,15 @@ class _LessonPauseOverlay(QWidget):
   restartClicked = pyqtSignal()
   newClicked = pyqtSignal()
 
+  _BTN_STYLE = (
+    'QPushButton { color: #ffffff; background: #444444; border: 1px solid #666666;'
+    ' min-width: 120px; padding: 8px 20px; font-size: 13px; }'
+    'QPushButton:hover { background: #555555; }')
+  _BTN_STYLE_SELECTED = (
+    'QPushButton { color: #ffffff; background: #555555; border: 2px solid #aaaaaa;'
+    ' min-width: 120px; padding: 8px 20px; font-size: 13px; }'
+    'QPushButton:hover { background: #666666; }')
+
   def __init__(self, parent):
     super().__init__(parent)
     self.setAttribute(Qt.WA_StyledBackground, True)
@@ -817,17 +826,14 @@ class _LessonPauseOverlay(QWidget):
     row.addStretch(1)
     btns = QVBoxLayout()
     btns.setSpacing(10)
-    btn_style = (
-      'QPushButton { color: #ffffff; background: #444444; border: 1px solid #666666;'
-      ' min-width: 120px; padding: 8px 20px; font-size: 13px; }'
-      'QPushButton:hover { background: #555555; }')
     self._btn_continue = QPushButton('Continue', flat=False)
     self._btn_new = QPushButton('New', flat=False)
     self._btn_restart = QPushButton('Restart', flat=False)
-    for b in (self._btn_continue, self._btn_new, self._btn_restart):
+    self._buttons = (self._btn_continue, self._btn_new, self._btn_restart)
+    self._selected = 0
+    for b in self._buttons:
       b.setFocusPolicy(Qt.NoFocus)
       b.setCursor(Qt.PointingHandCursor)
-      b.setStyleSheet(btn_style)
       btns.addWidget(b, 0, Qt.AlignHCenter)
     row.addLayout(btns)
     row.addStretch(1)
@@ -836,7 +842,40 @@ class _LessonPauseOverlay(QWidget):
     self._btn_continue.clicked.connect(self.continueClicked.emit)
     self._btn_new.clicked.connect(self.newClicked.emit)
     self._btn_restart.clicked.connect(self.restartClicked.emit)
+    self._update_selection()
     self.hide()
+
+  def selected_index(self):
+    return self._selected
+
+  def reset_selection(self):
+    self._selected = 0
+    self._update_selection()
+
+  def _update_selection(self):
+    for i, b in enumerate(self._buttons):
+      b.setStyleSheet(self._BTN_STYLE_SELECTED if i == self._selected else self._BTN_STYLE)
+
+  def _move_selection(self, delta):
+    self._selected = (self._selected + delta) % len(self._buttons)
+    self._update_selection()
+
+  def handle_key(self, evt):
+    key = evt.key()
+    if key in (Qt.Key_Down, Qt.Key_Right):
+      self._move_selection(1)
+      return True
+    if key in (Qt.Key_Up, Qt.Key_Left):
+      self._move_selection(-1)
+      return True
+    if key in (Qt.Key_Return, Qt.Key_Enter):
+      self._buttons[self._selected].click()
+      return True
+    return False
+
+  def showEvent(self, evt):
+    self.reset_selection()
+    return super().showEvent(evt)
 
 
 class TyperWidget(QTextEdit):
@@ -854,6 +893,7 @@ class TyperWidget(QTextEdit):
 
     self._settings = settings
     self._lesson = None
+    self._pause_overlay = None
     self._pin_typing_center = False
     self._on_awaiting_enter = None
     self._sounds = TypingSoundPlayer()
@@ -1030,6 +1070,9 @@ class TyperWidget(QTextEdit):
       return
 
     if self._lesson.is_paused():
+      if self._pause_overlay and self._pause_overlay.handle_key(evt):
+        evt.accept()
+        return
       evt.ignore()
       return
 
@@ -1131,7 +1174,6 @@ class TyperWindow(QWidget):
     doc.resumed.connect(self._on_lesson_resumed)
 
     self._typer.setLesson(doc)
-    
     self._doc = doc
 
     # Canvas wrapper: provides the uniform background color chosen by the user.
@@ -1146,6 +1188,7 @@ class TyperWindow(QWidget):
     self._canvas.setAutoFillBackground(False)
     self._canvas.setLayout(FBoxLayout([self._typer]))
     self._pause_overlay.setParent(self._canvas)
+    self._typer._pause_overlay = self._pause_overlay
     self._canvas.installEventFilter(self)
 
     self._source_lbl = QLabel(wordWrap=True)
@@ -1735,15 +1778,16 @@ class TyperWindow(QWidget):
 
     now = time()
     textid, srcid, _ = self._current_lesson
-    wpm, visc, acc = run.result(accuracy=True)
-    secs_per_char = 1.0 / run.per_sec
+    _, visc, acc = run.result(accuracy=True)
+    duration = run.active_duration()
+    wpm = (len(run) / duration * 12.0) if duration else 0.0
 
     self.DB.execute('''
     insert into result
-    (w, text_id, source, wpm, accuracy, viscosity)
-    values (?,?,?, ?,?,?)
+    (w, text_id, source, wpm, accuracy, viscosity, char_count, duration)
+    values (?,?,?, ?,?,?,?,?)
     ''', (now, textid, srcid,
-          wpm, acc, visc))
+          wpm, acc, visc, len(run), duration))
 
     self.DB.commit()
     # type (0: char, 1: trigram, 2: word)

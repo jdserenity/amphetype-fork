@@ -135,6 +135,15 @@ class AmphDatabase(sqlite3.Connection):
       self.execute('''update statistic set source = (
         select r.source from result r where r.w = statistic.w limit 1
       ) where source is null''')
+    rcols = {r[1] for r in self.execute("pragma table_info(result)").fetchall()}
+    if 'char_count' not in rcols:
+      self.execute('alter table result add column char_count integer')
+    if 'duration' not in rcols:
+      self.execute('alter table result add column duration real')
+    from amphetype.app_meta import get_app_meta_int, set_app_meta_int
+    if not get_app_meta_int(self, 'result_char_count_backfill_cleared', 0):
+      self.execute('update result set char_count = null')
+      set_app_meta_int(self, 'result_char_count_backfill_cleared', 1)
     # Weakspot (and other generated lessons) must not feed back into weakspot selection.
     self.execute("update source set discount = 1 where name = '<Weakspot>' and discount is null")
     from amphetype.book_mode import ensure_book_tables
@@ -176,7 +185,7 @@ class AmphDatabase(sqlite3.Connection):
     self.executescript("""
 create table source (name text, disabled integer, discount integer);
 create table text (id text primary key, source integer, text text, disabled integer);
-create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real);
+create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer, duration real);
 create table statistic (w real, data text, type integer, time real, count integer, mistakes integer, viscosity real, source integer);
 create table mistake (w real, target text, mistake text, count integer);
 create view text_source as

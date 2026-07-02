@@ -4,6 +4,8 @@ import json
 import sqlite3
 import time
 
+import pytest
+
 from amphetype.Data import AmphDatabase
 from amphetype.book_mode import (
   BookCatalog,
@@ -219,3 +221,19 @@ def test_book_catalog_caches_chapters(tmp_path):
   )
   assert row is not None
   assert json.loads(row[1])
+
+
+def test_book_chunk_result_row_records_char_count_and_duration():
+  """Book chunks use hash text_ids; result rows still get char_count + duration like other modes."""
+  from amphetype.stats_query import aggregate_session_wpm_from_results
+  conn = sqlite3.connect(':memory:')
+  conn.executescript("""
+    create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer, duration real);
+  """)
+  now = time.time()
+  sid = 7
+  tid = lesson_text_id(sid, 2, 1)
+  conn.execute(
+    'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count,duration) values (?,?,?,?,?,?,?,?)',
+    (now, tid, sid, 72.0, 1.0, 1.0, 360, 60.0))
+  assert aggregate_session_wpm_from_results(conn, now - 86400) == pytest.approx(72.0)

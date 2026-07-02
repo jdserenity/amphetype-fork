@@ -145,9 +145,8 @@ class StringStats(QWidget):
     Settings.signal_for("history").connect(self.update)
 
     self.setLayout(AmphBoxLayout([
-        ["Show", wc, "sorted by", ob, None],
+        ["Show", wc, "sorted by", ob, 16, self._search_edit, self._search_btn, None],
         ["Limit list to", lim, "items and don't show items with a count less than", self.w_count, None],
-        ["Search", self._search_edit, self._search_btn, None],
         self._corpus_lbl,
         (self.stats, 1)
       ]))

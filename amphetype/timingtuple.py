@@ -78,6 +78,11 @@ class CharEntry():
     return f'["{self.char}"+{self.inserts} {self.timing or -1:.2f}s m:{self.mistakes}]'
 
 
+# Keystroke gaps longer than this are considered idle time (distraction, afk)
+# and are capped when computing WPM so they don't unfairly tank your speed.
+IDLE_THRESHOLD = 3.0  # seconds
+
+
 class RunStats(datatuple):
   @staticmethod
   def make(text, started=None):
@@ -166,6 +171,20 @@ class RunStats(datatuple):
     if self.started is None or not self.is_complete():
       return None
     return self.previous.last - self.started
+
+  def active_duration(self, idle_threshold=None):
+    """Sum of inter-keystroke gaps with idle gaps capped at idle_threshold.
+
+    ESC-pause time is already excluded from individual timings (they use
+    _tnow()). This additionally caps any single gap that exceeds the threshold,
+    so zoning out mid-lesson without pressing ESC does not tank your WPM.
+    Falls back to None when no timing data is available.
+    """
+    threshold = IDLE_THRESHOLD if idle_threshold is None else idle_threshold
+    timings = [t for t in self.timing if t is not None]
+    if not timings:
+      return self.duration
+    return sum(min(t, threshold) for t in timings)
 
   @property
   def per_sec(self):

@@ -24,6 +24,7 @@ from amphetype.typer import (
   format_source_attribution, lesson_completion_action, _NO_FILL_STYLE_ATTRS,
 )
 from amphetype.book_mode import MODE_BOOK
+from amphetype.timingtuple import RunStats, IDLE_THRESHOLD
 
 
 def test_lesson_completion_action():
@@ -603,6 +604,63 @@ def test_pause_overlay_buttons_stacked_with_new(qapp):
   assert fired == {'continue': 1, 'new': 1, 'restart': 1}
 
 
+def _pause_key(key):
+  from PyQt5.QtGui import QKeyEvent
+  from PyQt5.QtCore import Qt
+  return QKeyEvent(QKeyEvent.KeyPress, key, Qt.NoModifier)
+
+
+def test_pause_overlay_arrow_keys_cycle_selection(qapp):
+  from PyQt5.QtCore import Qt
+  from amphetype.typer import _LessonPauseOverlay
+
+  o = _LessonPauseOverlay(None)
+  assert o.selected_index() == 0
+  assert o.handle_key(_pause_key(Qt.Key_Down))
+  assert o.selected_index() == 1
+  assert o.handle_key(_pause_key(Qt.Key_Right))
+  assert o.selected_index() == 2
+  assert o.handle_key(_pause_key(Qt.Key_Down))
+  assert o.selected_index() == 0
+  assert o.handle_key(_pause_key(Qt.Key_Up))
+  assert o.selected_index() == 2
+  assert o.handle_key(_pause_key(Qt.Key_Left))
+  assert o.selected_index() == 1
+
+
+def test_pause_overlay_enter_activates_selection(qapp):
+  from PyQt5.QtCore import Qt
+  from amphetype.typer import _LessonPauseOverlay
+
+  o = _LessonPauseOverlay(None)
+  fired = {'continue': 0, 'new': 0, 'restart': 0}
+  o.continueClicked.connect(lambda: fired.__setitem__('continue', fired['continue'] + 1))
+  o.newClicked.connect(lambda: fired.__setitem__('new', fired['new'] + 1))
+  o.restartClicked.connect(lambda: fired.__setitem__('restart', fired['restart'] + 1))
+  o.handle_key(_pause_key(Qt.Key_Down))
+  assert o.handle_key(_pause_key(Qt.Key_Return))
+  assert fired == {'continue': 0, 'new': 1, 'restart': 0}
+
+
+def test_typer_arrow_keys_navigate_pause_menu(qapp):
+  from PyQt5.QtCore import Qt
+  from PyQt5.QtGui import QFont
+  from amphetype.typer import TyperWidget, LessonDocument, _LessonPauseOverlay
+
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text("hi")
+  w.setLesson(doc)
+  overlay = _LessonPauseOverlay(None)
+  w._pause_overlay = overlay
+  doc.pause()
+  assert overlay.selected_index() == 0
+  w.keyPressEvent(_pause_key(Qt.Key_Down))
+  assert overlay.selected_index() == 1
+  w.keyPressEvent(_pause_key(Qt.Key_Left))
+  assert overlay.selected_index() == 0
+
+
 def test_request_new_lesson_per_mode(qapp):
   from unittest.mock import MagicMock
   from amphetype.typer import TyperWindow, MODE_NORMAL, MODE_BOOK, MODE_WEAKSPOT
@@ -657,3 +715,42 @@ def test_continue_lesson_clears_progress_label(qapp):
   assert 'You improved' not in tw._label.text()
   assert 'Press ENTER' not in tw._label.text()
   assert emitted == [1]
+
+
+# ── active_duration (idle timeout) ──────────────────────────────────────
+
+def _run_with_timings(*timings):
+  """Build a RunStats whose characters have preset timing values."""
+  text = 'a' * len(timings)
+  run = RunStats.make(text, started=0.0)
+  for c, t in zip(run, timings):
+    c.timing = t
+  return run
+
+
+def test_active_duration_normal_run_sums_timings():
+  run = _run_with_timings(0.15, 0.12, 0.18)
+  assert run.active_duration() == pytest.approx(0.45)
+
+
+def test_active_duration_caps_idle_gap():
+  run = _run_with_timings(0.1, 30.0, 0.1)
+  # 30 s gap is capped at IDLE_THRESHOLD; total = 0.1 + IDLE_THRESHOLD + 0.1
+  assert run.active_duration() == pytest.approx(0.1 + IDLE_THRESHOLD + 0.1)
+
+
+def test_active_duration_multiple_idle_gaps():
+  run = _run_with_timings(10.0, 0.2, 5.0)
+  # both idle gaps capped
+  assert run.active_duration() == pytest.approx(IDLE_THRESHOLD + 0.2 + IDLE_THRESHOLD)
+
+
+def test_active_duration_returns_none_when_no_timings():
+  run = RunStats.make("hi")
+  # no timings set, started not set → no duration either
+  assert run.active_duration() is None
+
+
+def test_active_duration_idle_threshold_constant_is_reasonable():
+  # sanity: threshold should be between 1 and 10 seconds
+  assert 1.0 <= IDLE_THRESHOLD <= 10.0
