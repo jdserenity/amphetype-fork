@@ -29,11 +29,24 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   monkeypatch.setattr(
     'amphetype.PerformanceAnalysis.count_unique_typed',
     lambda db, hist, tp: 42 if tp == 2 else 17)
+  monkeypatch.setattr(
+    'amphetype.PerformanceAnalysis.aggregate_session_wpm_from_results',
+    lambda db, hist: 74.5)
   pa = PerformanceAnalysis()
   pa.updateAll()
   assert pa._words_lbl.text() == 'Unique words typed: 42'
   assert pa._trigrams_lbl.text() == 'Unique trigrams typed: 17'
-  assert not hasattr(pa, '_wpm_lbl')
+  assert pa._wpm_lbl.text() == 'Avg WPM: 74.5'
+
+
+def test_performance_analysis_avg_wpm_shows_dash_when_no_data(qapp, monkeypatch):
+  monkeypatch.setattr('amphetype.PerformanceAnalysis.count_unique_typed', lambda *a: 0)
+  monkeypatch.setattr(
+    'amphetype.PerformanceAnalysis.aggregate_session_wpm_from_results',
+    lambda db, hist: None)
+  pa = PerformanceAnalysis()
+  pa.updateAll()
+  assert pa._wpm_lbl.text() == 'Avg WPM: —'
 
 
 def test_performance_analysis_is_stats_only(qapp):

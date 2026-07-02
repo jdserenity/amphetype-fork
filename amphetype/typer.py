@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import *
 from amphetype.settings import *
 from amphetype.layout import FBoxLayout
 from amphetype.fwidgets import FStackedWidget
-from amphetype.timingtuple import RunStats, collect_run_stat_rows
+from amphetype.timingtuple import RunStats, collect_run_stat_rows, IDLE_THRESHOLD
 from amphetype.WeakSpot import WeakSpotLessonBuilder
 from amphetype.WeakSpotLessons import build_focus_lesson
 from amphetype.Config import Settings
@@ -1708,9 +1708,9 @@ class TyperWindow(QWidget):
 
     now = time()
     textid, srcid, _ = self._current_lesson
-    wpm, visc, acc = run.result(accuracy=True)
-    secs_per_char = 1.0 / run.per_sec
-    duration = run.duration
+    _, visc, acc = run.result(accuracy=True)
+    duration = run.active_duration()
+    wpm = (len(run) / duration * 12.0) if duration else 0.0
 
     self.DB.execute('''
     insert into result
