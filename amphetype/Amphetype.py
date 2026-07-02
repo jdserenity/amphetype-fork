@@ -139,6 +139,7 @@ class AmphetypeWindow(QMainWindow):
   def showEvent(self, evt):
     super().showEvent(evt)
     if not self._window_placed:
+      self.resize(self.sizeHint())  # 650×400 — child tabs inflate minimumSizeHint past this
       center_widget_on_screen(self)
       self._window_placed = True
     self._reposition_session_clock()
