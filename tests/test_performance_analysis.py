@@ -38,7 +38,7 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   pa = PerformanceAnalysis()
   pa.updateAll()
   assert pa._words_lbl.text() == 'Unique common words typed: 42'
-  assert pa._wpm_lbl.text() == 'Avg WPM: 74.5'
+  assert pa._wpm_lbl.text() == 'Avg WPM: 74.5 · Top 13% of adults'
 
 
 def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):

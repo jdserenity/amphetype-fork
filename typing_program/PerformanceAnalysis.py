@@ -6,6 +6,7 @@ from typing_program.stats_query import (
   ALL_TIME_HIST, STAT_TYPE_WORD, aggregate_session_wpm_from_results,
   count_analysis_words,
 )
+from typing_program.wpm_percentile import format_adult_top_percent_label
 
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import QLabel
@@ -36,7 +37,12 @@ class PerformanceAnalysis(QWidget):
     words = count_analysis_words(DB, ALL_TIME_HIST)
     avg_wpm = aggregate_session_wpm_from_results(DB, ALL_TIME_HIST)
     self._words_lbl.setText('Unique common words typed: %d' % words)
-    self._wpm_lbl.setText('Avg WPM: %s' % ('%.1f' % avg_wpm if avg_wpm is not None else '—'))
+    if avg_wpm is not None:
+      rank_lbl = format_adult_top_percent_label(avg_wpm)
+      wpm_txt = 'Avg WPM: %.1f · %s' % (avg_wpm, rank_lbl) if rank_lbl else 'Avg WPM: %.1f' % avg_wpm
+    else:
+      wpm_txt = 'Avg WPM: —'
+    self._wpm_lbl.setText(wpm_txt)
     self.st.update(*args)
 
   def showEvent(self, evt):
