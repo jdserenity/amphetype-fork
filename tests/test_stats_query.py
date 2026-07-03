@@ -64,6 +64,32 @@ class TestStatsAggregation(unittest.TestCase):
     self.assertEqual(row[5], 1)    # drilled
     self.assertAlmostEqual(row[1], 0.35)  # median(0.5, 0.2)
 
+  def test_focus_drill_rows_increment_drilled_not_count(self):
+    from typing_program.timingtuple import collect_focus_drill_stat_rows, RunStats
+    conn = _test_db(); now = 1e9
+    book = _add_source(conn, 'Novel')
+    weak = _add_source(conn, '<Weakspot>', 1)
+    conn.execute(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      (now, 'slow', STAT_TYPE_WORD, 0.50, 10, 2, 5.0, book))
+    run = RunStats.make('slow slow', started=1000.0)
+    t = 1000.0; last = None
+    for i in range(len(run)):
+      run[i].visit(True, last, t)
+      last = t; t += 0.20
+      run[i].last = t
+    run.index = len(run)
+    for t, vis, w, m, tp, data in collect_focus_drill_stat_rows(
+        run, run.median_timing, now + 1, [('word', 'slow')]):
+      conn.execute(
+        'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+        (w, data, tp, t, 0, m, vis, weak))
+    row = conn.execute(STATS_AGG_SUBQUERY, (0, STAT_TYPE_WORD)).fetchone()
+    self.assertEqual(row[3], 10)   # total unchanged
+    self.assertEqual(row[4], 2)    # mistakes unchanged
+    self.assertEqual(row[5], 1)    # drilled +1
+    self.assertLess(row[1], 0.50)   # median time improved
+
   def test_discounted_high_count_row_ignored(self):
     conn = _test_db(); now = 1e9
     book = _add_source(conn, 'Novel')

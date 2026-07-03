@@ -2,7 +2,7 @@
 
 import pytest
 
-from typing_program.timingtuple import RunStats, collect_run_stat_rows
+from typing_program.timingtuple import RunStats, collect_focus_drill_stat_rows, collect_run_stat_rows
 
 
 def test_timed_words_includes_short_words():
@@ -43,3 +43,45 @@ def test_three_letter_words_saved_as_word_type_not_trigram(qapp):
   assert ('the', 2) in by_type
   assert ('of', 2) in by_type
   assert ('the', 1) in by_type
+
+
+def _make_typed_run(text, spc=0.1):
+  run = RunStats.make(text, started=1000.0)
+  t = 1000.0; last = None
+  for i in range(len(text)):
+    run[i].visit(True, last, t)
+    last = t; t += spc
+    run[i].last = t
+  run.index = len(text)
+  return run
+
+
+def test_collect_focus_drill_stat_rows_one_row_per_word():
+  run = _make_typed_run('slow slow slow fast fast')
+  rows = collect_focus_drill_stat_rows(
+    run, run.median_timing, 99.0, [('word', 'slow'), ('word', 'fast')])
+  assert len(rows) == 2
+  by_word = {data: (t, m, tp) for t, _vis, _w, m, tp, data in rows}
+  assert set(by_word) == {'slow', 'fast'}
+  assert by_word['slow'][2] == 2
+  assert by_word['fast'][2] == 2
+
+
+def test_collect_focus_drill_stat_rows_median_across_reps():
+  run = RunStats.make('aaa', started=1000.0)
+  spcs = [0.10, 0.20, 0.30]
+  t = 1000.0; last = None
+  for i, spc in enumerate(spcs):
+    run[i].visit(True, last, t)
+    last = t; t += spc
+    run[i].last = t
+  run.index = 3
+  rows = collect_focus_drill_stat_rows(run, run.median_timing, 1.0, [('word', 'aaa')])
+  assert len(rows) == 1
+  assert rows[0][0] == pytest.approx(0.20)
+
+
+def test_collect_focus_drill_stat_rows_ignores_non_targets():
+  run = _make_typed_run('only')
+  rows = collect_focus_drill_stat_rows(run, run.median_timing, 1.0, [('word', 'other')])
+  assert rows == []
