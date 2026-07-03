@@ -31,15 +31,29 @@ def test_performance_analysis_composes_sections(qapp):
 def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   monkeypatch.setattr(
     'amphetype.PerformanceAnalysis.count_unique_typed',
-    lambda db, hist, tp: 42 if tp == 2 else 17)
+    lambda db, hist, tp: 42)
   monkeypatch.setattr(
     'amphetype.PerformanceAnalysis.aggregate_session_wpm_from_results',
     lambda db, hist: 74.5)
   pa = PerformanceAnalysis()
   pa.updateAll()
   assert pa._words_lbl.text() == 'Unique words typed: 42'
-  assert pa._trigrams_lbl.text() == 'Unique trigrams typed: 17'
   assert pa._wpm_lbl.text() == 'Avg WPM: 74.5'
+
+
+def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
+  from amphetype.Amphetype import AmphetypeWindow
+  calls = []
+  monkeypatch.setattr(
+    'amphetype.PerformanceAnalysis.PerformanceAnalysis.updateAll',
+    lambda self, *a: calls.append(1))
+  w = AmphetypeWindow()
+  tabs = w.centralWidget()
+  perf_idx = tabs.indexOf(tabs.widget(1))
+  tabs.setCurrentIndex(0)
+  calls.clear()
+  tabs.setCurrentIndex(perf_idx)
+  assert len(calls) >= 1
 
 
 def test_performance_analysis_avg_wpm_shows_dash_when_no_data(qapp, monkeypatch):

@@ -65,6 +65,8 @@ class AmphetypeWindow(QMainWindow):
     pa = PerformanceAnalysis()
     pa.gotoText.connect(lambda: tabs.setCurrentIndex(0))
     tabs.addTab(pa, "Performance Analysis")
+    perf_tab_idx = tabs.indexOf(pa)
+    tabs.currentChanged.connect(lambda i: pa.updateAll() if i == perf_tab_idx else None)
 
     # LessonGenerator not shown as a tab; kept for auto_review (wantReview → newReview).
     lg = LessonGenerator()

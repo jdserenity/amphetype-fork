@@ -3,7 +3,7 @@ from amphetype.Data import DB
 from amphetype.QtUtil import *
 from amphetype.StatWidgets import StringStats
 from amphetype.stats_query import (
-  ALL_TIME_HIST, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm_from_results,
+  ALL_TIME_HIST, STAT_TYPE_WORD, aggregate_session_wpm_from_results,
   count_unique_typed,
 )
 
@@ -24,22 +24,18 @@ class PerformanceAnalysis(QWidget):
     self.st.corpusTextReady.connect(self._on_corpus_text)
     _counter_style = 'font-size: 15px; padding: 2px 0;'
     self._words_lbl = QLabel()
-    self._trigrams_lbl = QLabel()
     self._wpm_lbl = QLabel()
     self._words_lbl.setStyleSheet(_counter_style)
-    self._trigrams_lbl.setStyleSheet(_counter_style)
     self._wpm_lbl.setStyleSheet(_counter_style)
     self.setLayout(AmphBoxLayout([
-        [self._words_lbl, 16, self._trigrams_lbl, 16, self._wpm_lbl, None],
+        [self._words_lbl, 16, self._wpm_lbl, None],
         (self.st, 1),
       ]))
 
   def updateAll(self, *args):
     words = count_unique_typed(DB, ALL_TIME_HIST, STAT_TYPE_WORD)
-    tris = count_unique_typed(DB, ALL_TIME_HIST, STAT_TYPE_TRIGRAM)
     avg_wpm = aggregate_session_wpm_from_results(DB, ALL_TIME_HIST)
     self._words_lbl.setText('Unique words typed: %d' % words)
-    self._trigrams_lbl.setText('Unique trigrams typed: %d' % tris)
     self._wpm_lbl.setText('Avg WPM: %s' % ('%.1f' % avg_wpm if avg_wpm is not None else '—'))
     self.st.update(*args)
 
