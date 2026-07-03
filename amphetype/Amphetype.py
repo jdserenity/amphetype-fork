@@ -81,6 +81,8 @@ class AmphetypeWindow(QMainWindow):
     tw.needWeakspotLesson.connect(tm.newWeakspot)
     tw.wantReview.connect(lg.wantReview)
     tw.statsChanged.connect(pa.updateAll)
+    pa.st.statsChanged.connect(pa.updateAll)
+    pa.st.statsChanged.connect(tw._weakspot.on_stats_changed)
     pa.startDrill.connect(tw.start_focus_drill)
     pa.loadCorpusText.connect(tw.load_corpus_text)
 

@@ -224,6 +224,49 @@ def test_string_stats_search_btn_returns_to_search_when_term_edited(qapp, monkey
   assert st._search_btn.text() == 'Search'
 
 
+def test_string_stats_double_click_opens_menu(qapp, monkeypatch):
+  from PyQt5.QtCore import QModelIndex
+  st = StringStats()
+  st.model.setData(_sample_rows())
+  calls = []
+  monkeypatch.setattr(st, '_open_stats_menu', lambda idx, pos=None: calls.append(idx.row()))
+  st._stats_double_click(st.model.index(0, 0, QModelIndex()))
+  assert calls == [0]
+
+
+def test_string_stats_delete_target_after_confirm(qapp, monkeypatch):
+  from PyQt5.QtCore import QModelIndex
+  from PyQt5.QtWidgets import QMessageBox
+  st = StringStats()
+  st.model.setData(_sample_rows())
+  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', lambda k: 2 if k == 'ana_what' else 0)
+  monkeypatch.setattr('amphetype.StatWidgets.QMessageBox.question', lambda *a: QMessageBox.Yes)
+  deleted = []
+  monkeypatch.setattr(
+    'amphetype.StatWidgets.delete_stat_target',
+    lambda db, tp, data: deleted.append((tp, data)) or 1)
+  monkeypatch.setattr('amphetype.StatWidgets.DB.commit', lambda: None)
+  monkeypatch.setattr(st, 'update', lambda *a: None)
+  emitted = []
+  st.statsChanged.connect(lambda: emitted.append(1))
+  st._delete_target(st.model.index(0, 0, QModelIndex()))
+  assert deleted == [(2, 'alpha')]
+  assert emitted == [1]
+
+
+def test_string_stats_delete_cancelled(qapp, monkeypatch):
+  from PyQt5.QtCore import QModelIndex
+  from PyQt5.QtWidgets import QMessageBox
+  st = StringStats()
+  st.model.setData(_sample_rows())
+  monkeypatch.setattr('amphetype.StatWidgets.QMessageBox.question', lambda *a: QMessageBox.No)
+  deleted = []
+  monkeypatch.setattr('amphetype.StatWidgets.delete_stat_target', lambda *a: deleted.append(1))
+  st._delete_target(st.model.index(0, 0, QModelIndex()))
+  assert deleted == []
+  assert len(st.model.words) == 3
+
+
 def test_performance_analysis_hide_clears_stats_search(qapp, monkeypatch):
   from PyQt5.QtGui import QHideEvent
   pa = PerformanceAnalysis()

@@ -11,6 +11,7 @@ from amphetype.stats_query import (
   STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm,
   aggregate_session_wpm_from_results, analysis_order_clause, count_unique_typed,
   fetch_analysis_search, fetch_first_sample_wpm, fetch_oblivion_pool, fetch_oblivion_picks,
+  delete_stat_target,
 )
 from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
 
@@ -304,3 +305,17 @@ def test_count_unique_typed_respects_history_window():
   assert count_unique_typed(conn, now - 86400, STAT_TYPE_WORD) == 2
   assert count_unique_typed(conn, now - 86400, STAT_TYPE_TRIGRAM) == 2
   assert count_unique_typed(conn, now + 1, STAT_TYPE_WORD) == 0
+
+
+def test_delete_stat_target_removes_all_rows_for_data():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'gone', STAT_TYPE_WORD, 0.5, 10, 0, 1.0, None),
+      (now - 100, 'gone', STAT_TYPE_WORD, 0.6, 5, 0, 1.0, None),
+      (now, 'stay', STAT_TYPE_WORD, 0.5, 5, 0, 1.0, None),
+    ])
+  assert delete_stat_target(conn, STAT_TYPE_WORD, 'gone') == 2
+  assert conn.execute('select count(*) from statistic where data = ?', ('gone',)).fetchone()[0] == 0
+  assert conn.execute('select count(*) from statistic where data = ?', ('stay',)).fetchone()[0] == 1

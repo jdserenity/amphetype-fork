@@ -197,3 +197,11 @@ def fetch_hesitant_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
 
 def fetch_damage_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
   return fetch_analysis_top(db, hist_cutoff, stat_type, 'damage desc', n, min_count)[:n]
+
+
+DELETE_STAT_TARGET_SQL = 'delete from statistic where type = ? and data = ?'
+
+
+def delete_stat_target(db, stat_type, data):
+  """Remove all statistic rows for one keys/trigrams/words target."""
+  return db.execute(DELETE_STAT_TARGET_SQL, (stat_type, data)).rowcount

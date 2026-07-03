@@ -5,7 +5,7 @@ from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
 from amphetype.stats_query import (
   ALL_TIME_HIST, ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD, analysis_order_clause,
-  fetch_analysis_search, fetch_first_sample_wpm)
+  delete_stat_target, fetch_analysis_search, fetch_first_sample_wpm)
 from amphetype.word_progress import lifetime_wpm_gain
 from amphetype.WeakSpotLessons import ana_what_kind
 from amphetype.QtUtil import *
@@ -13,7 +13,7 @@ from amphetype.Config import *
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from PyQt5.QtWidgets import QLabel, QMenu, QLineEdit
+from PyQt5.QtWidgets import QLabel, QMenu, QLineEdit, QMessageBox
 
 
 
@@ -105,6 +105,7 @@ class AnalysisSortCombo(QComboBox):
 class StringStats(QWidget):
   startDrill = pyqtSignal(list)
   corpusTextReady = pyqtSignal('PyQt_PyObject')
+  statsChanged = pyqtSignal()
 
   def __init__(self, *args):
     super(StringStats, self).__init__(*args)
@@ -118,6 +119,7 @@ class StringStats(QWidget):
     tw.setMinimumHeight(220)
     tw.setContextMenuPolicy(Qt.CustomContextMenu)
     tw.customContextMenuRequested.connect(self._stats_context_menu)
+    tw.doubleClicked['QModelIndex'].connect(self._stats_double_click)
     self.stats = tw
     self._corpus_lbl = QLabel()
     self._corpus_lbl.setStyleSheet('color: #c44;')
@@ -260,15 +262,45 @@ class StringStats(QWidget):
     else:
       self._show_corpus_msg('No corpus text found for %r.' % row[0])
 
+  def _stats_double_click(self, idx):
+    self._open_stats_menu(idx)
+
   def _stats_context_menu(self, pos):
     idx = self._row_idx(self.stats.indexAt(pos))
+    self._open_stats_menu(idx, pos)
+
+  def _open_stats_menu(self, idx, pos=None):
     if idx is None or idx.row() >= len(self.model.words):
       return
+    row = self.model.words[idx.row()]
     menu = QMenu(self)
     drill_act = menu.addAction('Drill')
     find_act = menu.addAction('Find in corpus')
-    picked = menu.exec_(self.stats.viewport().mapToGlobal(pos))
+    delete_act = menu.addAction('Delete from database')
+    if pos is None:
+      rect = self.stats.visualRect(idx)
+      global_pos = self.stats.viewport().mapToGlobal(rect.center())
+    else:
+      global_pos = self.stats.viewport().mapToGlobal(pos)
+    picked = menu.exec_(global_pos)
     if picked == drill_act:
       self._drill_row(idx)
     elif picked == find_act:
       self._find_in_corpus(idx)
+    elif picked == delete_act:
+      self._delete_target(idx)
+
+  def _delete_target(self, idx):
+    if idx is None or idx.row() >= len(self.model.words):
+      return
+    cat = Settings.get('ana_what')
+    data = self.model.words[idx.row()][0]
+    if QMessageBox.question(
+        self, 'Delete from database',
+        'Delete all statistics for %r?\nThis cannot be undone.' % data,
+        QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+      return
+    delete_stat_target(DB, cat, data)
+    DB.commit()
+    self.statsChanged.emit()
+    self.update()

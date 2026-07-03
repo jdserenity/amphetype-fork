@@ -8,7 +8,6 @@ from pathlib import Path
 
 from amphetype.Text import LessonMiner
 from amphetype.Data import DB
-from amphetype.stats_query import ALL_TIME_HIST
 from amphetype.QtUtil import *
 from amphetype.Config import *
 from amphetype.gutenberg.browser import GutenbergBrowser
@@ -60,10 +59,11 @@ class TextManager(QWidget):
 Amphetype is a layout-agnostic typing program that measures your speed and progress while identifying typing problems. This is just a default text since your database is empty. Go to Preferences → Sources and try importing a text. Several whole novels already come packaged with Amphetype! Later on you can generate highly customizable lessons directly from your statistics!
 Good luck!""")
 
+  _RANDOM_SAMPLE = 50
+
   def __init__(self, *args):
     super(TextManager, self).__init__(*args)
 
-    self.diff_eval = lambda x: 1
     self.model = SourceModel()
     tv = AmphTree(self.model)
     tv.doubleClicked['QModelIndex'].connect(self.onDoubleClicked)
@@ -97,48 +97,11 @@ Good luck!""")
           [(self.gutenberg, 1)],
         ], QBoxLayout.LeftToRight))
 
-    Settings.signal_for("select_method").connect(self.setSelect)
     Settings.signal_for('text_force_ascii').connect(self.nextText)
-    self.setSelect(Settings.get('select_method'))
 
   def showEvent(self, event):
     super().showEvent(event)
     self.gutenberg.refresh_catalog_notice()
-
-  def setSelect(self, v):
-    if v == 0 or v == 1:
-      self.diff_eval = lambda x: 1
-      self.nextText()
-      return
-
-    hist = ALL_TIME_HIST
-    tri = dict(
-        DB.execute("""
-          select data,agg_median(time) as wpm from statistic
-          where w >= ? and type = 1
-          group by data""", (hist, )).fetchall()) #[(t, (m, c)) for t, m, c in
-
-    g = list(tri.values())
-    if len(g) == 0:
-      return lambda x: 1
-    g.sort(reverse=True)
-    expect = g[len(g)//4]
-    def _func(v):
-      text = v[2]
-      v = 0
-      s = 0.0
-      for i in range(0, len(text)-2):
-        t = text[i:i+3]
-        if t in tri:
-          s += tri[t]
-        else:
-          s += expect
-          v +=1
-      avg = s / (len(text)-2)
-      return 12.0/avg
-
-    self.diff_eval = _func
-    self.nextText()
 
   def _gutenberg_busy(self, busy):
     self.tree.setEnabled(not busy)
@@ -244,33 +207,15 @@ Good luck!""")
     self.model.reset()
 
   def nextText(self):
-
-    type = Settings.get('select_method')
-
-    if type != 1:
-      # Not in order
-      v = DB.execute("select id,source,text from text where disabled is null order by random() limit %d" % Settings.get('num_rand')).fetchall()
-      if len(v) == 0:
-        v = None
-      elif type == 2:
-        v = min(v, key=self.diff_eval)
-      elif type == 3:
-        v = max(v, key=self.diff_eval)
-      else:
-        v = v[0] # random, just pick the first
+    v = DB.execute(
+      "select id,source,text from text where disabled is null order by random() limit %d"
+      % self._RANDOM_SAMPLE).fetchall()
+    if len(v) == 0:
+      v = None
     else:
-      # Fetch in order
-      lastid = (0,)
-      g = DB.fetchone("""select r.text_id
-        from result as r left join source as s on (r.source = s.rowid)
-        where (s.discount is null) or (s.discount = 1) order by r.w desc limit 1""", None)
-      if g is not None:
-        lastid = DB.fetchone("select rowid from text where id = ?", lastid, g)
-      v = DB.fetchone("select id,source,text from text where rowid > ? and disabled is null order by rowid asc limit 1", None, lastid)
-
+      v = v[0]
     if v is None:
       v = self.defaultText
-
     self.emit_text(v)
 
   def _clear_source_texts(self, source_id):
