@@ -135,7 +135,7 @@ def _word_run_gain(sub, base_entry):
 
 
 def lifetime_wpm_gain(current_wpm, first_wpm):
-  """Current median WPM minus WPM from the first recorded sample."""
+  """Current median WPM minus entry baseline WPM (median of first N counted samples)."""
   if current_wpm is None or first_wpm is None:
     return None
   return int(current_wpm) - int(first_wpm)

@@ -6,7 +6,7 @@ from typing_program.corpus_find import find_text_for_target
 from typing_program.stats_query import (
   ALL_TIME_HIST, ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD,
   analysis_min_count, analysis_order_clause, analysis_order_sql,
-  delete_stat_target, fetch_analysis_search, fetch_first_sample_wpm)
+  delete_stat_target, fetch_analysis_baseline_wpm, fetch_analysis_search)
 from typing_program.word_progress import lifetime_wpm_gain
 from typing_program.WeakSpotLessons import analysis_what_kind
 from typing_program.QtUtil import *
@@ -232,12 +232,13 @@ class StringStats(QWidget):
   def _enrich_word_rows(self, rows):
     if not rows:
       return rows
-    first = fetch_first_sample_wpm(DB, STAT_TYPE_WORD, [r[0] for r in rows])
+    floor = analysis_min_count(STAT_TYPE_WORD, Settings.get('analysis_count'))
+    baseline = fetch_analysis_baseline_wpm(DB, STAT_TYPE_WORD, [r[0] for r in rows], floor)
     out = []
     for r in rows:
       imp = None
-      if r[3] >= 2:
-        imp = lifetime_wpm_gain(r[1], first.get(r[0]))
+      if r[3] >= floor:
+        imp = lifetime_wpm_gain(r[1], baseline.get(r[0]))
       out.append(list(r[:2]) + [imp] + list(r[2:]))
     return out
 

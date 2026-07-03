@@ -11,7 +11,7 @@ from typing_program.stats_query import (
   STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm,
   aggregate_session_wpm_from_results, analysis_min_count, analysis_order_clause,
   analysis_order_sql, count_analysis_words, count_unique_typed,
-  fetch_analysis_search, fetch_first_sample_wpm, fetch_oblivion_pool, fetch_oblivion_picks,
+  fetch_analysis_baseline_wpm, fetch_analysis_search, fetch_oblivion_pool, fetch_oblivion_picks,
   delete_stat_target,
 )
 from typing_program.WeakSpotLessons import fetch_weak_targets, score_target
@@ -246,7 +246,7 @@ def test_count_analysis_words_excludes_one_shot():
   assert count_unique_typed(conn, 0, STAT_TYPE_WORD) == 2
 
 
-def test_fetch_first_sample_wpm():
+def test_fetch_analysis_baseline_wpm_one_sample():
   conn = _test_db(); now = 1e9
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
@@ -254,11 +254,24 @@ def test_fetch_first_sample_wpm():
       (now - 1000, 'slow', STAT_TYPE_WORD, 12.0 / 30.0, 5, 0, 1.0, None),
       (now, 'slow', STAT_TYPE_WORD, 12.0 / 60.0, 5, 0, 1.0, None),
     ])
-  first = fetch_first_sample_wpm(conn, STAT_TYPE_WORD, ['slow'])
-  assert first['slow'] == pytest.approx(30.0)
+  base = fetch_analysis_baseline_wpm(conn, STAT_TYPE_WORD, ['slow'], 1)
+  assert base['slow'] == pytest.approx(30.0)
 
 
-def test_fetch_first_sample_wpm_ignores_drill_rows():
+def test_fetch_analysis_baseline_wpm_median_of_first_n():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now - 1000, 'slow', STAT_TYPE_WORD, 12.0 / 30.0, 1, 0, 1.0, None),
+      (now - 500, 'slow', STAT_TYPE_WORD, 12.0 / 60.0, 1, 0, 1.0, None),
+      (now, 'slow', STAT_TYPE_WORD, 12.0 / 90.0, 1, 0, 1.0, None),
+    ])
+  base = fetch_analysis_baseline_wpm(conn, STAT_TYPE_WORD, ['slow'], 2)
+  assert base['slow'] == pytest.approx(45.0)
+
+
+def test_fetch_analysis_baseline_wpm_ignores_drill_rows():
   conn = _test_db(); now = 1e9
   conn.execute('insert into source (name, disabled, discount) values (?,?,?)', ('<Weakspot>', 1, 1))
   ws = conn.execute('select rowid from source where name=?', ('<Weakspot>',)).fetchone()[0]
@@ -268,8 +281,8 @@ def test_fetch_first_sample_wpm_ignores_drill_rows():
       (now - 1000, 'once', STAT_TYPE_WORD, 12.0 / 40.0, 1, 0, 1.0, None),
       (now - 500, 'once', STAT_TYPE_WORD, 12.0 / 80.0, 0, 0, 1.0, ws),
     ])
-  first = fetch_first_sample_wpm(conn, STAT_TYPE_WORD, ['once'])
-  assert first['once'] == pytest.approx(40.0)
+  base = fetch_analysis_baseline_wpm(conn, STAT_TYPE_WORD, ['once'], 2)
+  assert base['once'] == pytest.approx(40.0)
 
 
 def test_fetch_oblivion_pool_returns_all_under_threshold():

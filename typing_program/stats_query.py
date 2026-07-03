@@ -158,26 +158,34 @@ def fetch_analysis_search(db, hist_cutoff, stat_type, min_count, term, order):
   return db.execute(sql, (hist_cutoff, stat_type, analysis_min_count(stat_type, min_count), term)).fetchall()
 
 
-def fetch_first_sample_wpm(db, stat_type, data_keys):
-  """WPM from each key's earliest counted statistic row (all-time first typing)."""
-  if not data_keys:
+def fetch_analysis_baseline_wpm(db, stat_type, data_keys, sample_n):
+  """Median WPM of each key's earliest sample_n counted statistic rows (entry baseline)."""
+  if not data_keys or sample_n <= 0:
     return {}
+  from collections import defaultdict
+  from typing_program.timingtuple import median
   qs = ','.join('?' * len(data_keys))
   rows = db.execute(
-    '''select s.data, min(12.0 / s.time)
+    '''select s.data, s.time
     from statistic s
     left join source as src on s.source = src.rowid
-    inner join (
-      select st.data, min(st.w) as fw from statistic st
-      left join source as src2 on st.source = src2.rowid
-      where st.type=? and st.data in (%s)
-        and %s and st.count > 0
-      group by st.data
-    ) x on s.data = x.data and s.w = x.fw and s.type=?
-    where %s and s.count > 0
-    group by s.data''' % (qs, _STAT_IS_COUNTED.replace('src', 'src2'), _STAT_IS_COUNTED),
-    (stat_type, *data_keys, stat_type)).fetchall()
-  return {d: w for d, w in rows}
+    where s.type=? and s.data in (%s)
+      and %s and s.count > 0
+    order by s.data, s.w''' % (qs, _STAT_IS_COUNTED),
+    (stat_type, *data_keys)).fetchall()
+  by_data = defaultdict(list)
+  for data, t in rows:
+    if t is not None and t > 0:
+      by_data[data].append(12.0 / t)
+  out = {}
+  for data in data_keys:
+    samples = by_data.get(data, [])[:sample_n]
+    if not samples:
+      continue
+    m = median(list(samples))
+    if m is not None:
+      out[data] = m
+  return out
 
 
 def count_unique_typed(db, hist_cutoff, stat_type):

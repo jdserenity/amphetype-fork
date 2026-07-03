@@ -116,8 +116,8 @@ def test_string_stats_most_improved_sort(qapp, monkeypatch):
   monkeypatch.setattr('typing_program.StatWidgets.Settings.get', fake_get)
   monkeypatch.setattr('typing_program.StatWidgets.DB.fetchall', lambda sql, args: pool_rows)
   monkeypatch.setattr(
-    'typing_program.StatWidgets.fetch_first_sample_wpm',
-    lambda db, tp, keys: {'slow': 30.0, 'fast': 70.0})
+    'typing_program.StatWidgets.fetch_analysis_baseline_wpm',
+    lambda db, tp, keys, n: {'slow': 30.0, 'fast': 70.0})
   st.update()
   assert [r[0] for r in st.model.words] == ['slow', 'fast']
   assert st.model.words[0][2] == 20
@@ -141,8 +141,8 @@ def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
   monkeypatch.setattr('typing_program.StatWidgets.Settings.get', fake_get)
   monkeypatch.setattr('typing_program.StatWidgets.DB.fetchall', lambda sql, args: pool_rows)
   monkeypatch.setattr(
-    'typing_program.StatWidgets.fetch_first_sample_wpm',
-    lambda db, tp, keys: {'once': 30.0})
+    'typing_program.StatWidgets.fetch_analysis_baseline_wpm',
+    lambda db, tp, keys, n: {'once': 30.0})
   st.update()
   assert st.model.words[0][2] is None
 
