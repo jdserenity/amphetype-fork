@@ -238,7 +238,7 @@ def wpm_gate_remaining(db):
 
 
 def format_avg_wpm_label(db, hist_cutoff=ALL_TIME_HIST):
-  """Performance Analysis header: gate message or computed session WPM."""
+  """Performance Analysis header: hide Avg WPM until enough lessons; then use all saved runs."""
   if not wpm_gate_complete(db):
     left = wpm_gate_remaining(db)
     if left == WPM_GATE_MIN_LESSONS:
@@ -256,11 +256,6 @@ def lesson_qualifies_for_wpm_gate(mode, improve_submode=0, focus_drill=False):
   if mode in (MODE_CORPUS, MODE_BOOK):
     return True
   return mode == MODE_IMPROVE and improve_submode == 0
-
-
-def should_record_lesson_wpm(db):
-  """Whether the next qualifying lesson should store WPM on its result row."""
-  return wpm_gate_complete(db)
 
 
 def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):

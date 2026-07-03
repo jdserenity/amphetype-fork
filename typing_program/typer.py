@@ -18,9 +18,7 @@ from typing_program.improve_mode import IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_
 from typing_program.lesson_placeholders import (
   BOOK_EMPTY_LABEL, CORPUS_EMPTY_LABEL, IMPROVE_EMPTY_LABEL, IMPROVE_SUBMODE_EMPTY_LABEL,
 )
-from typing_program.stats_query import (
-  ALL_TIME_HIST, lesson_qualifies_for_wpm_gate, should_record_lesson_wpm,
-)
+from typing_program.stats_query import ALL_TIME_HIST
 from typing_program.speed_heatmap import book_return_role
 from typing_program.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
@@ -1822,18 +1820,13 @@ class TyperWindow(QWidget):
     _, visc, acc = run.result(accuracy=True)
     duration = run.active_duration()
     wpm = (len(run) / duration * 12.0) if duration else 0.0
-    record_wpm = (
-      lesson_qualifies_for_wpm_gate(self._mode, self._improve_submode, self._focus_drill)
-      and should_record_lesson_wpm(self.DB))
 
     self.DB.execute('''
     insert into result
     (w, text_id, source, wpm, accuracy, viscosity, char_count, duration)
     values (?,?,?, ?,?,?,?,?)
     ''', (now, textid, srcid,
-          wpm if record_wpm else None, acc, visc,
-          len(run) if record_wpm else None,
-          duration if record_wpm else None))
+          wpm, acc, visc, len(run), duration))
 
     self.DB.commit()
     # type (0: char, 1: trigram, 2: word)
