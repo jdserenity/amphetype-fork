@@ -15,6 +15,7 @@ from amphetype.book_mode import (
   MODE_IMPROVE, MODE_CORPUS,
 )
 from amphetype.improve_mode import IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, fetch_improve_submode_targets
+from amphetype.stats_query import ALL_TIME_HIST
 from amphetype.speed_heatmap import book_return_role
 from amphetype.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
@@ -1303,9 +1304,6 @@ class TyperWindow(QWidget):
       self._btn_improve_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_improve_level)
 
-  def _improve_hist_cutoff(self):
-    return time() - Settings.get('history') * 86400.0
-
   def _load_improve_lesson(self):
     submode = self._improve_submode
     if submode == IMPROVE_SUBMODE_NORMAL:
@@ -1315,7 +1313,7 @@ class TyperWindow(QWidget):
       self._weakspot.request_next_lesson(force=True)
       return
     targets = fetch_improve_submode_targets(
-      self.DB, submode, self._improve_hist_cutoff(), Settings.get('ana_count'))
+      self.DB, submode, ALL_TIME_HIST, Settings.get('ana_count'))
     if not targets:
       self.updateLabel('No statistics yet — practice on corpus mode first.')
       return

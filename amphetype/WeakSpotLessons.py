@@ -8,10 +8,9 @@ constructing word/biword tokens whose joined text literally contains it.
 
 import random
 import re
-import time
 from collections import defaultdict
 
-from amphetype.stats_query import RAW_TARGETS_SQL
+from amphetype.stats_query import ALL_TIME_HIST, RAW_TARGETS_SQL
 
 # A target is (kind, data, weight); kind in {'char','trigram','word'}.
 TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}
@@ -716,10 +715,8 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=2
   return text
 
 
-def fetch_weak_targets(conn, hist=None, min_count=1, per_type=15):
+def fetch_weak_targets(conn, hist=ALL_TIME_HIST, min_count=1, per_type=15):
   """Pull weak chars/trigrams/words, scored by slowness (dominant) and frequency."""
-  if hist is None:
-    hist = time.time() - 30 * 86400.0
   targets = []
   for tp, tag in TYPE_TAGS.items():
     rows = conn.execute(RAW_SQL, (hist, tp, min_count)).fetchall()
@@ -742,7 +739,7 @@ def lesson_cache_valid(cached, db_marker):
   return cached is not None and bool(cached[0]) and cached[1] == db_marker
 
 
-def build_lesson_from_db(conn, hist=None, min_count=1, per_type=15,
+def build_lesson_from_db(conn, hist=ALL_TIME_HIST, min_count=1, per_type=15,
                          min_chars=220, max_chars=600, wordlist_path=None, rng=None,
                          recent=None):
   targets = fetch_weak_targets(conn, hist, min_count, per_type)

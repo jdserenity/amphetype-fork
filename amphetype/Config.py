@@ -48,7 +48,6 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
 
     "text_force_ascii": False,
     
-    "history": 30.0,
     "min_chars": 220,
     "max_chars": 600,
     "break_sentences": False,
@@ -551,8 +550,6 @@ class GeneralOptions(QWidget):
       SettingsCheckBox('req_space', "Make SPACE mandatory before each session",
                         toolTip="""This is generally recommended because otherwise the timing of the very first character has to be inferred artificially (a median is used)."""),
       None,
-      ["Data is considered too old to be included in analysis after",
-        SettingsEdit("history"), "days.", None],
       ["Try to limit texts and lessons to between", SettingsEdit("min_chars"),
         "and", SettingsEdit("max_chars"), "characters.", None],
       [SettingsCheckBox('break_sentences', "Break long sentences when importing external text."), None],

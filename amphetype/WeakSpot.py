@@ -1,9 +1,9 @@
 
-import time
 from collections import deque
 
 from amphetype.Data import DB
 from amphetype.Config import Settings
+from amphetype.stats_query import ALL_TIME_HIST
 from amphetype.WeakSpotLessons import build_lesson_from_db, fetch_db_marker, lesson_cache_valid
 
 from PyQt5.QtCore import *
@@ -55,7 +55,6 @@ class WeakSpotLessonBuilder(QObject):
     self._gen_marker = None
     self._recent = deque(maxlen=2)
 
-    Settings.signal_for('history').connect(lambda *a: self.invalidate_cache())
     Settings.signal_for('min_chars').connect(lambda *a: self.invalidate_cache())
     Settings.signal_for('max_chars').connect(lambda *a: self.invalidate_cache())
 
@@ -83,10 +82,9 @@ class WeakSpotLessonBuilder(QObject):
       return
     self._gen_marker = self._db_marker()
     self.busyChanged.emit(True)
-    hist = time.time() - Settings.get('history') * 86400.0
     recent = set().union(*self._recent) if self._recent else set()
     self._worker = _LessonWorker(
-      hist, Settings.get('ana_count'), Settings.get('ana_many'),
+      ALL_TIME_HIST, Settings.get('ana_count'), Settings.get('ana_many'),
       Settings.get('min_chars'), Settings.get('max_chars'), self._wordlist_path(), recent)
     self._worker.done.connect(self._on_lesson)
     self._worker.start()

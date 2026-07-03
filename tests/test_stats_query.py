@@ -7,9 +7,9 @@ import pytest
 
 from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.stats_query import (
-  ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
+  ALL_TIME_HIST, ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
   STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm,
-  aggregate_session_wpm_from_results, analysis_order_clause, count_unique_typed, perf_hist_cutoff,
+  aggregate_session_wpm_from_results, analysis_order_clause, count_unique_typed,
   fetch_analysis_search, fetch_first_sample_wpm, fetch_oblivion_pool, fetch_oblivion_picks,
 )
 from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
@@ -241,7 +241,11 @@ def test_oblivion_pool_includes_drill_only_rows():
   assert {r[0] for r in pool} == {'However', 'from', 'with'}
 
 
-def test_fetch_oblivion_picks_falls_back_all_time():
+def test_all_time_hist_is_zero():
+  assert ALL_TIME_HIST == 0
+
+
+def test_fetch_oblivion_picks_all_time():
   conn = _test_db(); now = 1e9
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
@@ -251,7 +255,7 @@ def test_fetch_oblivion_picks_falls_back_all_time():
       (now - 200000, 'old3', STAT_TYPE_WORD, 12.0 / 24.0, 5, 0, 1.0, None),
       (now, 'new1', STAT_TYPE_WORD, 12.0 / 18.0, 5, 0, 1.0, None),
     ])
-  picks = fetch_oblivion_picks(conn, now - 86400, STAT_TYPE_WORD, 3, OBLIVION_WPM)
+  picks = fetch_oblivion_picks(conn, ALL_TIME_HIST, STAT_TYPE_WORD, 3, OBLIVION_WPM)
   assert len(picks) == 3
 
 

@@ -4,10 +4,6 @@ Drill rows (<Weakspot>, count=0) update median time/hesitation but not count,
 mistakes, or damage frequency. Drill mistakes are tracked separately.
 """
 
-import time
-
-from amphetype.Config import Settings
-
 # Legacy: omit discounted sources entirely (heatmap, etc.).
 STAT_OMIT_DISCOUNTED = "(st.source is null or src.discount is null)"
 
@@ -76,10 +72,8 @@ SESSION_WPM_TOTALS_SQL = """select sum(char_count), sum(duration)
   where w >= ? and char_count > 0 and duration > 0"""
 
 
-def perf_hist_cutoff(now=None, history_days=None):
-  now = time.time() if now is None else now
-  days = Settings.get('history') if history_days is None else history_days
-  return now - days * 86400.0
+# w >= 0 includes every statistic/result row (all-time).
+ALL_TIME_HIST = 0
 
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   100.0-100.0*mistakes/cast(total as real) as accuracy,
@@ -180,11 +174,9 @@ def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):
 
 
 def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=3, oblivion_wpm=30):
-  """Up to n oblivion targets; widen to all-time when the history window is too thin."""
+  """Up to n oblivion targets from the statistic pool."""
   import random
   pool = fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm)
-  if len(pool) < n and hist_cutoff > 0:
-    pool = fetch_oblivion_pool(db, 0, stat_type, oblivion_wpm)
   if not pool:
     return []
   return random.sample(pool, min(n, len(pool)))

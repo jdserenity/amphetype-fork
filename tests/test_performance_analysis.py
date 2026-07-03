@@ -4,7 +4,7 @@ import pytest
 
 from amphetype.PerformanceAnalysis import PerformanceAnalysis
 from amphetype.StatWidgets import StringStats, WordModel, AnalysisSortCombo
-from amphetype.stats_query import STAT_TYPE_WORD, perf_hist_cutoff
+from amphetype.stats_query import STAT_TYPE_WORD
 
 
 def _sample_rows():
@@ -15,9 +15,12 @@ def _sample_rows():
   ]
 
 
-def test_perf_hist_cutoff():
-  now = 1_000_000.0
-  assert perf_hist_cutoff(now=now, history_days=30) == now - 30 * 86400.0
+def test_performance_analysis_has_no_history_window(qapp):
+  from PyQt5.QtWidgets import QLabel
+  pa = PerformanceAnalysis()
+  header_texts = [lbl.text() for lbl in pa.findChildren(QLabel) if not pa.st.isAncestorOf(lbl)]
+  assert 'Last' not in header_texts
+  assert 'days.' not in header_texts
 
 
 def test_performance_analysis_composes_sections(qapp):
@@ -94,7 +97,6 @@ def test_string_stats_most_improved_sort(qapp, monkeypatch):
       'ana_many': 2,
       'ana_what': 2,
       'ana_count': 1,
-      'history': 365,
     }.get(key, 0)
 
   monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
@@ -120,7 +122,6 @@ def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
       'ana_many': 10,
       'ana_what': 2,
       'ana_count': 1,
-      'history': 365,
     }.get(key, 0)
 
   monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)

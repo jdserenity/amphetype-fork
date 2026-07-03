@@ -1,7 +1,8 @@
 """Speed heatmap: map lesson text to WPM bucket colors from statistic DB."""
 
 import re
-import time
+
+from amphetype.stats_query import ALL_TIME_HIST
 
 MODE_WORD = 0
 MODE_TRIGRAM = 1
@@ -63,10 +64,8 @@ def _stat_damage(entry):
   return 0.0
 
 
-def fetch_speed_stats(db, hist_cutoff=None, stat_type=MODE_CHAR):
+def fetch_speed_stats(db, hist_cutoff=ALL_TIME_HIST, stat_type=MODE_CHAR):
   from amphetype.stats_query import SPEED_STATS_SQL, SPEED_STATS_ALL_TIME_SQL
-  if hist_cutoff is None:
-    hist_cutoff = time.time() - 30 * 86400.0
   if hist_cutoff <= 0:
     rows = db.execute(SPEED_STATS_ALL_TIME_SQL, (stat_type,)).fetchall()
   else:

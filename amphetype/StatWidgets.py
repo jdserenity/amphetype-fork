@@ -1,12 +1,10 @@
 
 
 
-import time
-
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
 from amphetype.stats_query import (
-  ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD, analysis_order_clause,
+  ALL_TIME_HIST, ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD, analysis_order_clause,
   fetch_analysis_search, fetch_first_sample_wpm)
 from amphetype.word_progress import lifetime_wpm_gain
 from amphetype.WeakSpotLessons import ana_what_kind
@@ -142,7 +140,6 @@ class StringStats(QWidget):
     Settings.signal_for("ana_what").connect(self.update)
     Settings.signal_for("ana_many").connect(self.update)
     Settings.signal_for("ana_count").connect(self.update)
-    Settings.signal_for("history").connect(self.update)
 
     self.setLayout(AmphBoxLayout([
         ["Show", wc, "sorted by", ob, 16, self._search_edit, self._search_btn, None],
@@ -179,7 +176,7 @@ class StringStats(QWidget):
     if not term:
       return
     rows = fetch_analysis_search(
-      DB, time.time() - Settings.get('history') * 86400.0,
+      DB, ALL_TIME_HIST,
       Settings.get('ana_what'), Settings.get('ana_count'), term,
       'total desc' if Settings.get('ana_which') == 'improved desc' else analysis_order_clause(Settings.get('ana_which')))
     self._search_applied = term
@@ -195,14 +192,13 @@ class StringStats(QWidget):
   def _query_rows(self, order, limit):
     cat = Settings.get('ana_what')
     count = Settings.get('ana_count')
-    hist = time.time() - Settings.get('history') * 86400.0
     if order == 'improved desc':
       pool = max(limit * 10, 200)
       sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', pool)
-      rows = DB.fetchall(sql, (hist, cat, count))
+      rows = DB.fetchall(sql, (ALL_TIME_HIST, cat, count))
       return rows, cat
     sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_clause(order), limit)
-    return DB.fetchall(sql, (hist, cat, count)), cat
+    return DB.fetchall(sql, (ALL_TIME_HIST, cat, count)), cat
 
   def _enrich_word_rows(self, rows):
     if not rows:

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from amphetype.Text import LessonMiner
 from amphetype.Data import DB
+from amphetype.stats_query import ALL_TIME_HIST
 from amphetype.QtUtil import *
 from amphetype.Config import *
 from amphetype.gutenberg.browser import GutenbergBrowser
@@ -110,7 +111,7 @@ Good luck!""")
       self.nextText()
       return
 
-    hist = time.time() - 86400.0 * Settings.get('history')
+    hist = ALL_TIME_HIST
     tri = dict(
         DB.execute("""
           select data,agg_median(time) as wpm from statistic
