@@ -81,7 +81,7 @@ class AmphSettings(FSettings, metaclass=SettingsMeta):
     "ana_which": "wpm asc",
     "ana_what": 0,
     "ana_many": 30,
-    "ana_count": 1,
+    "ana_count": 2,
 
     "gen_copies": 3,
     "gen_take": 2,

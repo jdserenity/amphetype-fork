@@ -3,7 +3,7 @@
 import pytest
 
 from amphetype.PerformanceAnalysis import PerformanceAnalysis
-from amphetype.StatWidgets import StringStats, WordModel, AnalysisSortCombo
+from amphetype.StatWidgets import StringStats, WordModel, AnalysisSortCombo, AnaCountEdit
 from amphetype.stats_query import STAT_TYPE_WORD
 
 
@@ -37,7 +37,7 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
     lambda db, hist: 74.5)
   pa = PerformanceAnalysis()
   pa.updateAll()
-  assert pa._words_lbl.text() == 'Unique words typed: 42'
+  assert pa._words_lbl.text() == 'Unique common words typed: 42'
   assert pa._wpm_lbl.text() == 'Avg WPM: 74.5'
 
 
@@ -145,6 +145,27 @@ def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
     lambda db, tp, keys: {'once': 30.0})
   st.update()
   assert st.model.words[0][2] is None
+
+
+def test_ana_count_edit_clamps_to_two(qapp, monkeypatch):
+  store = {'ana_count': 1}
+
+  def fake_get(key):
+    return store.get(key, 0)
+
+  def fake_set(key, val):
+    store[key] = val
+
+  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
+  monkeypatch.setattr('amphetype.StatWidgets.Settings.set', fake_set)
+  edit = AnaCountEdit()
+  assert store['ana_count'] == 2
+  edit.setText('1')
+  edit.updateVal()
+  assert store['ana_count'] == 2
+  edit.setText('3')
+  edit.updateVal()
+  assert store['ana_count'] == 3
 
 
 def test_main_window_title(qapp):

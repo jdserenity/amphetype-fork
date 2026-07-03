@@ -109,6 +109,26 @@ class AnalysisSortCombo(QComboBox):
     self.blockSignals(False)
 
 
+class AnaCountEdit(SettingsEdit):
+  """Performance Analysis minimum-count filter; never below 2."""
+  _MIN = 2
+
+  def __init__(self):
+    if Settings.get('ana_count') < self._MIN:
+      Settings.set('ana_count', self._MIN)
+    super(AnaCountEdit, self).__init__('ana_count')
+
+  def updateVal(self):
+    try:
+      v = max(self._MIN, self.conv(self.text()))
+    except ValueError as err:
+      QMessageBox.warning(self, "String Conversion Error", f"Couldn't convert setting value:\n{err}")
+    else:
+      Settings.set(self.setting, v)
+      if self.text() != self.fmt(v):
+        self.setText(self.fmt(v))
+
+
 class StringStats(QWidget):
   startDrill = pyqtSignal(list)
   corpusTextReady = pyqtSignal('PyQt_PyObject')
@@ -136,7 +156,7 @@ class StringStats(QWidget):
 
     wc = SettingsCombo('ana_what', ['keys', 'trigrams', 'words'])
     lim = SettingsEdit('ana_many')
-    self.w_count = SettingsEdit('ana_count')
+    self.w_count = AnaCountEdit()
     self._baseline_rows = []
     self._search_applied = None
     self._search_edit = QLineEdit()

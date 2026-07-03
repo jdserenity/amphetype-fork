@@ -35,7 +35,7 @@ class PerformanceAnalysis(QWidget):
   def updateAll(self, *args):
     words = count_analysis_words(DB, ALL_TIME_HIST)
     avg_wpm = aggregate_session_wpm_from_results(DB, ALL_TIME_HIST)
-    self._words_lbl.setText('Unique words typed: %d' % words)
+    self._words_lbl.setText('Unique common words typed: %d' % words)
     self._wpm_lbl.setText('Avg WPM: %s' % ('%.1f' % avg_wpm if avg_wpm is not None else '—'))
     self.st.update(*args)
 
