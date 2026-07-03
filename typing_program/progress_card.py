@@ -126,8 +126,8 @@ class ProgressCard(QWidget):
     strip_wrap = QWidget(parent=self)
     strip_lay = QHBoxLayout(strip_wrap)
     strip_lay.setContentsMargins(10, 0, 10, 8)
-    strip_lay.addWidget(self._strip, 0, Qt.AlignLeft)
     strip_lay.addStretch(1)
+    strip_lay.addWidget(self._strip, 0, Qt.AlignRight)
 
     lay = QVBoxLayout(self)
     lay.setContentsMargins(0, 0, 0, 0)
