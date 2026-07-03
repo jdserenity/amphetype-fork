@@ -67,3 +67,23 @@ def test_reset_typing_stats_sets_weakspot_discount(tmp_path):
   reset_typing_stats(db)
   assert db.execute('select discount from source where name=?', ('<Weakspot>',)).fetchone()[0] == 1
   db.close()
+
+
+def test_reset_db_script_runs_without_qt(tmp_path):
+  import subprocess
+  import sys
+  from pathlib import Path
+  db_path = tmp_path / 'test.db'
+  db, sid = _seed_db(db_path)
+  db.close()
+  root = Path(__file__).resolve().parents[1]
+  r = subprocess.run(
+    [sys.executable, str(root / 'scripts/reset_db.py'), str(db_path)],
+    capture_output=True, text=True, cwd=str(root))
+  assert r.returncode == 0, r.stderr + r.stdout
+  conn = sqlite3.connect(str(db_path))
+  assert conn.execute('select count(*) from statistic').fetchone()[0] == 0
+  assert conn.execute('select count(*) from source').fetchone()[0] == 1
+  assert conn.execute('select count(*) from text where source=?', (sid,)).fetchone()[0] == 1
+  conn.close()
+  assert list(tmp_path.glob('test.db.bak-*'))

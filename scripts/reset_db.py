@@ -19,7 +19,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from typing_program.Data import AppDatabase  # noqa: E402
 from typing_program.reset_stats import reset_typing_stats  # noqa: E402
 
 
@@ -52,13 +51,17 @@ def _backup_db(db_path):
 
 def main():
   db_path = Path(sys.argv[1]) if len(sys.argv) > 1 else _default_db_path()
-  db_path.parent.mkdir(parents=True, exist_ok=True)
+  if not db_path.is_file():
+    print('No database at %s' % db_path, file=sys.stderr)
+    sys.exit(1)
   bak = _backup_db(db_path)
   if bak is not None:
     print('Backup: %s' % bak)
-  db = sqlite3.connect(str(db_path), 5, 0, 'DEFERRED', False, AppDatabase)
-  reset_typing_stats(db)
-  db.close()
+  conn = sqlite3.connect(str(db_path))
+  try:
+    reset_typing_stats(conn)
+  finally:
+    conn.close()
   print('Typing stats cleared (books, sources, and book progress kept): %s' % db_path)
 
 
