@@ -24,6 +24,9 @@ class PerformanceAnalysis(QWidget):
         (self.st, 1),
       ]))
 
+  def set_session_timer(self, session_timer):
+    self._progress.set_session_timer(session_timer)
+
   def updateAll(self, *args):
     self._progress.update_all()
     self.st.update(*args)

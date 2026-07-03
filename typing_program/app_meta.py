@@ -1,6 +1,7 @@
 """Small key/value store in the SQLite database for UI state."""
 
 PREFERENCES_TAB_KEY = 'preferences_tab'
+TOTAL_PRACTICE_SECONDS_KEY = 'total_practice_seconds'
 
 
 def ensure_app_meta(db):

@@ -113,14 +113,18 @@ class ProgressCard(QWidget):
 
     self._words_lbl = QLabel(parent=self)
     self._wpm_lbl = QLabel(parent=self)
+    self._practice_lbl = QLabel(parent=self)
     self._words_lbl.setStyleSheet(_HEADER_STYLE)
     self._wpm_lbl.setStyleSheet(_HEADER_STYLE)
+    self._practice_lbl.setStyleSheet(_HEADER_STYLE)
+    self._session_timer = None
     hdr_col = QWidget(parent=self)
     hdr_lay = QVBoxLayout(hdr_col)
     hdr_lay.setContentsMargins(0, 0, 0, 0)
     hdr_lay.setSpacing(0)
     hdr_lay.addWidget(self._words_lbl, 0)
     hdr_lay.addWidget(self._wpm_lbl, 0)
+    hdr_lay.addWidget(self._practice_lbl, 0)
 
     self._strip = ClimbStrip(parent=self)
 
@@ -145,10 +149,22 @@ class ProgressCard(QWidget):
     lay.addWidget(strip_wrap, 0)
     self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
+  def set_session_timer(self, session_timer):
+    self._session_timer = session_timer
+
+  def _practice_time_text(self):
+    from typing_program.session_timer import format_practice_total_label, total_practice_seconds_from_db
+    if self._session_timer is not None:
+      secs = self._session_timer.total_seconds()
+    else:
+      secs = total_practice_seconds_from_db(self._db)
+    return 'Total practice time: %s' % format_practice_total_label(secs)
+
   def update_all(self):
     words = count_analysis_words(self._db, self._hist)
     self._words_lbl.setText('Unique common words typed: %d' % words)
     self._wpm_lbl.setText(format_avg_wpm_label(self._db, self._hist))
+    self._practice_lbl.setText(self._practice_time_text())
     gate = format_wpm_gate_label(self._db)
     if gate:
       self._gain_num.setText('—')

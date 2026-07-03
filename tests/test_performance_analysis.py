@@ -46,9 +46,14 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
     'typing_program.progress_card.count_all_time_tier_climbs',
     lambda db: (3, 2, 1, 0))
   pa = PerformanceAnalysis()
+  class _FakeTimer:
+    def total_seconds(self):
+      return 3661
+  pa.set_session_timer(_FakeTimer())
   pa.updateAll()
   assert pa._progress._words_lbl.text() == 'Unique common words typed: 42'
   assert pa._progress._wpm_lbl.text() == 'Avg WPM: 74.5 · Top 13% of adults'
+  assert pa._progress._practice_lbl.text() == 'Total practice time: 1:01:01'
   assert pa._progress._gain_num.text() == '+12'
 
 
