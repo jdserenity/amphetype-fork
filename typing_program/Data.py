@@ -129,6 +129,9 @@ class AppDatabase(sqlite3.Connection):
     self._ensure_migrations()
 
   def _ensure_migrations(self):
+    from typing_program.app_meta import ensure_app_meta, get_app_meta_int, set_app_meta_int
+    from typing_program.book_mode import ensure_book_tables
+    ensure_app_meta(self)
     cols = {r[1] for r in self.execute("pragma table_info(statistic)").fetchall()}
     if 'source' not in cols:
       self.execute('alter table statistic add column source integer')
@@ -140,16 +143,12 @@ class AppDatabase(sqlite3.Connection):
       self.execute('alter table result add column char_count integer')
     if 'duration' not in rcols:
       self.execute('alter table result add column duration real')
-    from typing_program.app_meta import get_app_meta_int, set_app_meta_int
     if not get_app_meta_int(self, 'result_char_count_backfill_cleared', 0):
       self.execute('update result set char_count = null')
       set_app_meta_int(self, 'result_char_count_backfill_cleared', 1)
     # Weakspot (and other generated lessons) must not feed back into weakspot selection.
     self.execute("update source set discount = 1 where name = '<Weakspot>' and discount is null")
-    from typing_program.book_mode import ensure_book_tables
-    from typing_program.app_meta import ensure_app_meta
     ensure_book_tables(self)
-    ensure_app_meta(self)
     self.commit()
 
   def resetTimeGroup(self):
