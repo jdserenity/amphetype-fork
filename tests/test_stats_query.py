@@ -222,7 +222,8 @@ def test_analysis_order_clause_rejects_unknown_sort():
   assert analysis_order_clause('perfect asc') == 'perfect_pct asc'
   assert analysis_order_clause('perfect desc') == 'perfect_pct desc'
   assert analysis_order_clause('perfect_pct desc') == 'perfect_pct desc'
-  assert analysis_order_sql('perfect_pct asc') == 'cast(total - mistakes as real) / total asc'
+  assert analysis_order_sql('perfect_pct asc') == 'cast(total - mistakes as real) / total asc, total asc'
+  assert analysis_order_sql('perfect_pct desc') == 'cast(total - mistakes as real) / total desc, total desc'
 
 
 def test_analysis_min_count_requires_two_for_words():
@@ -257,6 +258,19 @@ def test_perfect_pct_sort_lowest_first():
   assert [r[0] for r in rows] == ['bad', 'good']
   assert rows[0][4] == 1   # perfect
   assert rows[1][4] == 9
+
+
+def test_perfect_pct_desc_ties_rank_higher_count():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'few', STAT_TYPE_WORD, 0.5, 2, 0, 1.0, None),
+      (now, 'many', STAT_TYPE_WORD, 0.5, 6, 0, 1.0, None),
+    ])
+  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_sql('perfect_pct desc'), 10)
+  rows = conn.execute(sql, (0, STAT_TYPE_WORD, 2)).fetchall()
+  assert [r[0] for r in rows] == ['many', 'few']
 
 
 def test_count_analysis_words_excludes_one_shot():

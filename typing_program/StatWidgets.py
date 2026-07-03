@@ -68,10 +68,12 @@ class AnalysisSortCombo(QComboBox):
 
   def __init__(self):
     super(AnalysisSortCombo, self).__init__()
+    self.setFocusPolicy(Qt.ClickFocus)
     self._keys = []
     Settings.signal_for('analysis_what').connect(self._sync_items)
     Settings.signal_for('analysis_which').connect(self._sync_selection)
     self.activated[int].connect(lambda idx: Settings.set('analysis_which', self._keys[idx]))
+    self.activated[int].connect(lambda _idx: self.clearFocus())
     self._sync_items()
 
   def _words_only(self):
@@ -107,6 +109,13 @@ class AnalysisSortCombo(QComboBox):
     self.blockSignals(True)
     self.setCurrentIndex(self._keys.index(cur))
     self.blockSignals(False)
+
+
+class AnalysisWhatCombo(SettingsCombo):
+  def __init__(self):
+    super(AnalysisWhatCombo, self).__init__('analysis_what', ['keys', 'trigrams', 'words'])
+    self.setFocusPolicy(Qt.ClickFocus)
+    self.activated[int].connect(lambda _idx: self.clearFocus())
 
 
 class AnalysisCountEdit(SettingsEdit):
@@ -154,7 +163,7 @@ class StringStats(QWidget):
 
     ob = AnalysisSortCombo()
 
-    wc = SettingsCombo('analysis_what', ['keys', 'trigrams', 'words'])
+    wc = AnalysisWhatCombo()
     lim = SettingsEdit('analysis_many')
     self.w_count = AnalysisCountEdit()
     self._baseline_rows = []

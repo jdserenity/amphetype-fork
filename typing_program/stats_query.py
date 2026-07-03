@@ -135,8 +135,8 @@ _LEGACY_ANALYSIS_ORDER = {
   'perfect desc': 'perfect_pct desc',
 }
 _ANALYSIS_ORDER_SQL = {
-  'perfect_pct asc': 'cast(total - mistakes as real) / total asc',
-  'perfect_pct desc': 'cast(total - mistakes as real) / total desc',
+  'perfect_pct asc': 'cast(total - mistakes as real) / total asc, total asc',
+  'perfect_pct desc': 'cast(total - mistakes as real) / total desc, total desc',
 }
 
 
