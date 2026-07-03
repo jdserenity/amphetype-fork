@@ -6,8 +6,10 @@ from pathlib import Path
 from PyQt5.QtCore import QSettings
 
 from typing_program.legacy_data import (
+  DEFAULT_DB_FILENAME,
   LEGACY_APP_FOLDER,
   db_has_user_content,
+  legacy_username_db_filename,
   migrate_legacy_settings,
   resolve_database_path,
 )
@@ -26,6 +28,10 @@ def _make_db(path: Path, *, texts: int = 0, stats: int = 0):
     )
   conn.commit()
   conn.close()
+
+
+def test_default_db_filename():
+  assert DEFAULT_DB_FILENAME == 'typing-program.db'
 
 
 def test_legacy_folder_name():
@@ -48,26 +54,28 @@ def test_db_has_user_content_false_for_empty_schema(tmp_path):
   assert db_has_user_content(db) is False
 
 
-def test_resolve_uses_legacy_when_new_empty(tmp_path, monkeypatch):
+def test_resolve_migrates_legacy_username_db_to_new_location(tmp_path, monkeypatch):
   new_dir = tmp_path / 'new'
   legacy_dir = tmp_path / 'legacy'
   monkeypatch.setattr('typing_program.legacy_data.legacy_app_support_dir', lambda: legacy_dir)
-  _make_db(legacy_dir / 'user.db', texts=3)
-  _make_db(new_dir / 'user.db')
+  _make_db(legacy_dir / legacy_username_db_filename(), texts=3)
+  _make_db(new_dir / DEFAULT_DB_FILENAME)
 
-  resolved = resolve_database_path(new_dir, 'user.db')
-  assert resolved == legacy_dir / 'user.db'
+  resolved = resolve_database_path(new_dir, DEFAULT_DB_FILENAME)
+  assert resolved == new_dir / DEFAULT_DB_FILENAME
+  assert db_has_user_content(resolved)
+  assert db_has_user_content(legacy_dir / legacy_username_db_filename())
 
 
 def test_resolve_keeps_new_when_new_has_data(tmp_path, monkeypatch):
   new_dir = tmp_path / 'new'
   legacy_dir = tmp_path / 'legacy'
   monkeypatch.setattr('typing_program.legacy_data.legacy_app_support_dir', lambda: legacy_dir)
-  _make_db(legacy_dir / 'user.db', texts=3)
-  _make_db(new_dir / 'user.db', stats=2)
+  _make_db(legacy_dir / legacy_username_db_filename(), texts=3)
+  _make_db(new_dir / DEFAULT_DB_FILENAME, stats=2)
 
-  resolved = resolve_database_path(new_dir, 'user.db')
-  assert resolved == new_dir / 'user.db'
+  resolved = resolve_database_path(new_dir, DEFAULT_DB_FILENAME)
+  assert resolved == new_dir / DEFAULT_DB_FILENAME
 
 
 def test_migrate_legacy_settings_copies_missing_keys(tmp_path, monkeypatch):

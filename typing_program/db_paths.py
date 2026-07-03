@@ -1,24 +1,22 @@
 """Find the app SQLite file without starting Qt (dev scripts)."""
 
-import getpass
 import os
-import re
 import sys
 from pathlib import Path
 
 from typing_program import DATA_DIR
-from typing_program.legacy_data import legacy_app_support_dir, resolve_database_path
+from typing_program.legacy_data import (
+  DEFAULT_DB_FILENAME,
+  legacy_app_support_dir,
+  legacy_username_db_filename,
+  resolve_database_path,
+)
 
 APP_DATA_FOLDER = 'Typing Program'
 
 
 def default_db_filename():
-  try:
-    user = getpass.getuser() or 'user'
-  except Exception:
-    user = 'user'
-  user = re.sub(r'[^a-z0-9_-]', '', user, flags=re.I) or 'user'
-  return user + '.db'
+  return DEFAULT_DB_FILENAME
 
 
 def app_local_data_dir():
@@ -50,7 +48,7 @@ def _db_name_from_ini(ini_path):
 
 
 def resolve_default_database_path():
-  """Same rules as Config before the GUI starts (local flag, ini override, legacy)."""
+  """Same rules as Config before the GUI starts (local flag, ini override, legacy migration)."""
   dbfile = default_db_filename()
   if _env_local():
     return DATA_DIR / dbfile
@@ -68,7 +66,7 @@ def resolve_default_database_path():
 
 
 def database_search_paths():
-  """Paths to try when the primary default file is missing."""
+  """Candidate paths when the default file is still missing."""
   dbfile = default_db_filename()
   paths = []
   seen = set()
@@ -84,13 +82,16 @@ def database_search_paths():
   add(resolve_default_database_path())
   if not _env_local():
     add(DATA_DIR / dbfile)
-    add(legacy_app_support_dir() / dbfile)
+    legacy = legacy_app_support_dir()
+    add(legacy / dbfile)
+    add(legacy / legacy_username_db_filename())
     add(app_local_data_dir() / dbfile)
+    add(app_local_data_dir() / legacy_username_db_filename())
   return paths
 
 
 def find_database_path(cli_path=None):
-  """Return (existing path or None, paths checked)."""
+  """Return (existing path or None, paths checked). Runs legacy migration when applicable."""
   if cli_path:
     p = Path(cli_path).expanduser()
     return (p.resolve() if p.is_file() else None), [p]

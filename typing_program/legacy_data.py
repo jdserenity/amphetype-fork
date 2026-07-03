@@ -1,7 +1,10 @@
-"""Find pre-rename (Amphetype) user data and prefer it when the new location is empty."""
+"""Find pre-rename (Amphetype) user data and migrate it into Typing Program folders."""
 
 from __future__ import annotations
 
+import getpass
+import re
+import shutil
 import sqlite3
 import sys
 from pathlib import Path
@@ -10,6 +13,7 @@ from PyQt5.QtCore import QSettings
 
 LEGACY_APP_FOLDER = 'amphetype'
 LEGACY_SETTINGS_APP = 'amphetype'
+DEFAULT_DB_FILENAME = 'typing-program.db'
 
 _active_app_data_dir: Path | None = None
 
@@ -27,6 +31,15 @@ def active_app_data_dir(fallback: Path) -> Path:
   return _active_app_data_dir if _active_app_data_dir is not None else fallback
 
 
+def legacy_username_db_filename():
+  try:
+    user = getpass.getuser() or 'user'
+  except Exception:
+    user = 'user'
+  user = re.sub(r'[^a-z0-9_-]', '', user, flags=re.I) or 'user'
+  return user + '.db'
+
+
 def db_has_user_content(db_path: Path) -> bool:
   if not db_path.is_file():
     return False
@@ -42,18 +55,48 @@ def db_has_user_content(db_path: Path) -> bool:
     return False
 
 
+def _atomic_copy_file(src: Path, dst: Path):
+  dst.parent.mkdir(parents=True, exist_ok=True)
+  tmp = dst.with_name(dst.name + '.tmp')
+  shutil.copy2(src, tmp)
+  tmp.replace(dst)
+
+
+def _legacy_db_sources(legacy_dir: Path, new_data_dir: Path):
+  """Old database files that may still hold the user's data."""
+  seen = set()
+  for name in (legacy_username_db_filename(), DEFAULT_DB_FILENAME):
+    if name in seen:
+      continue
+    seen.add(name)
+    for base in (legacy_dir, new_data_dir):
+      p = base / name
+      if p.is_file() and db_has_user_content(p):
+        yield p
+
+
+def migrate_legacy_support_files(legacy_dir: Path, new_data_dir: Path):
+  new_data_dir.mkdir(parents=True, exist_ok=True)
+  src = legacy_dir / 'gutenberg'
+  dst = new_data_dir / 'gutenberg'
+  if src.is_dir() and not dst.exists():
+    shutil.copytree(src, dst)
+
+
 def resolve_database_path(new_data_dir: Path, db_filename: str) -> Path:
-  """Use the legacy database when the new default path is empty but the old one has data."""
+  """Default database path under Typing Program; one-time copy from Amphetype if needed."""
   global _active_app_data_dir
-  new_db = new_data_dir / db_filename
-  legacy_dir = legacy_app_support_dir()
-  legacy_db = legacy_dir / db_filename
-
-  if legacy_db.is_file() and db_has_user_content(legacy_db) and not db_has_user_content(new_db):
-    _active_app_data_dir = legacy_dir
-    return legacy_db
-
   _active_app_data_dir = None
+  new_db = new_data_dir / db_filename
+  if db_has_user_content(new_db):
+    return new_db
+  legacy_dir = legacy_app_support_dir()
+  for legacy_db in _legacy_db_sources(legacy_dir, new_data_dir):
+    if legacy_db.resolve() == new_db.resolve():
+      return new_db
+    _atomic_copy_file(legacy_db, new_db)
+    migrate_legacy_support_files(legacy_dir, new_data_dir)
+    return new_db
   return new_db
 
 

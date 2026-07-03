@@ -9,8 +9,8 @@ Backs up the database as <name>.bak-<timestamp> beside it before clearing stats.
 Without a path, uses the same database location as the running app:
   - TYPING_PROGRAM_LOCAL=1 → typing_program/data/<user>.db
   - db_name= in typing_program.ini or TYPING_PROGRAM_SETTINGS
-  - otherwise ~/Library/Application Support/Typing Program/<user>.db, with legacy
-    ~/Library/Application Support/amphetype/<user>.db when that still holds your data
+  - otherwise ~/Library/Application Support/Typing Program/typing-program.db, with legacy
+    ~/Library/Application Support/amphetype/<user>.db copied once on first run if needed
 """
 
 import shutil

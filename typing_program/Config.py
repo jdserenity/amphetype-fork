@@ -5,27 +5,17 @@ from typing_program.QtUtil import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 
-import pickle
-import getpass
 import os
-import re
+import pickle
 from pathlib import Path
 import logging as log
 
 from typing_program.settings import FSettings
-from typing_program.legacy_data import migrate_legacy_settings, resolve_database_path
+from typing_program.legacy_data import DEFAULT_DB_FILENAME, migrate_legacy_settings, resolve_database_path
 
 
 def get_default_db_name():
-  "Default database name is based on username."
-
-  try:
-    _user = getpass.getuser() or 'user'
-  except: # Docs just say "otherwise, an exception is raised."
-    _user = 'user'
-
-  _user = re.sub('[^a-z0-9_-]', '', _user, flags=re.I) or 'user'
-  return _user + '.db'
+  return DEFAULT_DB_FILENAME
 
 
 class SettingsMeta(type(QObject)):
