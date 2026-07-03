@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Clear typing stats from the app DB; keep imported books/sources and book progress.
 
-  ./scripts/reset-db.sh
   python scripts/reset_db.py [path/to.db]
 
 Backs up the current file as <name>.bak-<timestamp> beside it before changing anything.
