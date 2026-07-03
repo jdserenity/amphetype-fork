@@ -42,9 +42,6 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   monkeypatch.setattr(
     'typing_program.progress_card.session_wpm_since_start_gain',
     lambda db, hist: 12)
-  monkeypatch.setattr(
-    'typing_program.progress_card.count_all_time_tier_climbs',
-    lambda db: (3, 2, 1, 0))
   pa = PerformanceAnalysis()
   class _FakeTimer:
     def total_seconds(self):
@@ -79,7 +76,6 @@ def test_performance_analysis_avg_wpm_shows_dash_when_no_data(qapp, monkeypatch)
     lambda db, hist: 'Avg WPM: —')
   monkeypatch.setattr('typing_program.progress_card.format_wpm_gate_label', lambda db: None)
   monkeypatch.setattr('typing_program.progress_card.session_wpm_since_start_gain', lambda *a: None)
-  monkeypatch.setattr('typing_program.progress_card.count_all_time_tier_climbs', lambda db: (0, 0, 0, 0))
   pa = PerformanceAnalysis()
   pa.updateAll()
   assert pa._progress._wpm_lbl.text() == 'Avg WPM: —'
@@ -97,7 +93,6 @@ def test_performance_analysis_progress_card_before_wpm_gate(qapp, monkeypatch):
   pa.updateAll()
   assert pa._progress._gain_num.text() == '—'
   assert 'Complete 7 more lessons' in pa._progress._gain_cap.text()
-  assert not pa._progress._strip.isVisible()
 
 
 def test_performance_analysis_is_stats_only(qapp):

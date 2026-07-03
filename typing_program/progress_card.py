@@ -1,9 +1,6 @@
-"""Performance Analysis progress card — WPM since start + heatmap climb strip."""
+"""Performance Analysis progress card — session stats header."""
 
-from typing_program.progress_stats import (
-  count_all_time_tier_climbs, tier_climb_colors, tier_climb_labels,
-)
-from typing_program.speed_heatmap import PROGRESS_GREEN, WPM_BUCKETS
+from typing_program.speed_heatmap import PROGRESS_GREEN
 from typing_program.stats_query import (
   ALL_TIME_HIST, count_analysis_words, format_avg_wpm_label, format_wpm_gate_label,
   session_wpm_since_start_gain,
@@ -20,68 +17,7 @@ _CARD_STYLE = (
 _HERO_NUM_STYLE = 'font-size: 24px; font-weight: 700; padding: 0; margin: 0;'
 _HERO_CAP_STYLE = 'font-size: 11px; color: #666; padding: 0; margin: 0;'
 _STAT_STYLE = 'font-size: 15px; padding: 2px 0;'
-_ARROW_STYLE = 'font-size: 11px; color: #888; padding: 0 2px;'
-_COUNT_STYLE = 'font-size: 12px; font-weight: 600; padding: 0 2px;'
-
-
-def _swatch_style(color, fg='#111'):
-  return (
-    'QLabel { background: %s; color: %s; min-width: 14px; max-width: 14px; min-height: 14px;'
-    ' max-height: 14px; border-radius: 2px; padding: 0; margin: 0; }' % (color, fg))
-
-
-class ClimbStrip(QWidget):
-  def __init__(self, parent=None):
-    super(ClimbStrip, self).__init__(parent)
-    self._row_lay = QHBoxLayout(self)
-    self._row_lay.setContentsMargins(0, 0, 0, 0)
-    self._row_lay.setSpacing(4)
-
-  def _clear_row(self):
-    while self._row_lay.count():
-      item = self._row_lay.takeAt(0)
-      w = item.widget()
-      if w is not None:
-        w.deleteLater()
-
-  def _add_swatch(self, color, tip, fg='#111'):
-    if color == WPM_BUCKETS[0][1]:
-      fg = '#fff'
-    lbl = QLabel(parent=self)
-    lbl.setStyleSheet(_swatch_style(color, fg))
-    lbl.setToolTip(tip)
-    self._row_lay.addWidget(lbl, 0)
-
-  def set_climbs(self, climbs):
-    self._clear_row()
-    labels = tier_climb_labels()
-    colors = tier_climb_colors()
-    active = [(i, n) for i, n in enumerate(climbs) if n > 0]
-    if not active:
-      self.hide()
-      return
-    self.show()
-    first_i, first_n = active[0]
-    self._add_swatch(colors[first_i], labels[first_i])
-    cnt = QLabel(str(first_n), parent=self)
-    cnt.setStyleSheet(_COUNT_STYLE)
-    cnt.setToolTip(labels[first_i])
-    self._row_lay.addWidget(cnt, 0)
-    arrow = QLabel('→', parent=self)
-    arrow.setStyleSheet(_ARROW_STYLE)
-    arrow.setToolTip(labels[first_i])
-    self._row_lay.addWidget(arrow, 0)
-    self._add_swatch(WPM_BUCKETS[first_i + 1][1], labels[first_i])
-    for i, n in active[1:]:
-      cnt = QLabel(str(n), parent=self)
-      cnt.setStyleSheet(_COUNT_STYLE)
-      cnt.setToolTip(labels[i])
-      self._row_lay.addWidget(cnt, 0)
-      arrow = QLabel('→', parent=self)
-      arrow.setStyleSheet(_ARROW_STYLE)
-      arrow.setToolTip(labels[i])
-      self._row_lay.addWidget(arrow, 0)
-      self._add_swatch(WPM_BUCKETS[i + 1][1], labels[i])
+_METRIC_GAP = 32
 
 
 class ProgressCard(QWidget):
@@ -110,30 +46,20 @@ class ProgressCard(QWidget):
       lbl.setStyleSheet(_STAT_STYLE)
     self._session_timer = None
 
-    self._strip = ClimbStrip(parent=self)
-    self._strip.hide()
-
-    top = QWidget(parent=self)
-    top_lay = QHBoxLayout(top)
-    top_lay.setContentsMargins(10, 8, 10, 4)
-    top_lay.setSpacing(16)
-    top_lay.addWidget(gain_col, 0, Qt.AlignVCenter)
-    top_lay.addWidget(self._wpm_lbl, 0, Qt.AlignVCenter)
-    top_lay.addWidget(self._words_lbl, 0, Qt.AlignVCenter)
-    top_lay.addWidget(self._practice_lbl, 0, Qt.AlignVCenter)
-    top_lay.addStretch(1)
-
-    strip_wrap = QWidget(parent=self)
-    strip_lay = QHBoxLayout(strip_wrap)
-    strip_lay.setContentsMargins(10, 0, 10, 8)
-    strip_lay.addStretch(1)
-    strip_lay.addWidget(self._strip, 0, Qt.AlignRight)
+    row = QWidget(parent=self)
+    row_lay = QHBoxLayout(row)
+    row_lay.setContentsMargins(12, 10, 12, 10)
+    row_lay.setSpacing(_METRIC_GAP)
+    row_lay.addWidget(gain_col, 0, Qt.AlignVCenter)
+    row_lay.addWidget(self._wpm_lbl, 0, Qt.AlignVCenter)
+    row_lay.addWidget(self._words_lbl, 0, Qt.AlignVCenter)
+    row_lay.addWidget(self._practice_lbl, 0, Qt.AlignVCenter)
+    row_lay.addStretch(1)
 
     lay = QVBoxLayout(self)
     lay.setContentsMargins(0, 0, 0, 0)
     lay.setSpacing(0)
-    lay.addWidget(top, 0)
-    lay.addWidget(strip_wrap, 0)
+    lay.addWidget(row, 0)
     self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
   def set_session_timer(self, session_timer):
@@ -157,7 +83,6 @@ class ProgressCard(QWidget):
       self._gain_num.setText('—')
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #888;')
       self._gain_cap.setText(gate)
-      self._strip.hide()
       return
     gain = session_wpm_since_start_gain(self._db, self._hist)
     self._gain_cap.setText('WPM since start')
@@ -173,4 +98,3 @@ class ProgressCard(QWidget):
     else:
       self._gain_num.setText('+0')
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #888;')
-    self._strip.set_climbs(count_all_time_tier_climbs(self._db))

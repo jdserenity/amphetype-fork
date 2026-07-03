@@ -46,22 +46,6 @@ def wpm_color(wpm):
   return color
 
 
-def wpm_bucket_index(wpm):
-  """Heatmap tier 0–4 (<31 … 100+). None when wpm is missing."""
-  if wpm is None:
-    return None
-  idx = 0
-  for i, (threshold, _c) in enumerate(WPM_BUCKETS):
-    if wpm >= threshold:
-      idx = i
-  return idx
-
-
-def wpm_bucket_transition_count():
-  """Adjacent heatmap climbs: oblivion→red, red→orange, orange→yellow, yellow→green."""
-  return len(WPM_BUCKETS) - 1
-
-
 def wpm_color_q(wpm):
   from PyQt5.QtGui import QColor
   hex_c = wpm_color(wpm)
