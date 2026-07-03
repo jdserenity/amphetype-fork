@@ -1,0 +1,25 @@
+# Manual-only macOS installer build. Does NOT run on push or pull request.
+# GitHub → Actions → "Build macOS installer" → Run workflow.
+name: Build macOS installer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build .app and .dmg
+        run: ./scripts/build-mac-dmg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: typing-program-mac-dmg
+          path: dist/Typing Program.dmg
+          if-no-files-found: error
