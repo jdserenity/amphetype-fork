@@ -33,8 +33,8 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
     'typing_program.PerformanceAnalysis.count_analysis_words',
     lambda db, hist: 42)
   monkeypatch.setattr(
-    'typing_program.PerformanceAnalysis.aggregate_session_wpm_from_results',
-    lambda db, hist: 74.5)
+    'typing_program.PerformanceAnalysis.format_avg_wpm_label',
+    lambda db, hist: 'Avg WPM: 74.5')
   pa = PerformanceAnalysis()
   pa.updateAll()
   assert pa._words_lbl.text() == 'Unique common words typed: 42'
@@ -56,11 +56,21 @@ def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
   assert len(calls) >= 1
 
 
+def test_performance_analysis_avg_wpm_shows_gate_before_enough_lessons(qapp, monkeypatch):
+  monkeypatch.setattr('typing_program.PerformanceAnalysis.count_analysis_words', lambda *a: 0)
+  monkeypatch.setattr(
+    'typing_program.PerformanceAnalysis.format_avg_wpm_label',
+    lambda db, hist: 'Complete 10 lessons to calculate WPM')
+  pa = PerformanceAnalysis()
+  pa.updateAll()
+  assert pa._wpm_lbl.text() == 'Complete 10 lessons to calculate WPM'
+
+
 def test_performance_analysis_avg_wpm_shows_dash_when_no_data(qapp, monkeypatch):
   monkeypatch.setattr('typing_program.PerformanceAnalysis.count_analysis_words', lambda *a: 0)
   monkeypatch.setattr(
-    'typing_program.PerformanceAnalysis.aggregate_session_wpm_from_results',
-    lambda db, hist: None)
+    'typing_program.PerformanceAnalysis.format_avg_wpm_label',
+    lambda db, hist: 'Avg WPM: —')
   pa = PerformanceAnalysis()
   pa.updateAll()
   assert pa._wpm_lbl.text() == 'Avg WPM: —'

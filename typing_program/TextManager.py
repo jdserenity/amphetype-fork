@@ -55,9 +55,7 @@ class TextManager(QWidget):
   gotoText = pyqtSignal()
   refreshSources = pyqtSignal()
 
-  defaultText = ("", 0, """Welcome to Typing Program!
-Typing Program is a layout-agnostic typing program that measures your speed and progress while identifying typing problems. This is just a default text since your database is empty. Go to Preferences → Sources and try importing a text. Several whole novels already come packaged with Typing Program! Later on you can generate highly customizable lessons directly from your statistics!
-Good luck!""")
+  defaultText = ("", 0, "")
 
   _RANDOM_SAMPLE = 50
 

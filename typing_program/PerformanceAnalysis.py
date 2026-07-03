@@ -3,8 +3,7 @@ from typing_program.Data import DB
 from typing_program.QtUtil import *
 from typing_program.StatWidgets import StringStats
 from typing_program.stats_query import (
-  ALL_TIME_HIST, STAT_TYPE_WORD, aggregate_session_wpm_from_results,
-  count_analysis_words,
+  ALL_TIME_HIST, STAT_TYPE_WORD, count_analysis_words, format_avg_wpm_label,
 )
 
 from PyQt5.QtCore import *
@@ -34,9 +33,8 @@ class PerformanceAnalysis(QWidget):
 
   def updateAll(self, *args):
     words = count_analysis_words(DB, ALL_TIME_HIST)
-    avg_wpm = aggregate_session_wpm_from_results(DB, ALL_TIME_HIST)
     self._words_lbl.setText('Unique common words typed: %d' % words)
-    self._wpm_lbl.setText('Avg WPM: %s' % ('%.1f' % avg_wpm if avg_wpm is not None else '—'))
+    self._wpm_lbl.setText(format_avg_wpm_label(DB, ALL_TIME_HIST))
     self.st.update(*args)
 
   def showEvent(self, evt):

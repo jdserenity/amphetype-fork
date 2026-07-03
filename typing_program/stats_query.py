@@ -84,6 +84,14 @@ SESSION_WPM_TOTALS_SQL = """select sum(char_count), sum(duration)
 # w >= 0 includes every statistic/result row (all-time).
 ALL_TIME_HIST = 0
 
+# Session WPM stays hidden until this many corpus/book/improve-normal lessons finish.
+WPM_GATE_MIN_LESSONS = 10
+
+WPM_GATE_LESSONS_SQL = """select count(*) from result r
+  join source s on r.source = s.rowid
+  where (coalesce(s.discount, 0) = 0 and s.name not like '<%>')
+     or s.name = '<Weakspot>'"""
+
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
@@ -213,6 +221,46 @@ def aggregate_session_wpm_from_results(db, hist_cutoff):
   if not row:
     return None
   return aggregate_session_wpm(row[0] or 0, row[1] or 0)
+
+
+def count_wpm_gate_lessons(db):
+  """Finished corpus, book, or improve-normal lessons (counts toward the WPM gate)."""
+  row = db.execute(WPM_GATE_LESSONS_SQL).fetchone()
+  return int(row[0]) if row else 0
+
+
+def wpm_gate_complete(db):
+  return count_wpm_gate_lessons(db) >= WPM_GATE_MIN_LESSONS
+
+
+def wpm_gate_remaining(db):
+  return max(0, WPM_GATE_MIN_LESSONS - count_wpm_gate_lessons(db))
+
+
+def format_avg_wpm_label(db, hist_cutoff=ALL_TIME_HIST):
+  """Performance Analysis header: gate message or computed session WPM."""
+  if not wpm_gate_complete(db):
+    left = wpm_gate_remaining(db)
+    if left == WPM_GATE_MIN_LESSONS:
+      return 'Complete %d lessons to calculate WPM' % WPM_GATE_MIN_LESSONS
+    return 'Complete %d more lesson%s to calculate WPM' % (left, '' if left == 1 else 's')
+  avg = aggregate_session_wpm_from_results(db, hist_cutoff)
+  return 'Avg WPM: %s' % ('%.1f' % avg if avg is not None else '—')
+
+
+def lesson_qualifies_for_wpm_gate(mode, improve_submode=0, focus_drill=False):
+  """True for corpus, book, and improve-normal lessons (not focus drills)."""
+  from typing_program.book_mode import MODE_BOOK, MODE_CORPUS, MODE_IMPROVE
+  if focus_drill:
+    return False
+  if mode in (MODE_CORPUS, MODE_BOOK):
+    return True
+  return mode == MODE_IMPROVE and improve_submode == 0
+
+
+def should_record_lesson_wpm(db):
+  """Whether the next qualifying lesson should store WPM on its result row."""
+  return wpm_gate_complete(db)
 
 
 def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):

@@ -15,7 +15,12 @@ from typing_program.book_mode import (
   MODE_IMPROVE, MODE_CORPUS,
 )
 from typing_program.improve_mode import IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, fetch_improve_submode_targets
-from typing_program.stats_query import ALL_TIME_HIST
+from typing_program.lesson_placeholders import (
+  BOOK_EMPTY_LABEL, CORPUS_EMPTY_LABEL, IMPROVE_EMPTY_LABEL, IMPROVE_SUBMODE_EMPTY_LABEL,
+)
+from typing_program.stats_query import (
+  ALL_TIME_HIST, lesson_qualifies_for_wpm_gate, should_record_lesson_wpm,
+)
 from typing_program.speed_heatmap import book_return_role
 from typing_program.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
@@ -200,7 +205,7 @@ class LessonDocument(QTextDocument):
       else:
         style.setForeground(QBrush(var.get()))
 
-    if self._curtext is not None:
+    if self._curtext is not None and self._match_text:
       self.set_text(*self._curtext)
 
   # Cursor position changed.
@@ -242,7 +247,26 @@ class LessonDocument(QTextDocument):
     self._progress_badges = []
     self.style_progress = text_style(kerning=False, color=QBrush(QColor(PROGRESS_GREEN)))
     self.style_progress_new = text_style(kerning=False, color=QBrush(QColor(PROGRESS_ORANGE)))
-    self.set_text('default text')
+    self.set_idle_placeholder()
+
+  def set_idle_placeholder(self):
+    """Clear the lesson canvas when there is nothing to type."""
+    self._book_auto_returns = False
+    self._book_chunks = None
+    self._book_chunk_index = 0
+    self._curtext = None
+    self.clear()
+    self._original_text = ''
+    self._match_text = None
+    self._display_text = None
+    self._run = None
+    self._first_error = None
+    self._pre_start_paused = False
+    self._progress_badges = []
+    self._word_baselines = {}
+    self._word_spans = []
+    self._read_ahead_preview = False
+    self._read_ahead_revealed = set()
 
   def _book_plain_display(self, text):
     import re
@@ -272,7 +296,7 @@ class LessonDocument(QTextDocument):
       self._book_auto_returns = False
     self._curtext = (text, prologue, epilogue)
 
-    text = text or 'default text'
+    text = text if text is not None else ''
 
     self.clear()
     
@@ -987,7 +1011,8 @@ class TyperWidget(QTextEdit):
 
   def setLesson(self, lesson):
     if lesson == self._lesson:
-      self._follow_cursor(lesson.cursor)
+      if getattr(lesson, '_match_text', None):
+        self._follow_cursor(lesson.cursor)
       self.updateStatus()
       return
     
@@ -1002,7 +1027,8 @@ class TyperWidget(QTextEdit):
       w = self.cursorWidth() # Layout thingamajig resets cursor width.
       self.setDocument(lesson)
       self.setCursorWidth(w)
-    self._follow_cursor(lesson.cursor)
+    if getattr(lesson, '_match_text', None):
+      self._follow_cursor(lesson.cursor)
     self.updateStatus()
 
     lesson.sig_position.connect(self._follow_cursor)
@@ -1315,7 +1341,7 @@ class TyperWindow(QWidget):
     targets = fetch_improve_submode_targets(
       self.DB, submode, ALL_TIME_HIST, Settings.get('analysis_count'))
     if not targets:
-      self.updateLabel('No statistics yet — practice on corpus mode first.')
+      self._show_idle_placeholder(IMPROVE_SUBMODE_EMPTY_LABEL)
       return
     self._start_focus_drill(targets, from_pa=False)
 
@@ -1471,6 +1497,10 @@ class TyperWindow(QWidget):
     print("setDefaultText() NOT IMPLEMENTED")
 
   def setText(self, txt):
+    body = (txt[2] or '').strip()
+    if self._mode == MODE_CORPUS and not body:
+      self._show_idle_placeholder(CORPUS_EMPTY_LABEL)
+      return
     self._current_lesson = txt
     textid, srcid, _ = txt
     self._update_source_label(srcid)
@@ -1526,11 +1556,24 @@ class TyperWindow(QWidget):
       self._book_prog_text = msg
       self._refresh_book_btn()
 
+  def _show_idle_placeholder(self, msg):
+    self._pause_overlay.hide()
+    self._current_lesson = None
+    self._book_meta = None
+    self._doc.set_idle_placeholder()
+    self._source_lbl.clear()
+    self._source_lbl.setVisible(False)
+    self._typer.setReadOnly(True)
+    self._prog_layout.setCurrentIndex(0)
+    self._prog.setValue(0)
+    self._prog.setMaximum(0)
+    self.updateLabel(msg)
+
   def _on_book_lesson(self, lesson):
     if self._mode != MODE_BOOK:
       return
     if not lesson:
-      self.updateLabel('No books available — import a text on the Sources tab.')
+      self._show_idle_placeholder(BOOK_EMPTY_LABEL)
       return
     tid, srcid, meta = lesson
     body = meta['full_text']
@@ -1668,7 +1711,7 @@ class TyperWindow(QWidget):
     if self._mode != MODE_IMPROVE:
       return
     if not lesson:
-      self.updateLabel('No statistics yet — practice on corpus mode first.')
+      self._show_idle_placeholder(IMPROVE_EMPTY_LABEL)
       return
     self._set_improve_footer_busy(False)
     self.needWeakspotLesson.emit(lesson)
@@ -1779,13 +1822,18 @@ class TyperWindow(QWidget):
     _, visc, acc = run.result(accuracy=True)
     duration = run.active_duration()
     wpm = (len(run) / duration * 12.0) if duration else 0.0
+    record_wpm = (
+      lesson_qualifies_for_wpm_gate(self._mode, self._improve_submode, self._focus_drill)
+      and should_record_lesson_wpm(self.DB))
 
     self.DB.execute('''
     insert into result
     (w, text_id, source, wpm, accuracy, viscosity, char_count, duration)
     values (?,?,?, ?,?,?,?,?)
     ''', (now, textid, srcid,
-          wpm, acc, visc, len(run), duration))
+          wpm if record_wpm else None, acc, visc,
+          len(run) if record_wpm else None,
+          duration if record_wpm else None))
 
     self.DB.commit()
     # type (0: char, 1: trigram, 2: word)
