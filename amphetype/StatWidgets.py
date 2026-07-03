@@ -4,7 +4,8 @@
 from amphetype.Data import DB
 from amphetype.corpus_find import find_text_for_target
 from amphetype.stats_query import (
-  ALL_TIME_HIST, ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD, analysis_order_clause,
+  ALL_TIME_HIST, ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD,
+  analysis_min_count, analysis_order_clause, analysis_order_sql,
   delete_stat_target, fetch_analysis_search, fetch_first_sample_wpm)
 from amphetype.word_progress import lifetime_wpm_gain
 from amphetype.WeakSpotLessons import ana_what_kind
@@ -58,8 +59,8 @@ class AnalysisSortCombo(QComboBox):
     ('wpm desc', 'fastest'),
     ('viscosity desc', 'most hesitation'),
     ('viscosity asc', 'least hesitation'),
-    ('perfect asc', 'least perfect'),
-    ('perfect desc', 'most perfect'),
+    ('perfect_pct asc', 'lowest perfect %'),
+    ('perfect_pct desc', 'highest perfect %'),
     ('total desc', 'most common'),
     ('damage desc', 'most damaging'),
     ('improved desc', 'most improved'),
@@ -82,9 +83,12 @@ class AnalysisSortCombo(QComboBox):
     if not words and cur == 'improved desc':
       Settings.set('ana_which', 'damage desc')
       cur = 'damage desc'
-    if cur in ('accuracy asc', 'misses desc'):
-      Settings.set('ana_which', 'perfect asc')
-      cur = 'perfect asc'
+    if cur in ('accuracy asc', 'misses desc', 'perfect asc'):
+      Settings.set('ana_which', 'perfect_pct asc')
+      cur = 'perfect_pct asc'
+    elif cur == 'perfect desc':
+      Settings.set('ana_which', 'perfect_pct desc')
+      cur = 'perfect_pct desc'
     self.blockSignals(True)
     self.clear()
     self._keys = []
@@ -196,13 +200,13 @@ class StringStats(QWidget):
 
   def _query_rows(self, order, limit):
     cat = Settings.get('ana_what')
-    count = Settings.get('ana_count')
+    count = analysis_min_count(cat, Settings.get('ana_count'))
     if order == 'improved desc':
       pool = max(limit * 10, 200)
       sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', pool)
       rows = DB.fetchall(sql, (ALL_TIME_HIST, cat, count))
       return rows, cat
-    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_clause(order), limit)
+    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_sql(order), limit)
     return DB.fetchall(sql, (ALL_TIME_HIST, cat, count)), cat
 
   def _enrich_word_rows(self, rows):

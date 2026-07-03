@@ -9,7 +9,8 @@ from amphetype.speed_heatmap import OBLIVION_WPM
 from amphetype.stats_query import (
   ALL_TIME_HIST, ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
   STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm,
-  aggregate_session_wpm_from_results, analysis_order_clause, count_unique_typed,
+  aggregate_session_wpm_from_results, analysis_min_count, analysis_order_clause,
+  analysis_order_sql, count_analysis_words, count_unique_typed,
   fetch_analysis_search, fetch_first_sample_wpm, fetch_oblivion_pool, fetch_oblivion_picks,
   delete_stat_target,
 )
@@ -190,9 +191,59 @@ def test_analysis_order_clause_rejects_unknown_sort():
   assert analysis_order_clause('improved desc') == 'improved desc'
   assert analysis_order_clause('bogus desc') == 'wpm asc'
   assert analysis_order_clause('damage desc') == 'damage desc'
-  assert analysis_order_clause('accuracy asc') == 'perfect asc'
-  assert analysis_order_clause('misses desc') == 'perfect asc'
-  assert analysis_order_clause('perfect desc') == 'perfect desc'
+  assert analysis_order_clause('accuracy asc') == 'perfect_pct asc'
+  assert analysis_order_clause('misses desc') == 'perfect_pct asc'
+  assert analysis_order_clause('perfect asc') == 'perfect_pct asc'
+  assert analysis_order_clause('perfect desc') == 'perfect_pct desc'
+  assert analysis_order_clause('perfect_pct desc') == 'perfect_pct desc'
+  assert analysis_order_sql('perfect_pct asc') == 'cast(total - mistakes as real) / total asc'
+
+
+def test_analysis_min_count_requires_two_for_words():
+  assert analysis_min_count(STAT_TYPE_WORD, 1) == 2
+  assert analysis_min_count(STAT_TYPE_WORD, 5) == 5
+  assert analysis_min_count(STAT_TYPE_TRIGRAM, 1) == 1
+
+
+def test_fetch_analysis_top_hides_one_shot_words():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'once', STAT_TYPE_WORD, 0.5, 1, 1, 1.0, None),
+      (now, 'often', STAT_TYPE_WORD, 0.5, 5, 0, 1.0, None),
+    ])
+  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'data asc', 10)
+  rows = conn.execute(sql, (0, STAT_TYPE_WORD, analysis_min_count(STAT_TYPE_WORD, 1))).fetchall()
+  assert [r[0] for r in rows] == ['often']
+
+
+def test_perfect_pct_sort_lowest_first():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'good', STAT_TYPE_WORD, 0.5, 10, 1, 1.0, None),
+      (now, 'bad', STAT_TYPE_WORD, 0.5, 10, 9, 1.0, None),
+    ])
+  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_sql('perfect_pct asc'), 10)
+  rows = conn.execute(sql, (0, STAT_TYPE_WORD, 2)).fetchall()
+  assert [r[0] for r in rows] == ['bad', 'good']
+  assert rows[0][4] == 1   # perfect
+  assert rows[1][4] == 9
+
+
+def test_count_analysis_words_excludes_one_shot():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'once', STAT_TYPE_WORD, 0.5, 1, 0, 1.0, None),
+      (now, 'twice', STAT_TYPE_WORD, 0.5, 2, 0, 1.0, None),
+      (now, ' fr', STAT_TYPE_TRIGRAM, 0.5, 1, 0, 1.0, None),
+    ])
+  assert count_analysis_words(conn, 0) == 1
+  assert count_unique_typed(conn, 0, STAT_TYPE_WORD) == 2
 
 
 def test_fetch_first_sample_wpm():

@@ -30,8 +30,8 @@ def test_performance_analysis_composes_sections(qapp):
 
 def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   monkeypatch.setattr(
-    'amphetype.PerformanceAnalysis.count_unique_typed',
-    lambda db, hist, tp: 42)
+    'amphetype.PerformanceAnalysis.count_analysis_words',
+    lambda db, hist: 42)
   monkeypatch.setattr(
     'amphetype.PerformanceAnalysis.aggregate_session_wpm_from_results',
     lambda db, hist: 74.5)
@@ -57,7 +57,7 @@ def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
 
 
 def test_performance_analysis_avg_wpm_shows_dash_when_no_data(qapp, monkeypatch):
-  monkeypatch.setattr('amphetype.PerformanceAnalysis.count_unique_typed', lambda *a: 0)
+  monkeypatch.setattr('amphetype.PerformanceAnalysis.count_analysis_words', lambda *a: 0)
   monkeypatch.setattr(
     'amphetype.PerformanceAnalysis.aggregate_session_wpm_from_results',
     lambda db, hist: None)
