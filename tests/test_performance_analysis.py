@@ -3,7 +3,7 @@
 import pytest
 
 from amphetype.PerformanceAnalysis import PerformanceAnalysis
-from amphetype.StatWidgets import StringStats, WordModel, AnalysisSortCombo, AnaCountEdit
+from amphetype.StatWidgets import StringStats, WordModel, AnalysisSortCombo, AnalysisCountEdit
 from amphetype.stats_query import STAT_TYPE_WORD
 
 
@@ -107,10 +107,10 @@ def test_string_stats_most_improved_sort(qapp, monkeypatch):
 
   def fake_get(key):
     return {
-      'ana_which': 'improved desc',
-      'ana_many': 2,
-      'ana_what': 2,
-      'ana_count': 1,
+      'analysis_which': 'improved desc',
+      'analysis_many': 2,
+      'analysis_what': 2,
+      'analysis_count': 1,
     }.get(key, 0)
 
   monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
@@ -132,10 +132,10 @@ def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
 
   def fake_get(key):
     return {
-      'ana_which': 'wpm asc',
-      'ana_many': 10,
-      'ana_what': 2,
-      'ana_count': 1,
+      'analysis_which': 'wpm asc',
+      'analysis_many': 10,
+      'analysis_what': 2,
+      'analysis_count': 1,
     }.get(key, 0)
 
   monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
@@ -147,8 +147,8 @@ def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
   assert st.model.words[0][2] is None
 
 
-def test_ana_count_edit_clamps_to_two(qapp, monkeypatch):
-  store = {'ana_count': 1}
+def test_analysis_count_edit_clamps_to_two(qapp, monkeypatch):
+  store = {'analysis_count': 1}
 
   def fake_get(key):
     return store.get(key, 0)
@@ -158,14 +158,14 @@ def test_ana_count_edit_clamps_to_two(qapp, monkeypatch):
 
   monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
   monkeypatch.setattr('amphetype.StatWidgets.Settings.set', fake_set)
-  edit = AnaCountEdit()
-  assert store['ana_count'] == 2
+  edit = AnalysisCountEdit()
+  assert store['analysis_count'] == 2
   edit.setText('1')
   edit.updateVal()
-  assert store['ana_count'] == 2
+  assert store['analysis_count'] == 2
   edit.setText('3')
   edit.updateVal()
-  assert store['ana_count'] == 3
+  assert store['analysis_count'] == 3
 
 
 def test_main_window_title(qapp):
@@ -175,7 +175,7 @@ def test_main_window_title(qapp):
 
 
 def test_analysis_sort_combo_hides_most_improved_for_keys(qapp, monkeypatch):
-  store = {'ana_what': 0, 'ana_which': 'improved desc'}
+  store = {'analysis_what': 0, 'analysis_which': 'improved desc'}
 
   def fake_get(key):
     return store.get(key, 0)
@@ -186,12 +186,12 @@ def test_analysis_sort_combo_hides_most_improved_for_keys(qapp, monkeypatch):
   monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
   monkeypatch.setattr('amphetype.StatWidgets.Settings.set', fake_set)
   combo = AnalysisSortCombo()
-  assert store['ana_which'] == 'damage desc'
+  assert store['analysis_which'] == 'damage desc'
   assert 'most improved' not in [combo.itemText(i) for i in range(combo.count())]
 
 
 def test_analysis_sort_combo_shows_most_improved_for_words(qapp, monkeypatch):
-  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', lambda k: {'ana_what': 2, 'ana_which': 'improved desc'}.get(k, 0))
+  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', lambda k: {'analysis_what': 2, 'analysis_which': 'improved desc'}.get(k, 0))
   combo = AnalysisSortCombo()
   assert 'most improved' in [combo.itemText(i) for i in range(combo.count())]
   assert combo._keys[-1] == 'improved desc'
@@ -260,7 +260,7 @@ def test_string_stats_delete_target_after_confirm(qapp, monkeypatch):
   from PyQt5.QtWidgets import QMessageBox
   st = StringStats()
   st.model.setData(_sample_rows())
-  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', lambda k: 2 if k == 'ana_what' else 0)
+  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', lambda k: 2 if k == 'analysis_what' else 0)
   monkeypatch.setattr('amphetype.StatWidgets.QMessageBox.question', lambda *a: QMessageBox.Yes)
   deleted = []
   monkeypatch.setattr(

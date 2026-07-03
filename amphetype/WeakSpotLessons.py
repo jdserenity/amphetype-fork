@@ -14,10 +14,10 @@ from amphetype.stats_query import ALL_TIME_HIST, RAW_TARGETS_SQL
 
 # A target is (kind, data, weight); kind in {'char','trigram','word'}.
 TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}
-ANA_WHAT_KINDS = ('char', 'trigram', 'word')
+ANALYSIS_WHAT_KINDS = ('char', 'trigram', 'word')
 
-def ana_what_kind(cat_index):
-  return ANA_WHAT_KINDS[cat_index]
+def analysis_what_kind(cat_index):
+  return ANALYSIS_WHAT_KINDS[cat_index]
 
 _dict_cache = {}
 _TRAIL_PUNCT = '.,!?;:'   # punctuation that naturally trails a word

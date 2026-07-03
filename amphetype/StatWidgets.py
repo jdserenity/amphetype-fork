@@ -8,7 +8,7 @@ from amphetype.stats_query import (
   analysis_min_count, analysis_order_clause, analysis_order_sql,
   delete_stat_target, fetch_analysis_search, fetch_first_sample_wpm)
 from amphetype.word_progress import lifetime_wpm_gain
-from amphetype.WeakSpotLessons import ana_what_kind
+from amphetype.WeakSpotLessons import analysis_what_kind
 from amphetype.QtUtil import *
 from amphetype.Config import *
 
@@ -69,25 +69,25 @@ class AnalysisSortCombo(QComboBox):
   def __init__(self):
     super(AnalysisSortCombo, self).__init__()
     self._keys = []
-    Settings.signal_for('ana_what').connect(self._sync_items)
-    Settings.signal_for('ana_which').connect(self._sync_selection)
-    self.activated[int].connect(lambda idx: Settings.set('ana_which', self._keys[idx]))
+    Settings.signal_for('analysis_what').connect(self._sync_items)
+    Settings.signal_for('analysis_which').connect(self._sync_selection)
+    self.activated[int].connect(lambda idx: Settings.set('analysis_which', self._keys[idx]))
     self._sync_items()
 
   def _words_only(self):
-    return Settings.get('ana_what') == 2
+    return Settings.get('analysis_what') == 2
 
   def _sync_items(self):
     words = self._words_only()
-    cur = Settings.get('ana_which')
+    cur = Settings.get('analysis_which')
     if not words and cur == 'improved desc':
-      Settings.set('ana_which', 'damage desc')
+      Settings.set('analysis_which', 'damage desc')
       cur = 'damage desc'
     if cur in ('accuracy asc', 'misses desc', 'perfect asc'):
-      Settings.set('ana_which', 'perfect_pct asc')
+      Settings.set('analysis_which', 'perfect_pct asc')
       cur = 'perfect_pct asc'
     elif cur == 'perfect desc':
-      Settings.set('ana_which', 'perfect_pct desc')
+      Settings.set('analysis_which', 'perfect_pct desc')
       cur = 'perfect_pct desc'
     self.blockSignals(True)
     self.clear()
@@ -101,7 +101,7 @@ class AnalysisSortCombo(QComboBox):
     self.blockSignals(False)
 
   def _sync_selection(self):
-    cur = Settings.get('ana_which')
+    cur = Settings.get('analysis_which')
     if cur not in self._keys:
       return
     self.blockSignals(True)
@@ -109,14 +109,14 @@ class AnalysisSortCombo(QComboBox):
     self.blockSignals(False)
 
 
-class AnaCountEdit(SettingsEdit):
+class AnalysisCountEdit(SettingsEdit):
   """Performance Analysis minimum-count filter; never below 2."""
   _MIN = 2
 
   def __init__(self):
-    if Settings.get('ana_count') < self._MIN:
-      Settings.set('ana_count', self._MIN)
-    super(AnaCountEdit, self).__init__('ana_count')
+    if Settings.get('analysis_count') < self._MIN:
+      Settings.set('analysis_count', self._MIN)
+    super(AnalysisCountEdit, self).__init__('analysis_count')
 
   def updateVal(self):
     try:
@@ -154,9 +154,9 @@ class StringStats(QWidget):
 
     ob = AnalysisSortCombo()
 
-    wc = SettingsCombo('ana_what', ['keys', 'trigrams', 'words'])
-    lim = SettingsEdit('ana_many')
-    self.w_count = AnaCountEdit()
+    wc = SettingsCombo('analysis_what', ['keys', 'trigrams', 'words'])
+    lim = SettingsEdit('analysis_many')
+    self.w_count = AnalysisCountEdit()
     self._baseline_rows = []
     self._search_applied = None
     self._search_edit = QLineEdit()
@@ -165,10 +165,10 @@ class StringStats(QWidget):
     self._search_edit.textChanged.connect(self._sync_search_btn)
     self._search_edit.returnPressed.connect(self._apply_search)
 
-    Settings.signal_for("ana_which").connect(self.update)
-    Settings.signal_for("ana_what").connect(self.update)
-    Settings.signal_for("ana_many").connect(self.update)
-    Settings.signal_for("ana_count").connect(self.update)
+    Settings.signal_for("analysis_which").connect(self.update)
+    Settings.signal_for("analysis_what").connect(self.update)
+    Settings.signal_for("analysis_many").connect(self.update)
+    Settings.signal_for("analysis_count").connect(self.update)
 
     self.setLayout(AmphBoxLayout([
         ["Show", wc, "sorted by", ob, 16, self._search_edit, self._search_btn, None],
@@ -206,11 +206,11 @@ class StringStats(QWidget):
       return
     rows = fetch_analysis_search(
       DB, ALL_TIME_HIST,
-      Settings.get('ana_what'), Settings.get('ana_count'), term,
-      'total desc' if Settings.get('ana_which') == 'improved desc' else analysis_order_clause(Settings.get('ana_which')))
+      Settings.get('analysis_what'), Settings.get('analysis_count'), term,
+      'total desc' if Settings.get('analysis_which') == 'improved desc' else analysis_order_clause(Settings.get('analysis_which')))
     self._search_applied = term
-    cat = Settings.get('ana_what')
-    rows = self._finalize_rows(rows, cat, Settings.get('ana_which'))
+    cat = Settings.get('analysis_what')
+    rows = self._finalize_rows(rows, cat, Settings.get('analysis_which'))
     self.model.setData(rows)
     self._sync_search_btn()
 
@@ -219,8 +219,8 @@ class StringStats(QWidget):
     self._corpus_lbl.show()
 
   def _query_rows(self, order, limit):
-    cat = Settings.get('ana_what')
-    count = analysis_min_count(cat, Settings.get('ana_count'))
+    cat = Settings.get('analysis_what')
+    count = analysis_min_count(cat, Settings.get('analysis_count'))
     if order == 'improved desc':
       pool = max(limit * 10, 200)
       sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', pool)
@@ -253,8 +253,8 @@ class StringStats(QWidget):
 
   def update(self, *arg):
     self.clear_corpus_msg()
-    order = Settings.get('ana_which')
-    limit = Settings.get('ana_many')
+    order = Settings.get('analysis_which')
+    limit = Settings.get('analysis_many')
     rows, cat = self._query_rows(order, limit)
     rows = self._finalize_rows(rows, cat, order, limit)
     self._baseline_rows = list(rows)
@@ -264,7 +264,7 @@ class StringStats(QWidget):
       self.model.setData(rows)
 
   def _targets_from_rows(self, rows, cat):
-    kind = ana_what_kind(cat)
+    kind = analysis_what_kind(cat)
     return [(kind, r[0], r[1]) for r in rows]
 
   def _row_idx(self, idx):
@@ -273,15 +273,15 @@ class StringStats(QWidget):
   def _drill_row(self, idx):
     if idx is None or idx.row() >= len(self.model.words):
       return
-    cat = Settings.get('ana_what')
+    cat = Settings.get('analysis_what')
     self.startDrill.emit(self._targets_from_rows([self.model.words[idx.row()]], cat))
 
   def _find_in_corpus(self, idx):
     if idx is None or idx.row() >= len(self.model.words):
       return
-    cat = Settings.get('ana_what')
+    cat = Settings.get('analysis_what')
     row = self.model.words[idx.row()]
-    kind = ana_what_kind(cat)
+    kind = analysis_what_kind(cat)
     v = find_text_for_target(DB, kind, row[0])
     if v:
       self.clear_corpus_msg()
@@ -320,7 +320,7 @@ class StringStats(QWidget):
   def _delete_target(self, idx):
     if idx is None or idx.row() >= len(self.model.words):
       return
-    cat = Settings.get('ana_what')
+    cat = Settings.get('analysis_what')
     data = self.model.words[idx.row()][0]
     if QMessageBox.question(
         self, 'Delete from database',
