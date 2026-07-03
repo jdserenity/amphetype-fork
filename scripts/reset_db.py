@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Clear typing stats from the app DB; keep imported books/sources and book progress.
+"""Clear typing stats; keep imported books, sources, and book reading progress.
 
   python scripts/reset_db.py [path/to.db]
 
-Backs up the current file as <name>.bak-<timestamp> beside it before changing anything.
-Uses the app DB if no path given (typing_program.ini, then typing_program/data/<user>.db, then
-~/Library/Application Support/typing-program/<user>.db).
+From anywhere in the repo (or pass an absolute path to your .db file).
+Backs up the database as <name>.bak-<timestamp> beside it before clearing stats.
+
+Without a path, uses the same database location as the running app:
+  - TYPING_PROGRAM_LOCAL=1 → typing_program/data/<user>.db
+  - db_name= in typing_program.ini or TYPING_PROGRAM_SETTINGS
+  - otherwise ~/Library/Application Support/Typing Program/<user>.db, with legacy
+    ~/Library/Application Support/amphetype/<user>.db when that still holds your data
 """
 
-import getpass
-import re
 import shutil
 import sqlite3
 import sys
@@ -19,30 +22,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from typing_program.db_paths import find_database_path  # noqa: E402
 from typing_program.reset_stats import reset_typing_stats  # noqa: E402
 
 
-def _default_db_path():
-  ini = ROOT / "typing_program/data/typing_program.ini"
-  if ini.is_file():
-    for line in ini.read_text(encoding='utf-8').splitlines():
-      if line.startswith('db_name='):
-        p = Path(line.split('=', 1)[1].strip())
-        if p.is_file():
-          return p
-  user = re.sub(r'[^a-z0-9_-]', '', getpass.getuser(), flags=re.I) or 'user'
-  local = ROOT / "typing_program/data" / f"{user}.db"
-  default = Path.home() / "Library/Application Support/typing-program" / f"{user}.db"
-  if local.is_file():
-    return local
-  if default.is_file():
-    return default
-  return default
-
-
 def _backup_db(db_path):
-  if not db_path.is_file():
-    return None
   stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
   bak = db_path.with_name('%s.bak-%s' % (db_path.name, stamp))
   shutil.copy2(db_path, bak)
@@ -50,19 +34,30 @@ def _backup_db(db_path):
 
 
 def main():
-  db_path = Path(sys.argv[1]) if len(sys.argv) > 1 else _default_db_path()
-  if not db_path.is_file():
-    print('No database at %s' % db_path, file=sys.stderr)
+  explicit = sys.argv[1] if len(sys.argv) > 1 else None
+  db_path, tried = find_database_path(explicit)
+  if db_path is None:
+    print('Could not find a database file.', file=sys.stderr)
+    if explicit:
+      print('Not found: %s' % tried[0], file=sys.stderr)
+    else:
+      print('Checked:', file=sys.stderr)
+      for p in tried:
+        print('  %s' % p, file=sys.stderr)
+    print('Usage: python scripts/reset_db.py [path/to.db]', file=sys.stderr)
     sys.exit(1)
   bak = _backup_db(db_path)
-  if bak is not None:
-    print('Backup: %s' % bak)
+  print('Backup: %s' % bak)
   conn = sqlite3.connect(str(db_path))
   try:
     reset_typing_stats(conn)
+  except RuntimeError as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
   finally:
     conn.close()
-  print('Typing stats cleared (books, sources, and book progress kept): %s' % db_path)
+  print('Typing stats cleared (books, sources, and book progress kept).')
+  print('Database: %s' % db_path)
 
 
 if __name__ == '__main__':

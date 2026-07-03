@@ -3,12 +3,9 @@
 
   python scripts/backfill_corpus_index.py [path/to.db]
 
-Uses the app DB if no path given (typing_program.ini, then typing_program/data/<user>.db, then
-~/Library/Application Support/typing-program/<user>.db). New imports are indexed automatically.
+Uses the app DB if no path given (see typing_program/db_paths.py). New imports are indexed automatically.
 """
 
-import getpass
-import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -16,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from typing_program.db_paths import find_database_path  # noqa: E402
 from typing_program.text_index import backfill_corpus_index, ensure_corpus_index  # noqa: E402
 
 
@@ -26,28 +24,13 @@ class _DB:
     return self._conn.execute(sql, params)
 
 
-def _default_db_path():
-  ini = ROOT / "typing_program/data/typing_program.ini"
-  if ini.is_file():
-    for line in ini.read_text(encoding='utf-8').splitlines():
-      if line.startswith('db_name='):
-        p = Path(line.split('=', 1)[1].strip())
-        if p.is_file():
-          return p
-  user = re.sub(r'[^a-z0-9_-]', '', getpass.getuser(), flags=re.I) or 'user'
-  local = ROOT / "typing_program/data" / f"{user}.db"
-  default = Path.home() / "Library/Application Support/typing-program" / f"{user}.db"
-  if local.is_file():
-    return local
-  if default.is_file():
-    return default
-  return default
-
-
 def main():
-  db_path = Path(sys.argv[1]) if len(sys.argv) > 1 else _default_db_path()
-  if not db_path.is_file():
-    print("No database at %s" % db_path, file=sys.stderr)
+  explicit = sys.argv[1] if len(sys.argv) > 1 else None
+  db_path, tried = find_database_path(explicit)
+  if db_path is None:
+    print('Could not find a database file.', file=sys.stderr)
+    for p in tried:
+      print('  %s' % p, file=sys.stderr)
     sys.exit(1)
   conn = sqlite3.connect(str(db_path))
   db = _DB(conn)
