@@ -13,6 +13,7 @@ from pathlib import Path
 import logging as log
 
 from typing_program.settings import FSettings
+from typing_program.legacy_data import migrate_legacy_settings, resolve_database_path
 
 
 def get_default_db_name():
@@ -145,6 +146,7 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
       super().__init__(filename=str(DATA_DIR / 'typing_program.ini'))
     else:
       super().__init__(appname='typing-program')
+      migrate_legacy_settings(self)
 
     # Set some runtime defaults here.
 
@@ -159,7 +161,7 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
         pth.mkdir(parents=True, exist_ok=True)
       else:
         pth = DATA_DIR
-      _dbname = str(pth / get_default_db_name())
+      _dbname = str(resolve_database_path(pth, get_default_db_name()))
     
     self.defaults['db_name'] = _dbname
 
