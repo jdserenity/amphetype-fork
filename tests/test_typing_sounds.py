@@ -4,7 +4,7 @@ import pytest
 
 pytest.importorskip('PyQt5')
 
-from amphetype.typing_sounds import (
+from typing_program.typing_sounds import (
   TypingSoundPlayer,
   default_typing_error_sound_id,
   default_typing_sound_id,

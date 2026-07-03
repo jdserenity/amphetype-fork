@@ -2,7 +2,7 @@
 
 import pytest
 
-from amphetype.session_timer import FocusedSessionTimer, format_session_label
+from typing_program.session_timer import FocusedSessionTimer, format_session_label
 
 
 def test_format_session_label():
@@ -14,7 +14,7 @@ def test_format_session_label():
 
 def test_focused_session_timer_runs_only_while_resumed(monkeypatch):
   times = [0.0, 10.0, 10.0, 25.0, 40.0]
-  monkeypatch.setattr('amphetype.session_timer.timer', lambda: times.pop(0) if times else 40.0)
+  monkeypatch.setattr('typing_program.session_timer.timer', lambda: times.pop(0) if times else 40.0)
 
   t = FocusedSessionTimer()
   t.resume()

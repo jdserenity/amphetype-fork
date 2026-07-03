@@ -2,11 +2,11 @@
 
 import sqlite3
 
-from amphetype.improve_mode import (
+from typing_program.improve_mode import (
   IMPROVE_SUBMODE_DAMAGE, IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_NORMAL,
   IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST, fetch_improve_submode_targets,
 )
-from amphetype.stats_query import STAT_TYPE_WORD
+from typing_program.stats_query import STAT_TYPE_WORD
 
 
 class _MedianAggregate(list):

@@ -2,7 +2,7 @@
 
 import pytest
 
-from amphetype.timingtuple import RunStats, collect_run_stat_rows
+from typing_program.timingtuple import RunStats, collect_run_stat_rows
 
 
 def test_timed_words_includes_short_words():
@@ -16,7 +16,7 @@ def test_timed_words_includes_short_words():
 def test_run_stats_pause_excludes_idle_time(monkeypatch):
   # First key at 0, pause at 1, resume after 60s idle at 61, second key immediately.
   times = [0.0, 1.0, 61.0, 61.0]
-  monkeypatch.setattr('amphetype.timingtuple.timer', lambda: times.pop(0) if times else 61.0)
+  monkeypatch.setattr('typing_program.timingtuple.timer', lambda: times.pop(0) if times else 61.0)
 
   run = RunStats.make('ab', started=0.0)
   run.visit(True)
@@ -32,7 +32,7 @@ def test_run_stats_pause_excludes_idle_time(monkeypatch):
 
 def test_three_letter_words_saved_as_word_type_not_trigram(qapp):
   from PyQt5.QtGui import QFont
-  from amphetype.typer import LessonDocument
+  from typing_program.typer import LessonDocument
   doc = LessonDocument(QFont('Arial', 12))
   doc.set_text('the of ')
   for ch in 'the of ':

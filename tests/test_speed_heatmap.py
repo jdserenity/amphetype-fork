@@ -2,7 +2,7 @@
 
 import pytest
 
-from amphetype.speed_heatmap import (
+from typing_program.speed_heatmap import (
   MODE_CHAR, MODE_TRIGRAM, MODE_WORD,
   WPM_BUCKETS, char_heatmap_colors, fetch_speed_stats, spc_to_wpm, wpm_color, wpm_color_q,
 )
@@ -31,7 +31,7 @@ def test_wpm_color_none_for_unknown():
 
 def test_heatmap_legend_widget_spacing(qapp):
   from PyQt5.QtWidgets import QHBoxLayout
-  from amphetype.speed_heatmap import make_heatmap_legend
+  from typing_program.speed_heatmap import make_heatmap_legend
   w = make_heatmap_legend()
   lay = w.layout()
   assert isinstance(lay, QHBoxLayout)
@@ -107,7 +107,7 @@ def test_display_text_newline_after_return_char():
 def test_book_return_role_triple_newline():
   ret = '\u23ce'
   match = 'a' + ret + ret + ret + 'c'
-  from amphetype.speed_heatmap import book_return_role
+  from typing_program.speed_heatmap import book_return_role
   assert book_return_role(match, 1, ret) == 'para_enter'
   assert book_return_role(match, 2, ret) == 'para_tail'
   assert book_return_role(match, 3, ret) == 'para_tail'

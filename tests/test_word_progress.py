@@ -5,9 +5,9 @@ import time
 
 import pytest
 
-from amphetype.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED
-from amphetype.timingtuple import RunStats
-from amphetype.word_progress import (
+from typing_program.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED
+from typing_program.timingtuple import RunStats
+from typing_program.word_progress import (
   analyze_run_progress, avg_wpm_bump, fetch_word_baselines, format_progress_html,
   improved_word_spans, lesson_words, lifetime_wpm_gain, median_wpm_bump,
   new_word_spans, progress_badges_for_run, word_wpm_from_slice,

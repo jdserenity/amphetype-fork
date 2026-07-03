@@ -2,9 +2,9 @@
 
 import pytest
 
-from amphetype.PerformanceAnalysis import PerformanceAnalysis
-from amphetype.StatWidgets import StringStats, WordModel, AnalysisSortCombo
-from amphetype.stats_query import STAT_TYPE_WORD
+from typing_program.PerformanceAnalysis import PerformanceAnalysis
+from typing_program.StatWidgets import StringStats, WordModel, AnalysisSortCombo
+from typing_program.stats_query import STAT_TYPE_WORD
 
 
 def _sample_rows():
@@ -30,10 +30,10 @@ def test_performance_analysis_composes_sections(qapp):
 
 def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   monkeypatch.setattr(
-    'amphetype.PerformanceAnalysis.count_unique_typed',
+    'typing_program.PerformanceAnalysis.count_unique_typed',
     lambda db, hist, tp: 42)
   monkeypatch.setattr(
-    'amphetype.PerformanceAnalysis.aggregate_session_wpm_from_results',
+    'typing_program.PerformanceAnalysis.aggregate_session_wpm_from_results',
     lambda db, hist: 74.5)
   pa = PerformanceAnalysis()
   pa.updateAll()
@@ -42,12 +42,12 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
 
 
 def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
-  from amphetype.Amphetype import AmphetypeWindow
+  from typing_program.mainwindow import MainWindow
   calls = []
   monkeypatch.setattr(
-    'amphetype.PerformanceAnalysis.PerformanceAnalysis.updateAll',
+    'typing_program.PerformanceAnalysis.PerformanceAnalysis.updateAll',
     lambda self, *a: calls.append(1))
-  w = AmphetypeWindow()
+  w = MainWindow()
   tabs = w.centralWidget()
   perf_idx = tabs.indexOf(tabs.widget(1))
   tabs.setCurrentIndex(0)
@@ -57,9 +57,9 @@ def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
 
 
 def test_performance_analysis_avg_wpm_shows_dash_when_no_data(qapp, monkeypatch):
-  monkeypatch.setattr('amphetype.PerformanceAnalysis.count_unique_typed', lambda *a: 0)
+  monkeypatch.setattr('typing_program.PerformanceAnalysis.count_unique_typed', lambda *a: 0)
   monkeypatch.setattr(
-    'amphetype.PerformanceAnalysis.aggregate_session_wpm_from_results',
+    'typing_program.PerformanceAnalysis.aggregate_session_wpm_from_results',
     lambda db, hist: None)
   pa = PerformanceAnalysis()
   pa.updateAll()
@@ -113,10 +113,10 @@ def test_string_stats_most_improved_sort(qapp, monkeypatch):
       'ana_count': 1,
     }.get(key, 0)
 
-  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
-  monkeypatch.setattr('amphetype.StatWidgets.DB.fetchall', lambda sql, args: pool_rows)
+  monkeypatch.setattr('typing_program.StatWidgets.Settings.get', fake_get)
+  monkeypatch.setattr('typing_program.StatWidgets.DB.fetchall', lambda sql, args: pool_rows)
   monkeypatch.setattr(
-    'amphetype.StatWidgets.fetch_first_sample_wpm',
+    'typing_program.StatWidgets.fetch_first_sample_wpm',
     lambda db, tp, keys: {'slow': 30.0, 'fast': 70.0})
   st.update()
   assert [r[0] for r in st.model.words] == ['slow', 'fast']
@@ -138,18 +138,18 @@ def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
       'ana_count': 1,
     }.get(key, 0)
 
-  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
-  monkeypatch.setattr('amphetype.StatWidgets.DB.fetchall', lambda sql, args: pool_rows)
+  monkeypatch.setattr('typing_program.StatWidgets.Settings.get', fake_get)
+  monkeypatch.setattr('typing_program.StatWidgets.DB.fetchall', lambda sql, args: pool_rows)
   monkeypatch.setattr(
-    'amphetype.StatWidgets.fetch_first_sample_wpm',
+    'typing_program.StatWidgets.fetch_first_sample_wpm',
     lambda db, tp, keys: {'once': 30.0})
   st.update()
   assert st.model.words[0][2] is None
 
 
 def test_main_window_title(qapp):
-  from amphetype.Amphetype import AmphetypeWindow
-  w = AmphetypeWindow()
+  from typing_program.mainwindow import MainWindow
+  w = MainWindow()
   assert w.windowTitle() == 'Typing Program That Helps You Type Better'
 
 
@@ -162,23 +162,23 @@ def test_analysis_sort_combo_hides_most_improved_for_keys(qapp, monkeypatch):
   def fake_set(k, v):
     store[k] = v
 
-  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', fake_get)
-  monkeypatch.setattr('amphetype.StatWidgets.Settings.set', fake_set)
+  monkeypatch.setattr('typing_program.StatWidgets.Settings.get', fake_get)
+  monkeypatch.setattr('typing_program.StatWidgets.Settings.set', fake_set)
   combo = AnalysisSortCombo()
   assert store['ana_which'] == 'damage desc'
   assert 'most improved' not in [combo.itemText(i) for i in range(combo.count())]
 
 
 def test_analysis_sort_combo_shows_most_improved_for_words(qapp, monkeypatch):
-  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', lambda k: {'ana_what': 2, 'ana_which': 'improved desc'}.get(k, 0))
+  monkeypatch.setattr('typing_program.StatWidgets.Settings.get', lambda k: {'ana_what': 2, 'ana_which': 'improved desc'}.get(k, 0))
   combo = AnalysisSortCombo()
   assert 'most improved' in [combo.itemText(i) for i in range(combo.count())]
   assert combo._keys[-1] == 'improved desc'
 
 
 def test_main_window_has_performance_analysis_tab(qapp):
-  from amphetype.Amphetype import AmphetypeWindow
-  w = AmphetypeWindow()
+  from typing_program.mainwindow import MainWindow
+  w = MainWindow()
   tabs = w.centralWidget()
   labels = [tabs.tabText(i) for i in range(tabs.count())]
   assert labels == ["Typer", "Performance Analysis", "Preferences"]
@@ -188,7 +188,7 @@ def test_string_stats_search_shows_all_matches(qapp, monkeypatch):
   st = StringStats()
   monkeypatch.setattr(st, '_query_rows', lambda *a: (_sample_rows(), 2))
   monkeypatch.setattr(
-    'amphetype.StatWidgets.fetch_analysis_search',
+    'typing_program.StatWidgets.fetch_analysis_search',
     lambda *a: [['alpha', 80.0, 99.0, 1.0, 10, 0, 0, 50.0]])
   st.update()
   st._search_edit.setText('alp')
@@ -201,7 +201,7 @@ def test_string_stats_clear_search_restores_baseline(qapp, monkeypatch):
   st = StringStats()
   monkeypatch.setattr(st, '_query_rows', lambda *a: (_sample_rows(), 2))
   monkeypatch.setattr(
-    'amphetype.StatWidgets.fetch_analysis_search',
+    'typing_program.StatWidgets.fetch_analysis_search',
     lambda *a: [['beta', 70.0, 98.0, 1.0, 8, 0, 0, 40.0]])
   st.update()
   st._search_edit.setText('bet')
@@ -215,7 +215,7 @@ def test_string_stats_search_btn_returns_to_search_when_term_edited(qapp, monkey
   st = StringStats()
   monkeypatch.setattr(st, '_query_rows', lambda *a: (_sample_rows(), 2))
   monkeypatch.setattr(
-    'amphetype.StatWidgets.fetch_analysis_search',
+    'typing_program.StatWidgets.fetch_analysis_search',
     lambda *a: [['alpha', 80.0, 99.0, 1.0, 10, 0, 0, 50.0]])
   st.update()
   st._search_edit.setText('alpha')
@@ -239,13 +239,13 @@ def test_string_stats_delete_target_after_confirm(qapp, monkeypatch):
   from PyQt5.QtWidgets import QMessageBox
   st = StringStats()
   st.model.setData(_sample_rows())
-  monkeypatch.setattr('amphetype.StatWidgets.Settings.get', lambda k: 2 if k == 'ana_what' else 0)
-  monkeypatch.setattr('amphetype.StatWidgets.QMessageBox.question', lambda *a: QMessageBox.Yes)
+  monkeypatch.setattr('typing_program.StatWidgets.Settings.get', lambda k: 2 if k == 'ana_what' else 0)
+  monkeypatch.setattr('typing_program.StatWidgets.QMessageBox.question', lambda *a: QMessageBox.Yes)
   deleted = []
   monkeypatch.setattr(
-    'amphetype.StatWidgets.delete_stat_target',
+    'typing_program.StatWidgets.delete_stat_target',
     lambda db, tp, data: deleted.append((tp, data)) or 1)
-  monkeypatch.setattr('amphetype.StatWidgets.DB.commit', lambda: None)
+  monkeypatch.setattr('typing_program.StatWidgets.DB.commit', lambda: None)
   monkeypatch.setattr(st, 'update', lambda *a: None)
   emitted = []
   st.statsChanged.connect(lambda: emitted.append(1))
@@ -259,9 +259,9 @@ def test_string_stats_delete_cancelled(qapp, monkeypatch):
   from PyQt5.QtWidgets import QMessageBox
   st = StringStats()
   st.model.setData(_sample_rows())
-  monkeypatch.setattr('amphetype.StatWidgets.QMessageBox.question', lambda *a: QMessageBox.No)
+  monkeypatch.setattr('typing_program.StatWidgets.QMessageBox.question', lambda *a: QMessageBox.No)
   deleted = []
-  monkeypatch.setattr('amphetype.StatWidgets.delete_stat_target', lambda *a: deleted.append(1))
+  monkeypatch.setattr('typing_program.StatWidgets.delete_stat_target', lambda *a: deleted.append(1))
   st._delete_target(st.model.index(0, 0, QModelIndex()))
   assert deleted == []
   assert len(st.model.words) == 3
@@ -272,7 +272,7 @@ def test_performance_analysis_hide_clears_stats_search(qapp, monkeypatch):
   pa = PerformanceAnalysis()
   monkeypatch.setattr(pa.st, '_query_rows', lambda *a: (_sample_rows(), STAT_TYPE_WORD))
   monkeypatch.setattr(
-    'amphetype.StatWidgets.fetch_analysis_search',
+    'typing_program.StatWidgets.fetch_analysis_search',
     lambda *a: [['alpha', 80.0, 99.0, 1.0, 10, 0, 0, 50.0]])
   pa.st.update()
   pa.st._search_edit.setText('alpha')

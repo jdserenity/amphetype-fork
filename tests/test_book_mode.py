@@ -6,8 +6,8 @@ import time
 
 import pytest
 
-from amphetype.Data import AmphDatabase
-from amphetype.book_mode import (
+from typing_program.Data import AppDatabase
+from typing_program.book_mode import (
   BookCatalog,
   done_chunk_count,
   ensure_practice_mode_migrated,
@@ -135,7 +135,7 @@ def test_practice_mode_migration_skips_when_v3():
 
 
 def _mem_db():
-  return sqlite3.connect(':memory:', 5, 0, 'DEFERRED', False, AmphDatabase)
+  return sqlite3.connect(':memory:', 5, 0, 'DEFERRED', False, AppDatabase)
 
 
 def test_book_progress_db():
@@ -225,7 +225,7 @@ def test_book_catalog_caches_chapters(tmp_path):
 
 def test_book_chunk_result_row_records_char_count_and_duration():
   """Book chunks use hash text_ids; result rows still get char_count + duration like other modes."""
-  from amphetype.stats_query import aggregate_session_wpm_from_results
+  from typing_program.stats_query import aggregate_session_wpm_from_results
   conn = sqlite3.connect(':memory:')
   conn.executescript("""
     create table result (w real, text_id text, source integer, wpm real, accuracy real, viscosity real, char_count integer, duration real);

@@ -1,6 +1,6 @@
 """Unit tests for read-ahead word hiding logic."""
 
-from amphetype.read_ahead import (
+from typing_program.read_ahead import (
   READ_AHEAD_OFF, READ_AHEAD_NORMAL, READ_AHEAD_EASY, READ_AHEAD_HARD,
   READ_AHEAD_LEVEL_NORMAL, READ_AHEAD_LEVEL_HARD, READ_AHEAD_LEVEL_EASY,
   current_word_index, hidden_word_indices, hidden_char_indices, word_spans,

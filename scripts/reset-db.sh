@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wipe Amphetype stats/texts and recreate an empty schema.
+# Wipe Typing Program stats/texts and recreate an empty schema.
 # Backs up the current file as jd.db.bak-<timestamp> beside it.
 set -euo pipefail
 
@@ -7,14 +7,14 @@ if [ -n "${1:-}" ]; then
   DB="$1"
 else
   ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  if [ -f "$ROOT/amphetype/data/amphetype.ini" ]; then
+  if [ -f "$ROOT/typing_program/data/typing_program.ini" ]; then
     # Portable / --local: ini may override db_name
-    DB="$(grep -E '^db_name=' "$ROOT/amphetype/data/amphetype.ini" 2>/dev/null | cut -d= -f2- || true)"
+    DB="$(grep -E '^db_name=' "$ROOT/typing_program/data/typing_program.ini" 2>/dev/null | cut -d= -f2- || true)"
   fi
   if [ -z "${DB:-}" ] || [ ! -f "$DB" ]; then
   USER="$(python3 -c "import getpass,re; u=re.sub(r'[^a-z0-9_-]','',getpass.getuser(),flags=re.I) or 'user'; print(u)")"
-    LOCAL="$ROOT/amphetype/data/${USER}.db"
-    DEFAULT="${HOME}/Library/Application Support/amphetype/${USER}.db"
+    LOCAL="$ROOT/typing_program/data/${USER}.db"
+    DEFAULT="${HOME}/Library/Application Support/typing-program/${USER}.db"
     if [ -f "$LOCAL" ]; then
       DB="$LOCAL"
     elif [ -f "$DEFAULT" ]; then

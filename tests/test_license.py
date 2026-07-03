@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from amphetype.license import (
+from typing_program.license import (
   activate,
   clear_license,
   is_validate_ok,
@@ -64,7 +64,7 @@ def test_activate_success():
 
 
 def test_activate_failure():
-  from amphetype.license import LicenseError
+  from typing_program.license import LicenseError
   with pytest.raises(LicenseError, match='activation limit'):
     activate('key-abc', 'machine-a', opener=_mock_opener(ACTIVATE_FAIL))
 

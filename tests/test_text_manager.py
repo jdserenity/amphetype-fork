@@ -3,14 +3,14 @@ import sqlite3
 
 import pytest
 
-from amphetype.Data import AmphDatabase
+from typing_program.Data import AppDatabase
 
 
 @pytest.fixture
 def db(tmp_path, monkeypatch):
   path = tmp_path / 'test.db'
-  conn = sqlite3.connect(str(path), 5, 0, 'DEFERRED', False, AmphDatabase)
-  monkeypatch.setattr('amphetype.TextManager.DB', conn)
+  conn = sqlite3.connect(str(path), 5, 0, 'DEFERRED', False, AppDatabase)
+  monkeypatch.setattr('typing_program.TextManager.DB', conn)
   return conn
 
 
@@ -22,7 +22,7 @@ def _insert_text(db, source_id, content):
 
 
 def test_addTexts_replace_removes_old_lessons(db):
-  from amphetype.TextManager import TextManager
+  from typing_program.TextManager import TextManager
 
   tm = TextManager()
   sid = db.getSource('Kafka, Franz - Metamorphosis.txt')

@@ -1,0 +1,191 @@
+
+from typing_program import *
+import sys
+import logging as log
+
+# The order of the code and imports here is important (and a kludge).
+# Due to being young and stupid I made the module files do weird
+# initialization stuff on import, and some of them depend on each
+# other.
+
+# Init QT and set appname.
+from PyQt5.QtWidgets import *
+class TypingProgramApp(QApplication):
+  def __init__(self, *args, **kwargs):
+    super().__init__(sys.argv, *args, applicationName='Typing Program', **kwargs)
+
+
+app = TypingProgramApp()
+
+# Import Config.py; this will do argument parsing and set up the
+# global var "Settings".
+from typing_program.Config import Settings
+app.settings = Settings
+
+# Only AFTER settings has been initialized, import database:
+from typing_program.Data import DB
+from typing_program.app_meta import PREFERENCES_TAB_KEY, get_app_meta_int, set_app_meta_int
+app.DB = DB
+
+# After this we can do whatever we want.
+
+import os
+from pathlib import Path
+from typing_program.TextManager import TextManager
+from typing_program.PerformanceAnalysis import PerformanceAnalysis
+from typing_program.Config import GeneralOptions, TyperOptions
+from typing_program.Lesson import LessonGenerator
+
+from typing_program.typer import TyperWindow
+from typing_program.session_timer import FocusedSessionTimer, SessionTimerLabel
+from typing_program.fwidgets import scroll_widget
+from typing_program.QtUtil import center_widget_on_screen
+
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+
+
+class MainWindow(QMainWindow):
+  def __init__(self, *args):
+    super().__init__(*args)
+
+    self.setWindowTitle('Typing Program That Helps You Type Better')
+
+    self.quitSc = QShortcut(QKeySequence('Ctrl+Q'), self)
+    self.quitSc.activated.connect(QApplication.instance().quit)
+    
+    tabs = QTabWidget()
+
+    tw = TyperWindow()
+    tabs.addTab(tw, "Typer")
+
+    tm = TextManager()
+    tm.gotoText.connect(lambda: tabs.setCurrentIndex(0))
+
+    pa = PerformanceAnalysis()
+    pa.gotoText.connect(lambda: tabs.setCurrentIndex(0))
+    tabs.addTab(pa, "Performance Analysis")
+    perf_tab_idx = tabs.indexOf(pa)
+    tabs.currentChanged.connect(lambda i: pa.updateAll() if i == perf_tab_idx else None)
+
+    # LessonGenerator not shown as a tab; kept for auto_review (wantReview → newReview).
+    lg = LessonGenerator()
+    lg.newLessons.connect(lambda: tabs.setCurrentIndex(1))
+    lg.newLessons.connect(tm.addTexts)
+    lg.newReview.connect(tm.newReview)
+
+    pa.setText.connect(tm.emit_text)
+    pa.setText.connect(tw.setText)
+    tm.setText.connect(tw.setText)
+    tw.wantText.connect(tm.nextText)
+    tw.needWeakspotLesson.connect(tm.newWeakspot)
+    tw.wantReview.connect(lg.wantReview)
+    tw.statsChanged.connect(pa.updateAll)
+    pa.st.statsChanged.connect(pa.updateAll)
+    pa.st.statsChanged.connect(tw._weakspot.on_stats_changed)
+    pa.startDrill.connect(tw.start_focus_drill)
+    pa.loadCorpusText.connect(tw.load_corpus_text)
+
+    pw = QTabWidget()
+    pw.addTab(scroll_widget(GeneralOptions()), "General Options")
+    pw.addTab(scroll_widget(TyperOptions()), "Typer Options")
+    pw.addTab(scroll_widget(tm), "Sources")
+    prefs_tab = get_app_meta_int(DB, PREFERENCES_TAB_KEY, 0)
+    if 0 <= prefs_tab < pw.count():
+      pw.setCurrentIndex(prefs_tab)
+    pw.currentChanged.connect(lambda i: set_app_meta_int(DB, PREFERENCES_TAB_KEY, i))
+    tabs.addTab(pw, "Preferences")
+
+    def goto_sources():
+      tabs.setCurrentWidget(pw)
+      pw.setCurrentWidget(tm)
+    lg.newLessons.connect(goto_sources)
+
+    self._session_timer = FocusedSessionTimer()
+    self._session_clock = SessionTimerLabel(self._session_timer, tabs)
+    self._session_clock.start()
+    self._session_clock.textChanged.connect(self._reposition_session_clock)
+    tabs.installEventFilter(self)
+
+    self.setCentralWidget(tabs)
+    self._window_placed = False
+    Settings.signal_for('show_session_timer').connect(lambda *_: self._apply_session_clock_visible())
+    self._apply_session_clock_visible()
+    if self.isActiveWindow():
+      self._session_timer.resume()
+
+    pm = Settings.get('practice_mode')
+    if pm == 2:
+      tm.nextText()
+    elif pm == 1:
+      tw._book.request_lesson(advance_chapter=False)
+
+  def _apply_session_clock_visible(self):
+    on = bool(Settings.get('show_session_timer'))
+    self._session_clock.setVisible(on)
+    if on:
+      self._reposition_session_clock()
+
+  def _reposition_session_clock(self):
+    tabs = self.centralWidget()
+    if tabs is None or not self._session_clock.isVisible():
+      return
+    y = tabs.tabBar().height() - 5
+    self._session_clock.adjustSize()
+    self._session_clock.move(tabs.width() - self._session_clock.width() - 2, y)
+    self._session_clock.raise_()
+
+  def eventFilter(self, obj, evt):
+    if obj is self.centralWidget() and evt.type() in (QEvent.Resize, QEvent.Show):
+      self._reposition_session_clock()
+    return super().eventFilter(obj, evt)
+
+  def showEvent(self, evt):
+    super().showEvent(evt)
+    if not self._window_placed:
+      self.resize(self.sizeHint())
+      center_widget_on_screen(self)
+      self._window_placed = True
+    self._reposition_session_clock()
+
+  def changeEvent(self, evt):
+    if evt.type() == QEvent.ActivationChange:
+      if self.isActiveWindow():
+        self._session_timer.resume()
+      else:
+        self._session_timer.pause()
+    super().changeEvent(evt)
+
+  def sizeHint(self):
+    return QSize(1100, 712)
+
+class AboutWidget(QTextBrowser):
+  def __init__(self, *args):
+    try:
+      html = (Settings.DATA_DIR / "about.html").open('r').read()
+    except:
+      html = "Typing Program v.${VERSION}<br />about.html file missing or could not be loaded!"
+    html = html.replace('${VERSION}', __version__)
+    super(AboutWidget, self).__init__(*args)
+    self.setHtml(html)
+    self.setOpenExternalLinks(True)
+    #self.setMargin(40)
+    self.setReadOnly(True)
+
+
+def set_qt_css(fname):
+  if fname == '<none>':
+    app.setStyleSheet('')
+  else:
+    if Path(fname).is_file():
+      with Path(fname).open('r') as f:
+        app.setStyleSheet(f.read())
+    else:
+      log.warn('file not found: %s', fname)
+
+Settings.signal_for('qt_css').connect(set_qt_css)
+set_qt_css(Settings.get('qt_css'))
+
+Settings.signal_for('qt_style').connect(app.setStyle)
+app.setStyle(Settings.get('qt_style'))
+

@@ -27,8 +27,8 @@ def test_index_has_required_sections(index_html):
     assert fragment in index_html
 
 
-def test_index_no_amphetype_branding(index_html):
-  assert "amphetype" not in index_html.lower()
+def test_index_no_typing_program_branding(index_html):
+  assert "typing_program" not in index_html.lower()
   assert "colemak" not in index_html.lower()
 
 

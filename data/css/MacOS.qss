@@ -5,7 +5,7 @@
  * Last updated: 25/12/2020, 23:10.
  * Available at: https://github.com/GTRONICK/QSS/blob/master/MacOS.qss
  
-- modified by fransh for amphetype, 2021-02-05
+- modified by fransh for Typing Program, 2021-02-05
  */
 
 QTreeView,QListView {

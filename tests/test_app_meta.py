@@ -2,8 +2,8 @@
 
 import sqlite3
 
-from amphetype.Data import AmphDatabase
-from amphetype.app_meta import (
+from typing_program.Data import AppDatabase
+from typing_program.app_meta import (
   PREFERENCES_TAB_KEY,
   ensure_app_meta,
   get_app_meta_int,
@@ -12,7 +12,7 @@ from amphetype.app_meta import (
 
 
 def _mem_db():
-  return sqlite3.connect(':memory:', 5, 0, 'DEFERRED', False, AmphDatabase)
+  return sqlite3.connect(':memory:', 5, 0, 'DEFERRED', False, AppDatabase)
 
 
 def test_app_meta_table_created_on_migration():

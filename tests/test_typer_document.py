@@ -19,12 +19,12 @@ _qt_app = QApplication.instance()
 if _qt_app is None:
   _qt_app = QApplication(sys.argv)
 
-from amphetype.typer import (
+from typing_program.typer import (
   LessonDocument, RETURN_CHAR, MODE_CORPUS, MODE_IMPROVE, Cursor,
   format_source_attribution, lesson_completion_action, _NO_FILL_STYLE_ATTRS,
 )
-from amphetype.book_mode import MODE_BOOK
-from amphetype.timingtuple import RunStats, IDLE_THRESHOLD
+from typing_program.book_mode import MODE_BOOK
+from typing_program.timingtuple import RunStats, IDLE_THRESHOLD
 
 
 def test_lesson_completion_action():
@@ -250,7 +250,7 @@ def test_return_char_handling(qapp):
 
 
 def test_runstats_basic_paths_used_by_document():
-    from amphetype.timingtuple import RunStats
+    from typing_program.timingtuple import RunStats
 
     run = RunStats.make("abc")
     assert run.index == 0
@@ -307,7 +307,7 @@ class _FakeTyperSettings:
 
 
 def test_heatmap_mode_switch_leaves_typed_chars_alone(qapp):
-  from amphetype.speed_heatmap import MODE_WORD, MODE_TRIGRAM
+  from typing_program.speed_heatmap import MODE_WORD, MODE_TRIGRAM
 
   doc = LessonDocument(QFont("Arial", 12))
   doc.set_text("abcd")
@@ -323,7 +323,7 @@ def test_heatmap_mode_switch_leaves_typed_chars_alone(qapp):
 
 
 def test_speed_heatmap_colors_matching_letters(qapp):
-  from amphetype.speed_heatmap import MODE_CHAR, wpm_color_q
+  from typing_program.speed_heatmap import MODE_CHAR, wpm_color_q
 
   doc = LessonDocument(QFont("Arial", 12))
   doc.set_text("ab")
@@ -335,7 +335,7 @@ def test_speed_heatmap_colors_matching_letters(qapp):
 
 
 def test_speed_heatmap_disabled_restores_default_foreground(qapp):
-  from amphetype.speed_heatmap import MODE_CHAR
+  from typing_program.speed_heatmap import MODE_CHAR
 
   doc = LessonDocument(QFont("Arial", 12))
   doc.set_text("a")
@@ -345,7 +345,7 @@ def test_speed_heatmap_disabled_restores_default_foreground(qapp):
 
 
 def test_read_ahead_preview_then_hides(qapp):
-  from amphetype.read_ahead import READ_AHEAD_NORMAL
+  from typing_program.read_ahead import READ_AHEAD_NORMAL
 
   page = QColor('#2a2a2a')
   doc = LessonDocument(QFont("Arial", 12))
@@ -377,8 +377,8 @@ def test_read_ahead_preview_then_hides(qapp):
 
 
 def test_read_ahead_mistake_reveals_only_current_hidden_word(qapp):
-  from amphetype.read_ahead import READ_AHEAD_HARD
-  from amphetype.typer import TyperWidget
+  from typing_program.read_ahead import READ_AHEAD_HARD
+  from typing_program.typer import TyperWidget
 
   page = QColor('#2a2a2a')
   doc = LessonDocument(QFont("Arial", 12))
@@ -403,7 +403,7 @@ def test_read_ahead_mistake_reveals_only_current_hidden_word(qapp):
 
 
 def test_read_ahead_off_shows_untyped_foreground(qapp):
-  from amphetype.read_ahead import READ_AHEAD_OFF
+  from typing_program.read_ahead import READ_AHEAD_OFF
 
   doc = LessonDocument(QFont("Arial", 12))
   doc.set_page_background(QColor('#2a2a2a'))
@@ -415,8 +415,8 @@ def test_read_ahead_off_shows_untyped_foreground(qapp):
 
 
 def test_read_ahead_with_heatmap_colors_visible_words(qapp):
-  from amphetype.read_ahead import READ_AHEAD_NORMAL
-  from amphetype.speed_heatmap import MODE_CHAR, wpm_color_q
+  from typing_program.read_ahead import READ_AHEAD_NORMAL
+  from typing_program.speed_heatmap import MODE_CHAR, wpm_color_q
 
   page = QColor('#2a2a2a')
   doc = LessonDocument(QFont("Arial", 12))
@@ -441,7 +441,7 @@ def test_read_ahead_with_heatmap_colors_visible_words(qapp):
 def test_widget_starts_immediately_without_space(qapp):
     """Primary behavior: inline typer no longer requires SPACE to begin a lesson (default)."""
     from PyQt5.QtGui import QFont
-    from amphetype.typer import TyperWidget, LessonDocument
+    from typing_program.typer import TyperWidget, LessonDocument
 
     S = _FakeTyperSettings(require_space=False)
     w = TyperWidget(S)
@@ -458,7 +458,7 @@ def test_widget_starts_immediately_without_space(qapp):
 
 def test_center_typing_vertically_with_book_prologue(qapp):
   from PyQt5.QtGui import QFont
-  from amphetype.typer import TyperWidget, LessonDocument
+  from typing_program.typer import TyperWidget, LessonDocument
 
   w = TyperWidget(_FakeTyperSettings())
   doc = LessonDocument(QFont("Arial", 12))
@@ -480,7 +480,7 @@ def test_center_typing_vertically_with_book_prologue(qapp):
 
 def test_center_typing_vertically_with_long_prologue(qapp):
   from PyQt5.QtGui import QFont
-  from amphetype.typer import TyperWidget, LessonDocument
+  from typing_program.typer import TyperWidget, LessonDocument
 
   w = TyperWidget(_FakeTyperSettings())
   doc = LessonDocument(QFont("Arial", 12))
@@ -502,7 +502,7 @@ def test_center_typing_vertically_with_long_prologue(qapp):
 def test_widget_still_respects_require_space_when_enabled(qapp):
     """The require_space setting still works if a user turns it back on."""
     from PyQt5.QtGui import QFont
-    from amphetype.typer import TyperWidget, LessonDocument
+    from typing_program.typer import TyperWidget, LessonDocument
 
     S = _FakeTyperSettings(require_space=True)
     w = TyperWidget(S)
@@ -521,7 +521,7 @@ def test_widget_still_respects_require_space_when_enabled(qapp):
 def test_escape_pauses_before_first_keystroke(qapp):
   from PyQt5.QtGui import QFont, QKeyEvent
   from PyQt5.QtCore import Qt
-  from amphetype.typer import TyperWidget, LessonDocument
+  from typing_program.typer import TyperWidget, LessonDocument
 
   w = TyperWidget(_FakeTyperSettings())
   doc = LessonDocument(QFont("Arial", 12))
@@ -545,7 +545,7 @@ def test_escape_pauses_before_first_keystroke(qapp):
 def test_escape_pauses_and_resumes_running_lesson(qapp):
   from PyQt5.QtGui import QFont, QKeyEvent
   from PyQt5.QtCore import Qt
-  from amphetype.typer import TyperWidget, LessonDocument
+  from typing_program.typer import TyperWidget, LessonDocument
 
   w = TyperWidget(_FakeTyperSettings())
   doc = LessonDocument(QFont("Arial", 12))
@@ -565,7 +565,7 @@ def test_escape_pauses_and_resumes_running_lesson(qapp):
 
 def test_pause_blocks_typing_until_resume(qapp):
   from PyQt5.QtGui import QFont
-  from amphetype.typer import TyperWidget, LessonDocument
+  from typing_program.typer import TyperWidget, LessonDocument
 
   w = TyperWidget(_FakeTyperSettings())
   doc = LessonDocument(QFont("Arial", 12))
@@ -591,7 +591,7 @@ def test_reset_clears_pause_state(qapp):
 
 
 def test_pause_overlay_buttons_stacked_with_new(qapp):
-  from amphetype.typer import _LessonPauseOverlay
+  from typing_program.typer import _LessonPauseOverlay
 
   o = _LessonPauseOverlay(None)
   fired = {'continue': 0, 'new': 0, 'restart': 0}
@@ -612,7 +612,7 @@ def _pause_key(key):
 
 def test_pause_overlay_arrow_keys_cycle_selection(qapp):
   from PyQt5.QtCore import Qt
-  from amphetype.typer import _LessonPauseOverlay
+  from typing_program.typer import _LessonPauseOverlay
 
   o = _LessonPauseOverlay(None)
   assert o.selected_index() == 0
@@ -630,7 +630,7 @@ def test_pause_overlay_arrow_keys_cycle_selection(qapp):
 
 def test_pause_overlay_enter_activates_selection(qapp):
   from PyQt5.QtCore import Qt
-  from amphetype.typer import _LessonPauseOverlay
+  from typing_program.typer import _LessonPauseOverlay
 
   o = _LessonPauseOverlay(None)
   fired = {'continue': 0, 'new': 0, 'restart': 0}
@@ -645,7 +645,7 @@ def test_pause_overlay_enter_activates_selection(qapp):
 def test_typer_arrow_keys_navigate_pause_menu(qapp):
   from PyQt5.QtCore import Qt
   from PyQt5.QtGui import QFont
-  from amphetype.typer import TyperWidget, LessonDocument, _LessonPauseOverlay
+  from typing_program.typer import TyperWidget, LessonDocument, _LessonPauseOverlay
 
   w = TyperWidget(_FakeTyperSettings())
   doc = LessonDocument(QFont("Arial", 12))
@@ -663,7 +663,7 @@ def test_typer_arrow_keys_navigate_pause_menu(qapp):
 
 def test_request_new_lesson_per_mode(qapp):
   from unittest.mock import MagicMock
-  from amphetype.typer import TyperWindow, MODE_NORMAL, MODE_BOOK, MODE_WEAKSPOT
+  from typing_program.typer import TyperWindow, MODE_NORMAL, MODE_BOOK, MODE_WEAKSPOT
 
   w = TyperWindow.__new__(TyperWindow)
   w._focus_drill = None
@@ -700,8 +700,8 @@ def test_request_new_lesson_per_mode(qapp):
 
 
 def test_continue_lesson_clears_progress_label(qapp):
-  import amphetype.Amphetype  # noqa: F401 — init app.settings for TyperWindow
-  from amphetype.typer import TyperWindow
+  import typing_program.mainwindow  # noqa: F401 — init app.settings for TyperWindow
+  from typing_program.typer import TyperWindow
 
   tw = TyperWindow()
   tw._awaiting_next = True
