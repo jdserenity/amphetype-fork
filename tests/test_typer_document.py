@@ -754,3 +754,61 @@ def test_active_duration_returns_none_when_no_timings():
 def test_active_duration_idle_threshold_constant_is_reasonable():
   # sanity: threshold should be between 1 and 10 seconds
   assert 1.0 <= IDLE_THRESHOLD <= 10.0
+
+
+def test_set_idle_message_shows_in_canvas_and_blocks_typing(qapp):
+  from typing_program.lesson_placeholders import IMPROVE_EMPTY_LABEL
+
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_idle_message(IMPROVE_EMPTY_LABEL)
+  assert doc.toPlainText() == IMPROVE_EMPTY_LABEL
+  assert doc._match_text is None
+  assert not doc.is_ready()
+  doc.insert('a')
+  assert doc._run is None
+
+
+def test_show_idle_placeholder_uses_canvas_not_label(qapp):
+  from unittest.mock import MagicMock
+  from PyQt5.QtWidgets import QLabel
+  from typing_program.typer import TyperWindow
+  from typing_program.lesson_placeholders import BOOK_EMPTY_LABEL
+
+  w = TyperWindow.__new__(TyperWindow)
+  w._pause_overlay = MagicMock()
+  w._doc = LessonDocument(QFont("Arial", 12))
+  w._source_lbl = MagicMock()
+  w._typer = MagicMock()
+  w._prog_layout = MagicMock()
+  w._prog = MagicMock()
+  w._label = QLabel()
+  w._awaiting_next = False
+  w._current_lesson = ('x', 1, 'text')
+  w._book_meta = {}
+
+  w._show_idle_placeholder(BOOK_EMPTY_LABEL)
+  assert w._doc.toPlainText() == BOOK_EMPTY_LABEL
+  assert w._label.text() == ''
+
+
+def test_corpus_click_while_active_fetches_new_text(qapp):
+  from unittest.mock import MagicMock
+  from typing_program.typer import TyperWindow, MODE_CORPUS
+
+  w = TyperWindow.__new__(TyperWindow)
+  w._mode = MODE_CORPUS
+  w._set_improve_footer_busy = MagicMock()
+  w.wantText = MagicMock()
+  w.set_practice_mode = MagicMock()
+
+  w._on_corpus_click()
+  w.wantText.emit.assert_called_once()
+  w._set_improve_footer_busy.assert_called_once_with(False)
+  w.set_practice_mode.assert_not_called()
+
+  w.wantText.reset_mock()
+  w._set_improve_footer_busy.reset_mock()
+  w._mode = MODE_IMPROVE
+  w._on_corpus_click()
+  w.set_practice_mode.assert_called_once_with(MODE_CORPUS)
+  w.wantText.emit.assert_not_called()

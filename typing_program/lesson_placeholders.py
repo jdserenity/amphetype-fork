@@ -8,7 +8,7 @@ BOOK_EMPTY_LABEL = (
 )
 IMPROVE_EMPTY_LABEL = (
   "Welcome! :) Do some corpus or book lessons to gather weakspot items — "
-  "they'll show up here once you have enough."
+  "lessons will start generating once you have enough."
 )
 IMPROVE_SUBMODE_EMPTY_LABEL = (
   'No statistics yet — practice in corpus or book mode first.'

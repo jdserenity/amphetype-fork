@@ -247,13 +247,11 @@ class LessonDocument(QTextDocument):
     self.style_progress_new = text_style(kerning=False, color=QBrush(QColor(PROGRESS_ORANGE)))
     self.set_idle_placeholder()
 
-  def set_idle_placeholder(self):
-    """Clear the lesson canvas when there is nothing to type."""
+  def _clear_lesson_state(self):
     self._book_auto_returns = False
     self._book_chunks = None
     self._book_chunk_index = 0
     self._curtext = None
-    self.clear()
     self._original_text = ''
     self._match_text = None
     self._display_text = None
@@ -265,6 +263,20 @@ class LessonDocument(QTextDocument):
     self._word_spans = []
     self._read_ahead_preview = False
     self._read_ahead_revealed = set()
+
+  def set_idle_placeholder(self):
+    """Clear the lesson canvas when there is nothing to type."""
+    self.clear()
+    self._clear_lesson_state()
+
+  def set_idle_message(self, msg):
+    """Show a non-typable message in the lesson canvas."""
+    self.clear()
+    self._clear_lesson_state()
+    c = Cursor(self)
+    c.setBlockFormat(self.style_block)
+    c.insertText(msg or '', self.style_inactive)
+    self.cursor = Cursor(self, position=0)
 
   def _book_plain_display(self, text):
     import re
@@ -636,7 +648,7 @@ class LessonDocument(QTextDocument):
 
   def is_ready(self):
     """True if a lesson has not yet started."""
-    return self._run is None
+    return self._run is None and self._match_text is not None
 
   def start(self):
     """Switches to running state (warm start)."""
@@ -645,6 +657,8 @@ class LessonDocument(QTextDocument):
     self.started.emit()
 
   def insert(self, char, overwrite=True, lenient=False):
+    if self._match_text is None:
+      return
     if self.is_paused():
       return
     if self.read_ahead_preview_pending():
@@ -1250,7 +1264,7 @@ class TyperWindow(QWidget):
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       _footer_zero_margins(b)
     self._btn_improve.clicked.connect(self._on_improve_click)
-    self._btn_corpus.clicked.connect(lambda: self.set_practice_mode(MODE_CORPUS))
+    self._btn_corpus.clicked.connect(self._on_corpus_click)
     self._btn_book.clicked.connect(lambda: self.set_practice_mode(MODE_BOOK))
     self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
     self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
@@ -1558,14 +1572,15 @@ class TyperWindow(QWidget):
     self._pause_overlay.hide()
     self._current_lesson = None
     self._book_meta = None
-    self._doc.set_idle_placeholder()
+    self._doc.set_idle_message(msg)
     self._source_lbl.clear()
     self._source_lbl.setVisible(False)
     self._typer.setReadOnly(True)
+    self._typer._pin_typing_center = False
     self._prog_layout.setCurrentIndex(0)
     self._prog.setValue(0)
     self._prog.setMaximum(0)
-    self.updateLabel(msg)
+    self.updateLabel()
 
   def _on_book_lesson(self, lesson):
     if self._mode != MODE_BOOK:
@@ -1606,6 +1621,13 @@ class TyperWindow(QWidget):
       self._exit_focus_drill()
       return
     self.set_practice_mode(MODE_IMPROVE)
+
+  def _on_corpus_click(self):
+    if self._mode == MODE_CORPUS:
+      self._set_improve_footer_busy(False)
+      self.wantText.emit()
+      return
+    self.set_practice_mode(MODE_CORPUS)
 
   def _exit_focus_drill(self):
     self._focus_drill = None
