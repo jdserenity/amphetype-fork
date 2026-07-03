@@ -39,7 +39,7 @@ from typing_program.Lesson import LessonGenerator
 from typing_program.typer import TyperWindow
 from typing_program.session_timer import FocusedSessionTimer, INTERACTION_EVENTS, SessionTimerLabel
 from typing_program.fwidgets import scroll_widget
-from typing_program.QtUtil import center_widget_on_screen
+from typing_program.QtUtil import center_widget_on_screen, should_clear_focus_on_click
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -149,6 +149,11 @@ class MainWindow(QMainWindow):
   def eventFilter(self, obj, evt):
     if evt.type() in INTERACTION_EVENTS:
       self._session_timer.touch()
+    if evt.type() in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick) and isinstance(evt, QMouseEvent):
+      fw = QApplication.focusWidget()
+      w = QApplication.widgetAt(evt.globalPos())
+      if should_clear_focus_on_click(fw, w):
+        fw.clearFocus()
     if obj is self.centralWidget() and evt.type() in (QEvent.Resize, QEvent.Show):
       self._reposition_session_clock()
     return super().eventFilter(obj, evt)

@@ -17,3 +17,16 @@ def test_main_window_default_size_hint(qapp):
   hint = A.MainWindow().sizeHint()
   assert hint.width() == 1100
   assert hint.height() == 712
+
+
+def test_should_clear_focus_on_click(qapp):
+  from PyQt5.QtWidgets import QComboBox, QLabel, QWidget
+  from typing_program.QtUtil import should_clear_focus_on_click
+
+  parent = QWidget()
+  combo = QComboBox(parent)
+  combo.addItem('words')
+  label = QLabel('elsewhere', parent)
+  assert not should_clear_focus_on_click(combo, combo)
+  assert should_clear_focus_on_click(combo, label)
+  assert not should_clear_focus_on_click(None, label)

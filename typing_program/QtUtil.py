@@ -261,3 +261,17 @@ def center_widget_on_screen(widget, screen=None):
   widget.move(frame.topLeft())
 
 
+def should_clear_focus_on_click(focused, clicked):
+  """True when a mouse press on clicked should drop focus from focused."""
+  if focused is None or clicked is None:
+    return False
+  if focused is clicked or focused.isAncestorOf(clicked):
+    return False
+  if isinstance(focused, QComboBox):
+    view = focused.view()
+    if view is not None:
+      popup = view.window()
+      if popup is not None and (clicked is popup or popup.isAncestorOf(clicked)):
+        return False
+  return True
+
