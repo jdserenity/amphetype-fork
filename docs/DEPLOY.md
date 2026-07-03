@@ -94,18 +94,43 @@ TYPING_PROGRAM_SKIP_LICENSE=1 TYPING_PROGRAM_LOGFILE=- dist/Typing\ Program.app/
 
 v1 ships **unsigned** — buyers see macOS Gatekeeper’s “unverified developer” warning until Apple code signing + notarization is added. A `.dmg` does not bypass that; it only improves the download experience.
 
-### GitHub Actions (manual macOS build only)
+### Windows (.zip)
 
-Workflow: `.github/workflows/build-mac.yml`
+From repo root on Windows (PowerShell):
 
-- Triggers **only** via **workflow_dispatch** (GitHub → Actions → “Build macOS installer” → **Run workflow**). No builds on push or pull request.
-- Produces a downloadable `Typing Program.dmg` artifact from the run.
+```powershell
+.\scripts\build-windows.ps1
+```
 
-Windows and Linux installer workflows are not wired yet.
+Output: `dist/Typing Program-win.zip` — extract the `Typing Program` folder and run `Typing Program.exe`.
+
+v1 ships **unsigned** — SmartScreen may warn until code signing is added.
+
+### Linux (.tar.gz)
+
+From repo root on Linux:
+
+```sh
+./scripts/build-linux.sh
+```
+
+Output: `dist/Typing Program-linux.tar.gz` — extract and run `./Typing\ Program/Typing\ Program`.
+
+### GitHub Actions (manual builds, one workflow per OS)
+
+Each workflow triggers **only** via **workflow_dispatch** (GitHub → Actions → pick the workflow → **Run workflow**). Nothing runs on push or pull request. Run them separately when you need that platform’s installer.
+
+| Workflow | File | Artifact |
+|----------|------|----------|
+| Build macOS installer | `.github/workflows/build-mac.yml` | `Typing Program.dmg` |
+| Build Windows installer | `.github/workflows/build-windows.yml` | `Typing Program-win.zip` |
+| Build Linux installer | `.github/workflows/build-linux.yml` | `Typing Program-linux.tar.gz` |
+
+Download the artifact from the completed run, then upload to Lemon Squeezy.
 
 ### Ship
 
-Upload `Typing Program.dmg` (or per-OS installers when available) to Lemon Squeezy → product → **Files**; LS emails download links to buyers.
+Upload per-OS installers to Lemon Squeezy → product → **Files**; LS emails download links to buyers.
 
 ## Dev (local)
 

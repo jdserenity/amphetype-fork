@@ -1,0 +1,34 @@
+# Manual-only Linux installer build. Does NOT run on push or pull request.
+# GitHub → Actions → "Build Linux installer" → Run workflow.
+name: Build Linux installer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system deps for PyQt5
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libxcb-cursor0 \
+            libxkbcommon-x11-0
+
+      - name: Build Linux bundle
+        run: ./scripts/build-linux.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: typing-program-linux
+          path: dist/Typing Program-linux.tar.gz
+          if-no-files-found: error
