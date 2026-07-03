@@ -3,8 +3,8 @@
 
   python scripts/backfill_corpus_index.py [path/to.db]
 
-Uses the app DB if no path given (amphetype.ini, then amphetype/data/<user>.db, then
-~/Library/Application Support/amphetype/<user>.db). New imports are indexed automatically.
+Uses the app DB if no path given (typing_program.ini, then typing_program/data/<user>.db, then
+~/Library/Application Support/typing-program/<user>.db). New imports are indexed automatically.
 """
 
 import getpass
@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from amphetype.text_index import backfill_corpus_index, ensure_corpus_index  # noqa: E402
+from typing_program.text_index import backfill_corpus_index, ensure_corpus_index  # noqa: E402
 
 
 class _DB:
@@ -27,7 +27,7 @@ class _DB:
 
 
 def _default_db_path():
-  ini = ROOT / "amphetype/data/amphetype.ini"
+  ini = ROOT / "typing_program/data/typing_program.ini"
   if ini.is_file():
     for line in ini.read_text(encoding='utf-8').splitlines():
       if line.startswith('db_name='):
@@ -35,8 +35,8 @@ def _default_db_path():
         if p.is_file():
           return p
   user = re.sub(r'[^a-z0-9_-]', '', getpass.getuser(), flags=re.I) or 'user'
-  local = ROOT / "amphetype/data" / f"{user}.db"
-  default = Path.home() / "Library/Application Support/amphetype" / f"{user}.db"
+  local = ROOT / "typing_program/data" / f"{user}.db"
+  default = Path.home() / "Library/Application Support/typing-program" / f"{user}.db"
   if local.is_file():
     return local
   if default.is_file():

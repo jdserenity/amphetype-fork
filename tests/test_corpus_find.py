@@ -4,8 +4,8 @@ import random
 import sqlite3
 import unittest
 
-from amphetype.corpus_find import corpus_sources, find_text_for_target, target_in_text
-from amphetype.text_index import backfill_corpus_index, ensure_corpus_index
+from typing_program.corpus_find import corpus_sources, find_text_for_target, target_in_text
+from typing_program.text_index import backfill_corpus_index, ensure_corpus_index
 
 
 class _DB:

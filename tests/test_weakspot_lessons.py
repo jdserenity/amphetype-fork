@@ -1,7 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
-from amphetype.WeakSpotLessons import (
+from typing_program.WeakSpotLessons import (
   LessonIndex,
   _make_index,
   allocate_repeats,
@@ -382,7 +382,7 @@ class TestDbIntegration(unittest.TestCase):
 
   def test_discounted_source_stats_excluded_from_analysis_aggregate(self):
     conn = _test_db(); now = 1e9
-    from amphetype.Data import STAT_OMIT_DISCOUNTED
+    from typing_program.Data import STAT_OMIT_DISCOUNTED
     book = _add_source(conn, 'My Book')
     weak = _add_source(conn, '<Weakspot>', 1)
     conn.executemany(

@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from amphetype.gutenberg.aus_catalog import parse_gutindex_aus
-from amphetype.gutenberg.catalog import (
+from typing_program.gutenberg.aus_catalog import parse_gutindex_aus
+from typing_program.gutenberg.catalog import (
   catalog_age_days, catalog_index_ready, catalog_notice, ensure_catalog_index,
   estimate_update_seconds, needs_catalog_update, is_catalog_stale,
   parse_catalog_csv, rebuild_index, search_books,
 )
-from amphetype.gutenberg.fetch import source_basename
-from amphetype.gutenberg.paths import texts_dir
-from amphetype.gutenberg.strip_headers import strip_aus_headers, strip_headers
+from typing_program.gutenberg.fetch import source_basename
+from typing_program.gutenberg.paths import texts_dir
+from typing_program.gutenberg.strip_headers import strip_aus_headers, strip_headers
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 
@@ -57,7 +57,7 @@ def test_strip_aus_headers_chapter_roman_numeral():
 
 
 def test_estimate_import_seconds():
-  from amphetype.gutenberg.fetch import estimate_import_seconds
+  from typing_program.gutenberg.fetch import estimate_import_seconds
   assert estimate_import_seconds('us') == 10
   assert estimate_import_seconds('aus') == 10
 
@@ -124,7 +124,7 @@ def test_rebuild_index_with_duplicate_ids(tmp_path):
 
 
 def test_needs_update_when_index_empty(tmp_path, monkeypatch):
-  monkeypatch.setattr('amphetype.gutenberg.catalog.gutenberg_cache_dir', lambda: tmp_path)
+  monkeypatch.setattr('typing_program.gutenberg.catalog.gutenberg_cache_dir', lambda: tmp_path)
   shutil.copy(FIXTURES / 'pg_catalog_sample.csv', tmp_path / 'pg_catalog.csv')
   shutil.copy(FIXTURES / 'gutindex_aus_sample.txt', tmp_path / 'gutindex.aus')
   db_path = tmp_path / 'catalog.sqlite'
@@ -143,13 +143,13 @@ def test_needs_update_when_index_empty(tmp_path, monkeypatch):
 
 
 def test_catalog_stale_when_missing(tmp_path, monkeypatch):
-  monkeypatch.setattr('amphetype.gutenberg.catalog.gutenberg_cache_dir', lambda: tmp_path)
+  monkeypatch.setattr('typing_program.gutenberg.catalog.gutenberg_cache_dir', lambda: tmp_path)
   assert is_catalog_stale(tmp_path) is True
   assert catalog_age_days(tmp_path) is None
 
 
 def test_catalog_stale_by_age(tmp_path, monkeypatch):
-  monkeypatch.setattr('amphetype.gutenberg.catalog.gutenberg_cache_dir', lambda: tmp_path)
+  monkeypatch.setattr('typing_program.gutenberg.catalog.gutenberg_cache_dir', lambda: tmp_path)
   shutil.copy(FIXTURES / 'pg_catalog_sample.csv', tmp_path / 'pg_catalog.csv')
   shutil.copy(FIXTURES / 'gutindex_aus_sample.txt', tmp_path / 'gutindex.aus')
   old = time.time() - (8 * 86400)
@@ -165,8 +165,8 @@ def test_source_basename():
 
 
 def test_write_book_file(tmp_path, monkeypatch):
-  from amphetype.gutenberg import fetch as gf
-  from amphetype.gutenberg import paths as gp
+  from typing_program.gutenberg import fetch as gf
+  from typing_program.gutenberg import paths as gp
   monkeypatch.setattr(gp, 'DATA_DIR', tmp_path)
   raw = (FIXTURES / 'metamorphosis_snip.txt').read_text(encoding='utf-8')
 

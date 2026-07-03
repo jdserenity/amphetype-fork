@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QRect
 
-from amphetype.QtUtil import centered_frame_origin
+from typing_program.QtUtil import centered_frame_origin
 
 
 def test_centered_frame_origin():

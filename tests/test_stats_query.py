@@ -5,14 +5,14 @@ import unittest
 
 import pytest
 
-from amphetype.speed_heatmap import OBLIVION_WPM
-from amphetype.stats_query import (
+from typing_program.speed_heatmap import OBLIVION_WPM
+from typing_program.stats_query import (
   ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
   STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm,
   aggregate_session_wpm_from_results, analysis_order_clause, count_unique_typed, perf_hist_cutoff,
   fetch_analysis_search, fetch_first_sample_wpm, fetch_oblivion_pool, fetch_oblivion_picks,
 )
-from amphetype.WeakSpotLessons import fetch_weak_targets, score_target
+from typing_program.WeakSpotLessons import fetch_weak_targets, score_target
 
 
 class _MedianAggregate(list):

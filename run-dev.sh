@@ -17,5 +17,5 @@ uv pip install -r requirements.txt
 uv pip install -e .
 
 echo ""
-echo "Starting amphetype..."
-exec amphetype
+echo "Starting typing-program..."
+exec typing-program --skip-license

@@ -4,7 +4,7 @@ import random
 import sqlite3
 import unittest
 
-from amphetype.text_index import (
+from typing_program.text_index import (
   backfill_corpus_index, ensure_corpus_index, find_word_in_sources, index_chunk,
 )
 

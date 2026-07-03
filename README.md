@@ -1,6 +1,6 @@
-# Amphetype (fork)
+# Typing Program
 
-Typing practice with statistics, novel import, and intelligent weak-spot lessons. Fork of [Amphetype](https://code.google.com/archive/p/amphetype/) (Python 3, PyQt5).
+Typing practice with statistics, novel import, and intelligent weak-spot lessons. Python 3, PyQt5.
 
 ## Docs
 
@@ -17,7 +17,7 @@ Requires Python 3.11. From repo root:
 # or see docs/DEPLOY.md
 ```
 
-Launch: `amphetype`
+Launch: `typing-program --skip-license`
 
 ## Upstream README
 
