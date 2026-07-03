@@ -9,9 +9,9 @@ from amphetype.stats_query import STAT_TYPE_WORD
 
 def _sample_rows():
   return [
-    ['alpha', 80.0, 99.0, 1.0, 10, 0, 0, 50.0],
-    ['beta', 70.0, 98.0, 1.0, 8, 0, 0, 40.0],
-    ['gamma', 60.0, 97.0, 1.0, 6, 0, 0, 30.0],
+    ['alpha', 80.0, 1.0, 10, 10, 0, 50.0],
+    ['beta', 70.0, 1.0, 8, 8, 0, 40.0],
+    ['gamma', 60.0, 1.0, 6, 6, 0, 30.0],
   ]
 
 
@@ -101,8 +101,8 @@ def test_word_model_init(qapp):
 def test_string_stats_most_improved_sort(qapp, monkeypatch):
   st = StringStats()
   pool_rows = [
-    ('slow', 50.0, 80.0, 90.0, 100.0, 10, 0, 0, 500.0),
-    ('fast', 80.0, 95.0, 98.0, 100.0, 10, 0, 0, 500.0),
+    ('slow', 50.0, 90.0, 100.0, 90, 0, 500.0),
+    ('fast', 80.0, 95.0, 100.0, 100, 0, 500.0),
   ]
 
   def fake_get(key):
@@ -127,7 +127,7 @@ def test_string_stats_most_improved_sort(qapp, monkeypatch):
 def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
   st = StringStats()
   pool_rows = [
-    ('once', 50.0, 80.0, 90.0, 1.0, 0, 0, 0, 50.0),
+    ('once', 50.0, 80.0, 1.0, 1, 0, 50.0),
   ]
 
   def fake_get(key):
@@ -189,7 +189,7 @@ def test_string_stats_search_shows_all_matches(qapp, monkeypatch):
   monkeypatch.setattr(st, '_query_rows', lambda *a: (_sample_rows(), 2))
   monkeypatch.setattr(
     'amphetype.StatWidgets.fetch_analysis_search',
-    lambda *a: [['alpha', 80.0, 99.0, 1.0, 10, 0, 0, 50.0]])
+    lambda *a: [['alpha', 80.0, 1.0, 10, 10, 0, 50.0]])
   st.update()
   st._search_edit.setText('alp')
   st._apply_search()
@@ -202,7 +202,7 @@ def test_string_stats_clear_search_restores_baseline(qapp, monkeypatch):
   monkeypatch.setattr(st, '_query_rows', lambda *a: (_sample_rows(), 2))
   monkeypatch.setattr(
     'amphetype.StatWidgets.fetch_analysis_search',
-    lambda *a: [['beta', 70.0, 98.0, 1.0, 8, 0, 0, 40.0]])
+    lambda *a: [['beta', 70.0, 1.0, 8, 8, 0, 40.0]])
   st.update()
   st._search_edit.setText('bet')
   st._apply_search()
@@ -216,7 +216,7 @@ def test_string_stats_search_btn_returns_to_search_when_term_edited(qapp, monkey
   monkeypatch.setattr(st, '_query_rows', lambda *a: (_sample_rows(), 2))
   monkeypatch.setattr(
     'amphetype.StatWidgets.fetch_analysis_search',
-    lambda *a: [['alpha', 80.0, 99.0, 1.0, 10, 0, 0, 50.0]])
+    lambda *a: [['alpha', 80.0, 1.0, 10, 10, 0, 50.0]])
   st.update()
   st._search_edit.setText('alpha')
   st._apply_search()
@@ -273,7 +273,7 @@ def test_performance_analysis_hide_clears_stats_search(qapp, monkeypatch):
   monkeypatch.setattr(pa.st, '_query_rows', lambda *a: (_sample_rows(), STAT_TYPE_WORD))
   monkeypatch.setattr(
     'amphetype.StatWidgets.fetch_analysis_search',
-    lambda *a: [['alpha', 80.0, 99.0, 1.0, 10, 0, 0, 50.0]])
+    lambda *a: [['alpha', 80.0, 1.0, 10, 10, 0, 50.0]])
   pa.st.update()
   pa.st._search_edit.setText('alpha')
   pa.st._apply_search()

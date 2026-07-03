@@ -24,8 +24,8 @@ class WordModel(AmphModel):
     super(WordModel, self).__init__()
 
   def signature(self):
-    hdr = ["Type target", "Speed", "Accuracy", "Hesitation", "Count", "Mistakes", "Drilled", "Impact"]
-    fmt = [None, "%.1f wpm", "%.1f%%", "%.1f", None, None, None, "%.1f"]
+    hdr = ["Type target", "Speed", "Hesitation", "Count", "Perfect", "Drilled", "Impact"]
+    fmt = [None, "%.1f wpm", "%.1f", None, None, None, "%.1f"]
     if self._words_mode:
       hdr = hdr[:2] + ["Improved"] + hdr[2:]
       fmt = fmt[:2] + ["%+d"] + fmt[2:]
@@ -58,8 +58,8 @@ class AnalysisSortCombo(QComboBox):
     ('wpm desc', 'fastest'),
     ('viscosity desc', 'most hesitation'),
     ('viscosity asc', 'least hesitation'),
-    ('accuracy asc', 'least accurate'),
-    ('misses desc', 'most mistyped'),
+    ('perfect asc', 'least perfect'),
+    ('perfect desc', 'most perfect'),
     ('total desc', 'most common'),
     ('damage desc', 'most damaging'),
     ('improved desc', 'most improved'),
@@ -82,6 +82,9 @@ class AnalysisSortCombo(QComboBox):
     if not words and cur == 'improved desc':
       Settings.set('ana_which', 'damage desc')
       cur = 'damage desc'
+    if cur in ('accuracy asc', 'misses desc'):
+      Settings.set('ana_which', 'perfect asc')
+      cur = 'perfect asc'
     self.blockSignals(True)
     self.clear()
     self._keys = []
@@ -209,7 +212,7 @@ class StringStats(QWidget):
     out = []
     for r in rows:
       imp = None
-      if r[4] >= 2:
+      if r[3] >= 2:
         imp = lifetime_wpm_gain(r[1], first.get(r[0]))
       out.append(list(r[:2]) + [imp] + list(r[2:]))
     return out

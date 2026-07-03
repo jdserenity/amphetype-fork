@@ -108,10 +108,20 @@ class TestStatsAggregation(unittest.TestCase):
     sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'damage desc', 10)
     row = conn.execute(sql, (0, 2, 1)).fetchone()
     self.assertEqual(row[0], 'from')
-    self.assertEqual(row[4], 10)   # total
-    self.assertEqual(row[5], 1)    # mistakes (counted only)
-    self.assertEqual(row[6], 1)    # drilled
-    self.assertAlmostEqual(row[2], 90.0)  # accuracy 10-1/10
+    self.assertEqual(row[3], 10)   # total
+    self.assertEqual(row[4], 9)    # perfect (10 - 1 mistake)
+    self.assertEqual(row[5], 1)    # drilled
+
+  def test_analysis_sql_perfect_is_count_minus_mistakes(self):
+    conn = _test_db(); now = 1e9
+    book = _add_source(conn, 'Novel')
+    conn.execute(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      (now, 'once', 2, 0.40, 1, 1, 5.0, book))
+    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', 10)
+    row = conn.execute(sql, (0, 2, 1)).fetchone()
+    self.assertEqual(row[3], 1)
+    self.assertEqual(row[4], 0)
 
   def test_word_stats_keep_case_separate(self):
     conn = _test_db(); now = 1e9
@@ -180,6 +190,9 @@ def test_analysis_order_clause_rejects_unknown_sort():
   assert analysis_order_clause('improved desc') == 'improved desc'
   assert analysis_order_clause('bogus desc') == 'wpm asc'
   assert analysis_order_clause('damage desc') == 'damage desc'
+  assert analysis_order_clause('accuracy asc') == 'perfect asc'
+  assert analysis_order_clause('misses desc') == 'perfect asc'
+  assert analysis_order_clause('perfect desc') == 'perfect desc'
 
 
 def test_fetch_first_sample_wpm():

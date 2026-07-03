@@ -30,16 +30,14 @@ RAW_TARGETS_SQL = f"""select data,
   group by data having sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) >= ?"""
 
 ANALYSIS_OUTER_SQL = """select data, 12.0/time as wpm,
-  100.0-100.0*mistakes/cast(total as real) as accuracy,
-  viscosity, total, mistakes, drilled,
+  viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
   where total >= ?
   order by %s limit %d"""
 
 ANALYSIS_SEARCH_OUTER_SQL = """select data, 12.0/time as wpm,
-  100.0-100.0*mistakes/cast(total as real) as accuracy,
-  viscosity, total, mistakes, drilled,
+  viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
   where total >= ? and %s
@@ -76,8 +74,7 @@ SESSION_WPM_TOTALS_SQL = """select sum(char_count), sum(duration)
 ALL_TIME_HIST = 0
 
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
-  100.0-100.0*mistakes/cast(total as real) as accuracy,
-  viscosity, total, mistakes, drilled,
+  viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
   where 12.0/time < ?
@@ -98,16 +95,18 @@ ANALYSIS_ORDER_OPTIONS = (
   ('wpm desc', 'fastest'),
   ('viscosity desc', 'most hesitation'),
   ('viscosity asc', 'least hesitation'),
-  ('accuracy asc', 'least accurate'),
-  ('misses desc', 'most mistyped'),
+  ('perfect asc', 'least perfect'),
+  ('perfect desc', 'most perfect'),
   ('total desc', 'most common'),
   ('damage desc', 'most damaging'),
 )
 ANALYSIS_ORDER_CLAUSES = frozenset(k for k, _ in ANALYSIS_ORDER_OPTIONS) | frozenset(['improved desc'])
 DEFAULT_ANALYSIS_ORDER = 'wpm asc'
+_LEGACY_ANALYSIS_ORDER = {'accuracy asc': 'perfect asc', 'misses desc': 'perfect asc'}
 
 
 def analysis_order_clause(order):
+  order = _LEGACY_ANALYSIS_ORDER.get(order, order)
   return order if order in ANALYSIS_ORDER_CLAUSES else DEFAULT_ANALYSIS_ORDER
 
 
