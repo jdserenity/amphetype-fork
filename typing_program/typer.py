@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import *
 from typing_program.settings import *
 from typing_program.layout import FBoxLayout
 from typing_program.fwidgets import FStackedWidget
-from typing_program.timingtuple import RunStats, collect_run_stat_rows, IDLE_THRESHOLD
+from typing_program.timingtuple import RunStats, collect_focus_drill_stat_rows, collect_run_stat_rows, IDLE_THRESHOLD
 from typing_program.WeakSpot import WeakSpotLessonBuilder
 from typing_program.WeakSpotLessons import build_focus_lesson
 from typing_program.Config import Settings
@@ -1811,8 +1811,20 @@ class TyperWindow(QWidget):
       return self.typingFailed("Invalid run? (~0 duration)")
 
     if self._focus_drill:
+      now = time()
+      ws_src = self.DB.getSource('<Weakspot>', lesson=1)
+      drill_rows = collect_focus_drill_stat_rows(run, med_char, now, self._focus_drill)
+      if drill_rows:
+        self.DB.executemany_('''
+        insert into statistic
+        (time,viscosity,w,count,mistakes,type,data,source)
+        values (?,?,?,?,?,?,?,?)
+        ''', [(t, vis, w, 0, m, tp, data, ws_src) for t, vis, w, m, tp, data in drill_rows])
+        self.DB.commit()
+        self.statsChanged.emit()
+        self._refreshHeatmap()
       self._pending_action = 'focus_repeat'
-      self._show_progress_summary(run, stats_saved=False)
+      self._show_progress_summary(run, stats_saved=bool(drill_rows))
       return
 
     now = time()

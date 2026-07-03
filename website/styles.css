@@ -525,6 +525,25 @@ a:hover { color: var(--accent-hover); }
   color: var(--text-muted);
 }
 
+.footer-x-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.footer-x-link:hover { color: var(--text); }
+
+.footer-x-link svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
 /* Responsive */
 
 @media (max-width: 900px) {

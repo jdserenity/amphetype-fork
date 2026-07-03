@@ -68,3 +68,12 @@ def test_wrangler_pages_config():
   cfg = json.loads(raw)
   assert cfg["name"] == "typing-program"
   assert cfg["pages_build_output_dir"] == "./website"
+
+
+def test_footer_x_link():
+  for page in ("index.html", "thanks.html"):
+    html = (WEBSITE / page).read_text(encoding="utf-8")
+    assert 'href="https://x.com/leverajdd"' in html
+    assert 'class="footer-x-link"' in html
+    assert "Follow me on X!" in html
+    assert 'rel="noopener noreferrer"' in html

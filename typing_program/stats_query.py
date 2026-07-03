@@ -92,6 +92,13 @@ WPM_GATE_LESSONS_SQL = """select count(*) from result r
   where (coalesce(s.discount, 0) = 0 and s.name not like '<%>')
      or s.name = '<Weakspot>'"""
 
+WPM_GATE_FIRST_LESSON_SQL = """select r.char_count, r.duration from result r
+  join source s on r.source = s.rowid
+  where ((coalesce(s.discount, 0) = 0 and s.name not like '<%>')
+     or s.name = '<Weakspot>')
+    and r.char_count > 0 and r.duration > 0
+  order by r.w asc limit 1"""
+
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
@@ -128,8 +135,8 @@ _LEGACY_ANALYSIS_ORDER = {
   'perfect desc': 'perfect_pct desc',
 }
 _ANALYSIS_ORDER_SQL = {
-  'perfect_pct asc': 'cast(total - mistakes as real) / total asc',
-  'perfect_pct desc': 'cast(total - mistakes as real) / total desc',
+  'perfect_pct asc': 'cast(total - mistakes as real) / total asc, total asc',
+  'perfect_pct desc': 'cast(total - mistakes as real) / total desc, total desc',
 }
 
 
@@ -237,15 +244,45 @@ def wpm_gate_remaining(db):
   return max(0, WPM_GATE_MIN_LESSONS - count_wpm_gate_lessons(db))
 
 
+def format_wpm_gate_label(db):
+  if wpm_gate_complete(db):
+    return None
+  left = wpm_gate_remaining(db)
+  if left == WPM_GATE_MIN_LESSONS:
+    return 'Complete %d lessons to calculate WPM' % WPM_GATE_MIN_LESSONS
+  return 'Complete %d more lesson%s to calculate WPM' % (left, '' if left == 1 else 's')
+
+
 def format_avg_wpm_label(db, hist_cutoff=ALL_TIME_HIST):
   """Performance Analysis header: hide Avg WPM until enough lessons; then use all saved runs."""
-  if not wpm_gate_complete(db):
-    left = wpm_gate_remaining(db)
-    if left == WPM_GATE_MIN_LESSONS:
-      return 'Complete %d lessons to calculate WPM' % WPM_GATE_MIN_LESSONS
-    return 'Complete %d more lesson%s to calculate WPM' % (left, '' if left == 1 else 's')
+  gate = format_wpm_gate_label(db)
+  if gate:
+    return gate
   avg = aggregate_session_wpm_from_results(db, hist_cutoff)
-  return 'Avg WPM: %s' % ('%.1f' % avg if avg is not None else '—')
+  if avg is None:
+    return 'Avg WPM: —'
+  from typing_program.wpm_percentile import format_adult_top_percent_label
+  rank_lbl = format_adult_top_percent_label(avg)
+  return 'Avg WPM: %.1f · %s' % (avg, rank_lbl) if rank_lbl else 'Avg WPM: %.1f' % avg
+
+
+def first_qualifying_session_wpm(db):
+  """WPM from the earliest gate-qualifying lesson in result."""
+  row = db.execute(WPM_GATE_FIRST_LESSON_SQL).fetchone()
+  if not row:
+    return None
+  return aggregate_session_wpm(row[0] or 0, row[1] or 0)
+
+
+def session_wpm_since_start_gain(db, hist_cutoff=ALL_TIME_HIST):
+  """Current session WPM minus WPM from the first qualifying lesson. None until gate opens."""
+  if not wpm_gate_complete(db):
+    return None
+  current = aggregate_session_wpm_from_results(db, hist_cutoff)
+  first = first_qualifying_session_wpm(db)
+  if current is None or first is None:
+    return None
+  return int(round(current - first))
 
 
 def lesson_qualifies_for_wpm_gate(mode, improve_submode=0, focus_drill=False):

@@ -37,9 +37,9 @@ from typing_program.Config import GeneralOptions, TyperOptions
 from typing_program.Lesson import LessonGenerator
 
 from typing_program.typer import TyperWindow
-from typing_program.session_timer import FocusedSessionTimer, SessionTimerLabel
+from typing_program.session_timer import FocusedSessionTimer, INTERACTION_EVENTS, SessionTimerLabel
 from typing_program.fwidgets import scroll_widget
-from typing_program.QtUtil import center_widget_on_screen
+from typing_program.QtUtil import center_widget_on_screen, should_clear_focus_on_click
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -65,8 +65,9 @@ class MainWindow(QMainWindow):
     pa = PerformanceAnalysis()
     pa.gotoText.connect(lambda: tabs.setCurrentIndex(0))
     tabs.addTab(pa, "Performance Analysis")
-    perf_tab_idx = tabs.indexOf(pa)
-    tabs.currentChanged.connect(lambda i: pa.updateAll() if i == perf_tab_idx else None)
+    self._perf_tab_idx = tabs.indexOf(pa)
+    self._perf = pa
+    tabs.currentChanged.connect(lambda i: pa.updateAll() if i == self._perf_tab_idx else None)
 
     # LessonGenerator not shown as a tab; kept for auto_review (wantReview → newReview).
     lg = LessonGenerator()
@@ -102,10 +103,14 @@ class MainWindow(QMainWindow):
     lg.newLessons.connect(goto_sources)
 
     self._session_timer = FocusedSessionTimer()
+    self._session_timer.load_saved(DB)
     self._session_clock = SessionTimerLabel(self._session_timer, tabs)
     self._session_clock.start()
     self._session_clock.textChanged.connect(self._reposition_session_clock)
+    self._session_clock.textChanged.connect(self._maybe_refresh_practice_time)
+    pa.set_session_timer(self._session_timer)
     tabs.installEventFilter(self)
+    app.installEventFilter(self)
 
     self.setCentralWidget(tabs)
     self._window_placed = False
@@ -135,10 +140,27 @@ class MainWindow(QMainWindow):
     self._session_clock.move(tabs.width() - self._session_clock.width() - 2, y)
     self._session_clock.raise_()
 
+  def _maybe_refresh_practice_time(self):
+    tabs = self.centralWidget()
+    if tabs is None or tabs.currentIndex() != self._perf_tab_idx:
+      return
+    self._perf._progress._practice_lbl.setText(self._perf._progress._practice_time_text())
+
   def eventFilter(self, obj, evt):
+    if evt.type() in INTERACTION_EVENTS:
+      self._session_timer.touch()
+    if evt.type() in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick) and isinstance(evt, QMouseEvent):
+      fw = QApplication.focusWidget()
+      w = QApplication.widgetAt(evt.globalPos())
+      if should_clear_focus_on_click(fw, w):
+        fw.clearFocus()
     if obj is self.centralWidget() and evt.type() in (QEvent.Resize, QEvent.Show):
       self._reposition_session_clock()
     return super().eventFilter(obj, evt)
+
+  def closeEvent(self, evt):
+    self._session_timer.flush_to_db(DB)
+    super().closeEvent(evt)
 
   def showEvent(self, evt):
     super().showEvent(evt)
@@ -154,6 +176,7 @@ class MainWindow(QMainWindow):
         self._session_timer.resume()
       else:
         self._session_timer.pause()
+        self._session_timer.flush_to_db(DB)
     super().changeEvent(evt)
 
   def sizeHint(self):

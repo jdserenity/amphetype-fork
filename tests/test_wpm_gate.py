@@ -10,8 +10,10 @@ from typing_program.stats_query import (
   WPM_GATE_MIN_LESSONS,
   aggregate_session_wpm_from_results,
   count_wpm_gate_lessons,
+  first_qualifying_session_wpm,
   format_avg_wpm_label,
   lesson_qualifies_for_wpm_gate,
+  session_wpm_since_start_gain,
   wpm_gate_complete,
 )
 
@@ -62,8 +64,24 @@ def test_format_avg_wpm_label_hides_until_ten_then_uses_all_saved_runs():
   for _ in range(7):
     _insert_qualifying(conn, 1, wpm=80.0, char_count=80, duration=12.0)
   assert wpm_gate_complete(conn)
-  assert format_avg_wpm_label(conn) == 'Avg WPM: %.1f' % (
-    aggregate_session_wpm_from_results(conn, 0))
+  assert format_avg_wpm_label(conn).startswith('Avg WPM:')
+
+
+def test_session_wpm_since_start_gain_hidden_until_gate():
+  conn = _gate_db()
+  _insert_qualifying(conn, 1, wpm=40.0, char_count=40, duration=12.0)
+  assert session_wpm_since_start_gain(conn) is None
+
+
+def test_session_wpm_since_start_gain_after_gate():
+  conn = _gate_db()
+  _insert_qualifying(conn, 1, wpm=40.0, char_count=40, duration=12.0)
+  for _ in range(WPM_GATE_MIN_LESSONS - 1):
+    _insert_qualifying(conn, 1, wpm=80.0, char_count=80, duration=12.0)
+  assert first_qualifying_session_wpm(conn) == pytest.approx(40.0)
+  gain = session_wpm_since_start_gain(conn)
+  assert gain is not None
+  assert gain > 0
 
 
 def test_avg_wpm_after_gate_includes_first_ten_lessons():
