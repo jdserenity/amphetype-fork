@@ -81,10 +81,10 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     "group_week": 30.0,
     "group_day": 7.0,
 
-    "ana_which": "wpm asc",
-    "ana_what": 0,
-    "ana_many": 30,
-    "ana_count": 1,
+    "analysis_which": "wpm asc",
+    "analysis_what": 0,
+    "analysis_many": 30,
+    "analysis_count": 2,
 
     "gen_copies": 3,
     "gen_take": 2,
@@ -138,6 +138,13 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     'error_fg': QColor('white'),
   }
 
+  _LEGACY_SETTING_KEYS = (
+    ('ana_which', 'analysis_which'),
+    ('ana_what', 'analysis_what'),
+    ('ana_many', 'analysis_many'),
+    ('ana_count', 'analysis_count'),
+  )
+
   def __init__(self, *args):
     if cli_options.settings:
       super().__init__(filename=cli_options.settings)
@@ -171,6 +178,16 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     typer_defs['background_color'] = QApplication.palette().color(QPalette.Window)
     self.typer_settings = self.makeSettings('typer', typer_defs)
     self.typer_colors = self.makeSettings('colors', self.typer_color_defaults)
+    self._migrate_legacy_settings()
+
+  def _migrate_legacy_settings(self):
+    for old, new in self._LEGACY_SETTING_KEYS:
+      if not self.contains(old):
+        continue
+      if not self.contains(new):
+        default = self.defaults[new]
+        self.setValue(new, self.value(old, type=type(default)))
+      self.remove(old)
 
   def get(self, k):
     return self.value(k, self.defaults[k], type=type(self.defaults[k]))
@@ -583,4 +600,3 @@ class GeneralOptions(QWidget):
 
 # TODO: remove this
 Settings = AppSettings()
-

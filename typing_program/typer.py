@@ -1313,7 +1313,7 @@ class TyperWindow(QWidget):
       self._weakspot.request_next_lesson(force=True)
       return
     targets = fetch_improve_submode_targets(
-      self.DB, submode, ALL_TIME_HIST, Settings.get('ana_count'))
+      self.DB, submode, ALL_TIME_HIST, Settings.get('analysis_count'))
     if not targets:
       self.updateLabel('No statistics yet — practice on corpus mode first.')
       return

@@ -84,7 +84,7 @@ class WeakSpotLessonBuilder(QObject):
     self.busyChanged.emit(True)
     recent = set().union(*self._recent) if self._recent else set()
     self._worker = _LessonWorker(
-      ALL_TIME_HIST, Settings.get('ana_count'), Settings.get('ana_many'),
+      ALL_TIME_HIST, Settings.get('analysis_count'), Settings.get('analysis_many'),
       Settings.get('min_chars'), Settings.get('max_chars'), self._wordlist_path(), recent)
     self._worker.done.connect(self._on_lesson)
     self._worker.start()

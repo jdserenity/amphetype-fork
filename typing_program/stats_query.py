@@ -30,16 +30,14 @@ RAW_TARGETS_SQL = f"""select data,
   group by data having sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) >= ?"""
 
 ANALYSIS_OUTER_SQL = """select data, 12.0/time as wpm,
-  100.0-100.0*mistakes/cast(total as real) as accuracy,
-  viscosity, total, mistakes, drilled,
+  viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
   where total >= ?
   order by %s limit %d"""
 
 ANALYSIS_SEARCH_OUTER_SQL = """select data, 12.0/time as wpm,
-  100.0-100.0*mistakes/cast(total as real) as accuracy,
-  viscosity, total, mistakes, drilled,
+  viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
   where total >= ? and %s
@@ -59,9 +57,20 @@ SPEED_STATS_SQL = f"""select data,
 UNIQUE_TYPED_SQL = """select count(distinct data) from statistic
   where w >= ? and type = ?"""
 
+COUNT_TYPED_MIN_SQL = f"""select count(*) from (
+  select data from statistic as st
+  left join source as src on st.source = src.rowid
+  where st.w >= ? and st.type = ?
+  group by data
+  having sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) >= ?
+)"""
+
 STAT_TYPE_CHAR = 0
 STAT_TYPE_TRIGRAM = 1
 STAT_TYPE_WORD = 2
+
+# Performance Analysis words: one-off typos are noise; only show repeat vocabulary.
+WORD_ANALYSIS_MIN_COUNT = 2
 
 # WPM = (chars / seconds) * (60 / 5); five characters is the usual "word" in typing tests.
 WPM_CHARS_PER_WORD = 5
@@ -76,8 +85,7 @@ SESSION_WPM_TOTALS_SQL = """select sum(char_count), sum(duration)
 ALL_TIME_HIST = 0
 
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
-  100.0-100.0*mistakes/cast(total as real) as accuracy,
-  viscosity, total, mistakes, drilled,
+  viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
   where 12.0/time < ?
@@ -98,17 +106,41 @@ ANALYSIS_ORDER_OPTIONS = (
   ('wpm desc', 'fastest'),
   ('viscosity desc', 'most hesitation'),
   ('viscosity asc', 'least hesitation'),
-  ('accuracy asc', 'least accurate'),
-  ('misses desc', 'most mistyped'),
+  ('perfect_pct asc', 'lowest perfect %'),
+  ('perfect_pct desc', 'highest perfect %'),
   ('total desc', 'most common'),
   ('damage desc', 'most damaging'),
 )
 ANALYSIS_ORDER_CLAUSES = frozenset(k for k, _ in ANALYSIS_ORDER_OPTIONS) | frozenset(['improved desc'])
 DEFAULT_ANALYSIS_ORDER = 'wpm asc'
+_LEGACY_ANALYSIS_ORDER = {
+  'accuracy asc': 'perfect_pct asc',
+  'misses desc': 'perfect_pct asc',
+  'perfect asc': 'perfect_pct asc',
+  'perfect desc': 'perfect_pct desc',
+}
+_ANALYSIS_ORDER_SQL = {
+  'perfect_pct asc': 'cast(total - mistakes as real) / total asc',
+  'perfect_pct desc': 'cast(total - mistakes as real) / total desc',
+}
 
 
 def analysis_order_clause(order):
+  order = _LEGACY_ANALYSIS_ORDER.get(order, order)
   return order if order in ANALYSIS_ORDER_CLAUSES else DEFAULT_ANALYSIS_ORDER
+
+
+def analysis_order_sql(order):
+  key = analysis_order_clause(order)
+  return _ANALYSIS_ORDER_SQL.get(key, key)
+
+
+def analysis_min_count(stat_type, configured):
+  """Words in Performance Analysis need at least WORD_ANALYSIS_MIN_COUNT completions."""
+  n = int(configured or 1)
+  if stat_type == STAT_TYPE_WORD:
+    return max(n, WORD_ANALYSIS_MIN_COUNT)
+  return n
 
 
 def analysis_search_data_clause(stat_type):
@@ -122,8 +154,8 @@ def fetch_analysis_search(db, hist_cutoff, stat_type, min_count, term, order):
   if not term:
     return []
   clause = analysis_search_data_clause(stat_type)
-  sql = ANALYSIS_SEARCH_OUTER_SQL % (STATS_AGG_SUBQUERY, clause, analysis_order_clause(order))
-  return db.execute(sql, (hist_cutoff, stat_type, min_count, term)).fetchall()
+  sql = ANALYSIS_SEARCH_OUTER_SQL % (STATS_AGG_SUBQUERY, clause, analysis_order_sql(order))
+  return db.execute(sql, (hist_cutoff, stat_type, analysis_min_count(stat_type, min_count), term)).fetchall()
 
 
 def fetch_first_sample_wpm(db, stat_type, data_keys):
@@ -150,6 +182,13 @@ def fetch_first_sample_wpm(db, stat_type, data_keys):
 
 def count_unique_typed(db, hist_cutoff, stat_type):
   row = db.execute(UNIQUE_TYPED_SQL, (hist_cutoff, stat_type)).fetchone()
+  return int(row[0]) if row else 0
+
+
+def count_analysis_words(db, hist_cutoff):
+  """Distinct words with enough completions to appear in Performance Analysis."""
+  row = db.execute(
+    COUNT_TYPED_MIN_SQL, (hist_cutoff, STAT_TYPE_WORD, WORD_ANALYSIS_MIN_COUNT)).fetchone()
   return int(row[0]) if row else 0
 
 
@@ -183,8 +222,8 @@ def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=3, oblivion_wpm=30):
 
 
 def fetch_analysis_top(db, hist_cutoff, stat_type, order, limit, min_count=1):
-  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, order, limit)
-  return db.execute(sql, (hist_cutoff, stat_type, min_count)).fetchall()
+  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_sql(order), limit)
+  return db.execute(sql, (hist_cutoff, stat_type, analysis_min_count(stat_type, min_count))).fetchall()
 
 
 def fetch_slowest_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
