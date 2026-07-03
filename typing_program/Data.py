@@ -129,10 +129,9 @@ class AppDatabase(sqlite3.Connection):
     self._ensure_migrations()
 
   def _ensure_migrations(self):
-    from typing_program.app_meta import ensure_app_meta, get_app_meta_int, set_app_meta_int, backfill_total_practice_seconds
+    from typing_program.app_meta import ensure_app_meta, get_app_meta_int, set_app_meta_int
     from typing_program.book_mode import ensure_book_tables
     ensure_app_meta(self)
-    backfill_total_practice_seconds(self)
     cols = {r[1] for r in self.execute("pragma table_info(statistic)").fetchall()}
     if 'source' not in cols:
       self.execute('alter table statistic add column source integer')
