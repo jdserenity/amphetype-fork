@@ -53,7 +53,7 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   pa.updateAll()
   assert pa._progress._words_lbl.text() == 'Unique common words typed: 42'
   assert pa._progress._wpm_lbl.text() == 'Avg WPM: 74.5 · Top 13% of adults'
-  assert pa._progress._practice_lbl.text() == 'Total practice time: 1:01:01'
+  assert pa._progress._practice_lbl.text() == 'Total practice time: 1h 1m'
   assert pa._progress._gain_num.text() == '+12'
 
 

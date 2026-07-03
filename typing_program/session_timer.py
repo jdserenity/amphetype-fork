@@ -28,7 +28,12 @@ def format_session_label(secs):
 
 
 def format_practice_total_label(secs):
-  return format_session_label(secs).replace(' session', '')
+  secs = max(0, int(secs))
+  total_m = secs // 60
+  h, m = divmod(total_m, 60)
+  if h > 0:
+    return '%dh %dm' % (h, m)
+  return '%dm' % m
 
 
 def total_practice_seconds_from_db(db):

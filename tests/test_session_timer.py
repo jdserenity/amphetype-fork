@@ -27,7 +27,9 @@ def test_format_session_label():
 
 
 def test_format_practice_total_label():
-  assert format_practice_total_label(3661) == '1:01:01'
+  assert format_practice_total_label(0) == '0m'
+  assert format_practice_total_label(2700) == '45m'
+  assert format_practice_total_label(3661) == '1h 1m'
 
 
 def test_focused_session_timer_runs_only_while_resumed(monkeypatch):
