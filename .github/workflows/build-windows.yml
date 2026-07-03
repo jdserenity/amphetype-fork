@@ -1,0 +1,26 @@
+# Manual-only Windows installer build. Does NOT run on push or pull request.
+# GitHub → Actions → "Build Windows installer" → Run workflow.
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  zip:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build Windows bundle
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: typing-program-windows
+          path: dist/Typing Program-win.zip
+          if-no-files-found: error
