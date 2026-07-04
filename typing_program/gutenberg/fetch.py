@@ -1,9 +1,9 @@
 import re
 import urllib.error
-import urllib.request
 from html.parser import HTMLParser
 
 from typing_program.gutenberg.paths import texts_dir
+from typing_program.https import urlopen as https_urlopen
 from typing_program.gutenberg.strip_headers import strip_aus_headers, strip_headers
 
 TEXT_URL = 'https://www.gutenberg.org/cache/epub/{id}/pg{id}.txt'
@@ -63,7 +63,7 @@ def html_to_text(html):
 
 
 def _fetch_url(url, opener=None):
-  open_fn = opener or urllib.request.urlopen
+  open_fn = opener or https_urlopen
   try:
     with open_fn(url, timeout=120) as resp:
       return resp.read()

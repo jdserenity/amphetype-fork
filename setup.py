@@ -25,7 +25,7 @@ setup(
   ],
 
   packages=['typing_program', 'typing_program.Widgets', 'typing_program.gutenberg'],
-  install_requires=['PyQt5', 'translitcodec', 'editdistance'],
+  install_requires=['PyQt5', 'translitcodec', 'editdistance', 'certifi'],
   extras_require={
     'test': ['pytest', 'pytest-qt'],
   },

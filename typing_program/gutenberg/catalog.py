@@ -4,11 +4,11 @@ import io
 import re
 import sqlite3
 import time
-import urllib.request
 from pathlib import Path
 
 from typing_program.gutenberg.aus_catalog import GUTINDEX_URL, gutindex_path, parse_gutindex_aus
 from typing_program.gutenberg.paths import gutenberg_cache_dir
+from typing_program.https import urlopen as https_urlopen
 
 CATALOG_URL = 'https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv.gz'
 CATALOG_STALE_DAYS = 7
@@ -214,7 +214,7 @@ def rebuild_index(cache_dir=None, csv_path=None, gutindex_path_arg=None, db_path
 
 def update_catalog(cache_dir=None, opener=None):
   cache_dir = cache_dir or gutenberg_cache_dir()
-  open_fn = opener or urllib.request.urlopen
+  open_fn = opener or https_urlopen
   with open_fn(CATALOG_URL, timeout=180) as resp:
     catalog_csv_path(cache_dir).write_bytes(gzip.decompress(resp.read()))
   with open_fn(GUTINDEX_URL, timeout=180) as resp:

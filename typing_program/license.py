@@ -5,6 +5,8 @@ import urllib.parse
 import urllib.request
 import uuid
 
+from typing_program.https import urlopen as https_urlopen
+
 LICENSE_API = 'https://api.lemonsqueezy.com/v1/licenses'
 DEFAULT_CHECKOUT_URL = 'https://YOUR_STORE.lemonsqueezy.com/checkout/buy/VARIANT_ID'
 
@@ -57,7 +59,7 @@ def machine_id(settings):
 
 
 def _post(path, fields, opener=None):
-  open_fn = opener or urllib.request.urlopen
+  open_fn = opener or https_urlopen
   body = urllib.parse.urlencode(fields).encode('utf-8')
   req = urllib.request.Request(
     LICENSE_API + path,

@@ -4,6 +4,7 @@
 
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules
+import certifi
 
 ROOT = Path(SPECPATH)
 PKG = ROOT / 'typing_program'
@@ -13,12 +14,12 @@ APP_NAME = 'Typing Program'
 # typing_program/VERSION at import; if either is missing it raises at startup.
 # So we copy VERSION and the whole data/ tree back into a typing_program/ folder
 # inside the frozen bundle.
-datas = [(str(PKG / 'VERSION'), 'typing_program')]
+datas = [(str(PKG / 'VERSION'), 'typing_program'), (certifi.where(), 'certifi')]
 for p in (PKG / 'data').rglob('*'):
   if p.is_file():
     datas.append((str(p), str(Path('typing_program') / p.parent.relative_to(PKG))))
 
-hiddenimports = collect_submodules('typing_program')
+hiddenimports = collect_submodules('typing_program') + ['certifi']
 
 a = Analysis(
   [str(PKG / 'main_entry.py')],
