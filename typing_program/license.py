@@ -70,6 +70,10 @@ def _post(path, fields, opener=None):
   try:
     with open_fn(req, timeout=20) as resp:
       raw = resp.read().decode('utf-8')
+  except urllib.error.HTTPError as e:
+    raw = e.read().decode('utf-8', errors='replace')
+    if not raw.strip():
+      raise LicenseNetworkError(f'license server error ({e.code})') from e
   except urllib.error.URLError as e:
     raise LicenseNetworkError(str(e.reason or e)) from e
   try:
