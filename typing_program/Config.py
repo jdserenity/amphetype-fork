@@ -551,6 +551,7 @@ class GeneralOptions(QWidget):
 
     self.setLayout(AppBoxLayout([
       ["Typer font is", self.font_lbl, AppButton("Change...", self.setFont), None],
+      ["Version", QLabel(__version__), AppButton("Check for updates…", self.open_updates), None],
       None,
       [SettingsCheckBox("text_force_ascii", 'Force unicode to plain ASCII'), ('(‘fancy’ “quotes” → "normal" quotes, <code>æ</code> → <code>ae</code>, etc.)', 1)],
       SettingsCheckBox('auto_review', "Automatically review slow and mistyped words after texts."),
@@ -576,6 +577,10 @@ class GeneralOptions(QWidget):
     ]))
 
     self.updateFont()
+
+  def open_updates(self):
+    from typing_program.UpdateDialog import UpdateDialog
+    UpdateDialog(Settings, self).exec_()
 
   def setFont(self):
     font, ok = QFontDialog.getFont(Settings.getFont('typer_font'), self)

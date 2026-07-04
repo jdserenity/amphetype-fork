@@ -1,0 +1,18 @@
+{
+  "version": "1.2.1",
+  "release_notes": "Example manifest — replace by running scripts/publish-update.sh after each release.",
+  "platforms": {
+    "darwin": {
+      "object_key": "releases/1.2.1/Typing Program-mac.zip",
+      "sha256": "replace_me"
+    },
+    "win32": {
+      "object_key": "releases/1.2.1/Typing Program-win.zip",
+      "sha256": "replace_me"
+    },
+    "linux": {
+      "object_key": "releases/1.2.1/Typing Program-linux.tar.gz",
+      "sha256": "replace_me"
+    }
+  }
+}

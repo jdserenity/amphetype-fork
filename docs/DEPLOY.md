@@ -83,6 +83,7 @@ Output:
 
 - `dist/Typing Program.app` — the app bundle
 - `dist/Typing Program.dmg` — drag-to-Applications disk image (upload this to Lemon Squeezy)
+- `dist/Typing Program-mac.zip` — for in-app updates: `python scripts/mac_app_zip.py` after the PyInstaller step
 
 The script creates a venv, installs PyInstaller + Pillow, runs `typing_program.spec`, then wraps the `.app` in a `.dmg` via `scripts/mac_dmg.py` (`hdiutil`).
 
@@ -132,7 +133,54 @@ Download the artifact from the completed run, then upload to Lemon Squeezy.
 
 Upload per-OS installers to Lemon Squeezy → product → **Files**; LS emails download links to buyers.
 
-## Dev (local)
+For **in-app updates**, also publish zip/tar.gz builds to R2 (see below). Mac first-install email can stay `.dmg`; the updater uses `Typing Program-mac.zip`.
+
+## In-app updates (R2 + Cloudflare)
+
+Paying users update from **Preferences → General Options → Check for updates…** without re-entering a license key.
+
+### One-time Cloudflare setup
+
+1. Create the R2 bucket (once):
+   ```sh
+   npx wrangler r2 bucket create typing-program-updates
+   ```
+2. Cloudflare dashboard → **Workers & Pages** → **typing-program** → **Settings → Environment variables** (production + preview):
+   - `UPDATE_SIGNING_SECRET` — long random string (signs short-lived download tokens). Copy into `website/.dev.vars` for local preview.
+   - `LEMONSQUEEZY_API_KEY` — already used for `/thanks.html`; license validation for updates uses the public License API (no extra LS key in the app).
+3. `wrangler.jsonc` binds R2 as `UPDATES` → `typing-program-updates`. Redeploy Pages after changing `wrangler.jsonc`.
+
+### Publish a release to R2
+
+After building installers:
+
+| OS | Build output for R2 | Notes |
+|----|---------------------|-------|
+| macOS | `dist/Typing Program-mac.zip` | `python scripts/mac_app_zip.py` after PyInstaller (`.dmg` is email-only) |
+| Windows | `dist/Typing Program-win.zip` | from `scripts/build-windows.ps1` |
+| Linux | `dist/Typing Program-linux.tar.gz` | from `scripts/build-linux.sh` |
+
+From repo root (requires `npx wrangler login`):
+
+```sh
+./scripts/publish-update.sh 1.3.0 darwin "dist/Typing Program-mac.zip"
+./scripts/publish-update.sh 1.3.0 win32 "dist/Typing Program-win.zip"
+./scripts/publish-update.sh 1.3.0 linux "dist/Typing Program-linux.tar.gz"
+```
+
+Each run uploads the file to `releases/<version>/…`, updates `manifest.json` in R2, and sets `release_notes` when you edit the manifest locally before the last platform upload (or edit manifest in R2). Bump `typing_program/VERSION` before building.
+
+Manifest shape: `updates/manifest.example.json`.
+
+### API routes (Pages Functions)
+
+- `POST /api/check-update` — body: `license_key`, `instance_id`, `platform` (`darwin` / `win32` / `linux`), `current_version`. Returns `update_available`, and when true: `version`, `sha256`, `download_url`, `release_notes`.
+- `GET /api/download-update?token=…` — streams the R2 object after HMAC token check.
+
+Local preview: `website/.dev.vars` with `UPDATE_SIGNING_SECRET`; upload a test manifest + file to R2, or mock R2 in dev.
+
+Override update URL in the app: `TYPING_PROGRAM_UPDATE_API=https://YOUR_DOMAIN/api/check-update`.
+
 
 Requires Python 3.11 (PyQt5 does not install reliably on 3.12+).
 

@@ -18,6 +18,8 @@ def test_website_files_exist():
   for path in (
     INDEX, WEBSITE / "styles.css", WEBSITE / "main.js", WEBSITE / "favicon.svg",
     WEBSITE / "checkout.json", WEBSITE / "thanks.html", WRANGLER,
+    WEBSITE / "functions" / "api" / "check-update.js",
+    WEBSITE / "functions" / "api" / "download-update.js",
   ):
     assert path.is_file(), f"missing {path.relative_to(REPO_ROOT)}"
 
@@ -68,6 +70,7 @@ def test_wrangler_pages_config():
   cfg = json.loads(raw)
   assert cfg["name"] == "typing-program"
   assert cfg["pages_build_output_dir"] == "./website"
+  assert any(b.get("binding") == "UPDATES" for b in cfg.get("r2_buckets", []))
 
 
 def test_footer_x_link():
