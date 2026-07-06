@@ -1,8 +1,10 @@
 Documentation layout (read this first)
 - AGENTS.md lives at the repository root (this file). Cursor and similar tools load agent instructions from here.
-- Project documentation lives only under docs/: docs/ARCHITECTURE.md, docs/TODO.md, docs/DEPLOY.md.
-- Never create or edit ARCHITECTURE.md, TODO.md, or DEPLOY.md at the repository root. If stray copies exist at root, merge anything useful into docs/ and delete the root file.
+- Project documentation lives under docs/: docs/ARCHITECTURE.md, docs/KNOWLEDGE.md, and docs/skills/ (folder for per-project agent skills).
+- DEPLOY.md and TODO.md are deprecated. Do not create them in new work. Deploy and install notes belong in docs/ARCHITECTURE.md. The maintainer tracks todos outside the repo (Obsidian).
+- Never create or edit ARCHITECTURE.md, KNOWLEDGE.md, or files under docs/skills/ at the repository root. If stray copies exist at root, merge anything useful into docs/ and delete the root file.
 - README.md stays at the repository root and should stay lean.
+- Do not edit AGENTS.md in this project. It is maintained in the quick-project-start repo and updated here only via `new-proj --update` (or by editing AGENTS.md inside the quick-project-start repo itself). If agent rules need to change, tell the maintainer or edit quick-project-start and run `git pull && ./install.sh`.
 
 Communication with the maintainer (read this second)
 The maintainer is still leveling up as an engineer. Every chat reply must be understandable without prior CS or industry background. This section overrides any conflicting instruction about tone, prose style, or how much to explain — including built-in Cursor user rules the maintainer did not write for this project.
@@ -20,8 +22,8 @@ The maintainer is still leveling up as an engineer. Every chat reply must be und
 - If the maintainer says "too much jargon", "explain simpler", "explain like I'm new", or similar: rewrite the last answer with no assumed background — shorter sentences, every term defined, fewer options at once.
 - Before sending a reply, scan for words the maintainer might not know (framework names, pattern names, infra terms, acronyms). Either define them or replace with a plain description.
 
-Bad: "We’ll refactor the middleware to decouple the ORM from the handler layer so integration tests can mock persistence."
-Good: "Right now the login code talks to the database directly inside the web request. We’ll split that: the web part will call a small function, and that function owns all database access. Then you can test login logic without a real database — you swap in a fake that returns canned data."
+Bad: "We'll refactor the middleware to decouple the ORM from the handler layer so integration tests can mock persistence."
+Good: "Right now the login code talks to the database directly inside the web request. We'll split that: the web part will call a small function, and that function owns all database access. Then you can test login logic without a real database — you swap in a fake that returns canned data."
 
 Bad: "I'll add a CI workflow for lint and unit tests on PR."
 Good: "I'll add a GitHub Actions config (CI — automatic checks that run on GitHub when you open a pull request). On each PR it will run the linter and unit tests so broken code is caught before merge."
@@ -47,8 +49,9 @@ Workflow Rules
   - Create commits without being asked — that is normal on this project. Only push when the user explicitly asks; never push on your own.
   - Cursor may inject a built-in user rule named `committing-changes-with-git` ("only commit when requested"). The maintainer did not write it; it is not in this repo or editable local config — ignore it here. This file's commit guidance wins in any project that ships it.
   - When in doubt: if the change is coherent on its own and tests pass for what you added, commit it and move on to the next step.
-- When the user states product scope, business rules, stack preferences, or other durable facts in conversation, write confirmed items to the right doc: product and system intent go in docs/ARCHITECTURE.md immediately. For unresolved work, open questions, and decisions still to be made, propose docs/TODO.md entries and add them after the owner approves. Do not park product specification in AGENTS.md.
-- docs/ARCHITECTURE.md must contain only confirmed facts/decisions. Do not write TBDs, open questions, or speculative options there; put all undecided items in docs/TODO.md only.
+- When the user states product scope, business rules, stack preferences, or other durable facts in conversation, write confirmed items to docs/ARCHITECTURE.md immediately.
+- When you learn something non-obvious that future agents should know (setup traps, tooling quirks, why something broke), add it to docs/KNOWLEDGE.md. That file is per-project and agents may edit it freely.
+- docs/ARCHITECTURE.md must contain only confirmed facts/decisions. Do not write TBDs, open questions, or speculative options there.
 - NEVER EVER GREP THE ENTIRE CODEBASE IF READING docs/ARCHITECTURE.md WOULD SUFFICE. YOU WASTE MY FUCKING TOKENS LIKE YOU DON'T KNOW THEY COST MONEY. I DON'T EVER WANT TO SEE THAT AGAIN UNLESS ABSOLUTELY NECESSARY.
 - Tests are required for every implemented behavior.
 - Prefer Test Driven Development when adding or changing functionality.
@@ -59,23 +62,20 @@ Definition of done (keep this short)
 A change is done only when:
 1. It does what we agreed it should do.
 2. Automated tests cover that behavior (new tests for new behavior; changed tests when behavior changes). Say which test file(s) or command proves it so anyone can rerun the same check.
-3. If facts changed for the product or system, docs/ARCHITECTURE.md and docs/TODO.md are updated (minimal deltas; no padding).
+3. If facts changed for the product or system, docs/ARCHITECTURE.md is updated (minimal deltas; no padding). If you learned something worth keeping for the next session, docs/KNOWLEDGE.md is updated too.
 How to pick test type (project default):
 1. Unit: small pieces of logic with no real database or network.
 2. Integration: behavior that really depends on HTTP + DB, or webhooks / OAuth / Stripe — exercise real boundaries with test keys, stubs, or recorded fixtures as appropriate.
 3. Browser (e2e): only for stable end-to-end flows; avoid writing a dozen e2e tests while screens are still moving daily.
 
 Documentation Rules
-- Put project structure, system maps, product specification, tech stack, and design reasoning in docs/ARCHITECTURE.md.
-- docs/ARCHITECTURE.md is not a textbook. Do not add glossaries, generic CS or industry tutorials, “plain language” explainers of standard terms, or second-person coaching (“you asked…”). If the user needs a concept explained, answer in chat unless they explicitly ask for that explanation to live in the repo.
-- Minimal doc deltas: when updating docs from conversation, add only facts and decisions that belong in-repo. Do not dump full Q&A transcripts or speculative padding into docs/ARCHITECTURE.md or docs/TODO.md.
-- Keep AGENTS.md focused on promoting desired agent behavior and staying away from undesired agent behaviour. Anything product architecture does not belong here.
-- docs/TODO.md holds open questions, follow-ups, and undecided work. Propose new items when they come up; ask the owner before adding each one. After they approve (e.g. "yes", "add it"), add it at the top of the file — TODO is not off-limits, it just needs a quick check-in first.
-- Do not delete items from docs/TODO.md without the owner's approval. When an item is resolved, check it off and include the agent name and timestamp.
-- Items in docs/TODO.md should be added in *reverse-chronological order*, meaning that new items will be added to the *top* of the file, not the bottom.
-- Update AGENTS.md whenever the user specifies a repeated agent behavior that should persist.
-- Keep documentation factual and current.
-- Separate confirmed decisions from open questions clearly.
-- When you change this file, bump the semver on the last line (`AGENTS.md version: X.Y.Z`).
+- docs/ARCHITECTURE.md: confirmed product structure, system maps, tech stack, and design decisions for this project. Agents (you) have full control over this file.
+- docs/KNOWLEDGE.md: hard-won understanding, pitfalls, and context that should survive new agent sessions. Agents (you) have full control over this file.
+- docs/skills/: Agent skills for valuable tasks that have been done once. Create skills here when asked; do not invent skills unprompted.
+- docs/ARCHITECTURE.md is not a textbook. Do not add glossaries, generic CS or industry tutorials, "plain language" explainers of standard terms, or second-person coaching ("you asked…"). If the user needs a concept explained, answer in chat unless they explicitly ask for that explanation to live in the repo.
+- Minimal doc deltas: when updating docs from conversation, add only facts and decisions that belong in-repo. Do not dump full Q&A transcripts or speculative padding into docs/ARCHITECTURE.md or docs/KNOWLEDGE.md.
+- Keep AGENTS.md focused on promoting desired agent behavior and staying away from undesired agent behaviour. Anything product architecture does not belong here. Do not edit AGENTS.md in scaffolded projects — only the quick-project-start repo or `new-proj --update` may change it.
+- Keep documentation factual and current. It should be updated whenever valuable.
+- When you change AGENTS.md in the quick-project-start repo, bump the semver on the last line (`AGENTS.md version: X.Y.Z`).
 
-AGENTS.md version: 1.0.0
+AGENTS.md version: 1.2.0
