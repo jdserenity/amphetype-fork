@@ -829,21 +829,33 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(3).widget() is tw._btn_book
 
 
-def test_inactive_mode_buttons_match_progress_bar_palette_mid(qapp):
-  """Unselected footer modes follow palette Mid (native empty progress-bar grey). Progress bar stays unstyled."""
+def test_progress_bar_is_never_restyled(qapp):
   import typing_program.mainwindow  # noqa: F401
-  from PyQt5.QtGui import QPalette
-  from PyQt5.QtWidgets import QApplication
-  from typing_program.typer import MODE_BTN_ACTIVE, TyperWindow, _footer_btn_style, _mode_btn_inactive_color
+  from typing_program.typer import TyperWindow
 
   tw = TyperWindow()
-  mid = QApplication.palette().color(QPalette.Mid).name()
-  assert _mode_btn_inactive_color() == mid
-  assert mid in tw._mode_btn_style
   assert tw._prog.styleSheet() == ''
+  tw._sync_inactive_mode_colors_from_progress_bar()
+  assert tw._prog.styleSheet() == ''
+
+
+def test_inactive_mode_buttons_use_sampled_empty_progress_color(qapp, monkeypatch):
+  """Unselected modes take the empty bar's painted colour; the bar itself is untouched."""
+  import typing_program.mainwindow  # noqa: F401
+  from PyQt5.QtGui import QColor
+  from typing_program.typer import MODE_BTN_ACTIVE, TyperWindow, _footer_btn_style
+
+  monkeypatch.setattr(
+    'typing_program.typer.sample_empty_progress_bar_color',
+    lambda prog: QColor('#9a9a9a'))
+  tw = TyperWindow()
+  assert tw._prog.styleSheet() == ''
+  tw._sync_inactive_mode_colors_from_progress_bar()
+  assert tw._inactive_mode_color == '#9a9a9a'
+  assert '#9a9a9a' in tw._mode_btn_style
   assert MODE_BTN_ACTIVE in tw._mode_btn_style
-  assert mid in _footer_btn_style(False)
-  assert MODE_BTN_ACTIVE in _footer_btn_style(True)
+  assert tw._prog.styleSheet() == ''
+  assert '#9a9a9a' in _footer_btn_style(False, inactive_color='#9a9a9a')
 
 
 def test_progress_bar_shown_before_lesson_starts(qapp):
