@@ -69,8 +69,8 @@ _BADGE_FONT_PT = 13
 # Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
 TYPER_CHROME_COLOR = QColor('#4a4a4a')
 TYPER_CANVAS_DEFAULT = QColor('#383838')
-# Unselected footer modes — rgb(92, 92, 92); matches empty progress-bar grey.
-MODE_BTN_INACTIVE = '#5c5c5c'
+# Unselected footer modes — rgb(110, 110, 110).
+MODE_BTN_INACTIVE = '#6e6e6e'
 MODE_BTN_ACTIVE = '#ffffff'
 MODE_BTN_HOVER = '#ffffff'
 
