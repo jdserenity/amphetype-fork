@@ -1,0 +1,149 @@
+
+<html>
+<body>
+
+<h1>Amphetype</h1>
+
+<p>Version <big><strong>${VERSION}</strong></big></p>
+
+<p>Made with love by Frank &lt;<a href="mailto:tristesse@gmail.com">tristesse@gmail.com</a>&gt;</p>
+
+<dl>
+  <dt>lesson</dt><dd>A text of suitable length. This could be anything: an
+  excerpt from a book or file, just a random collection of words (as an
+  auto-generated lesson), and so on.</dd>
+  <dt>source</dt><dd>
+    <p>A named collection of lessons, for example the name of a
+  file. A source is generated automatically when importing a file. After import
+  the file is no longer needed as the lessons are stored in Amphetype's internal
+      database.</p>
+
+    <p>(To delete a full source, [disable] all its lessons, and then [delete disabled].)</p>
+  </dd>
+  <dt>WPM (words per minute)</dt><dd>This is <em>defined</em> as 12 x (keys per second), i.e. the a "word" is defined as five keypresses.
+   </dd>
+   <dt>portable install (database and settings)</dt><dd>
+     <p>The settings is (by default) stored in a file called amphetype.ini. Its location varies based on OS, but it should be where
+     programs usually store configs. The database (containing all statistics as well as full copies of extracted lessons) will usually
+     be called USERNAME.db where USERNAME is your login name on the computer. The database roughly corresponds to a "profile" so if several
+       people wanted to use Amphetype on the same computer with a single user they'd probably use different database files.</p>
+
+     <p>Both of these files can be specified at the command line with parameters "--settings file.ini" and "--database file.db",
+       tho technically only the setting file is necessary for full portable profile since the settings file specifies the database.</p>
+
+     <p>Another alternative is to use the command line parameter "--local" which
+     makes Amphetype read/save its local data wherever it is installed (for
+       example on a USB drive).</p>
+     <p>See also "--help" for more command line options.</p>
+
+     <p>If you don't know what command line parameters are or how to specify them, the best I can do is try
+       searching for "windows how to edit command line parameters" or similar.</p>
+     <p>(On the other side of the spectrum, for more advanced usage, you can
+     also use environment variables
+       to set most of these options, like AMPH_LOGFILE, AMPH_SETTINGS, AMPH_LOCAL.)
+     </p>
+   </dd>
+  <dt>viscosity</dt><dd>
+    <p>When I originally wrote the program and started
+      pushing myself to type faster, I noticed there were certain words
+      and key combinations that felt very awkward or uncomfortable and slowed me down.
+      They were very noticeable subjectively, giving a somewhat cramped feeling in my hand, the finger movements
+      seemingly breaking apart into hesitating spider-like jerks. It made my flow feel viscous.
+      And I made some ad hoc attempt at coming up with a statistic for identifying these words and combinations.
+    </p>
+
+    <p>
+      It was originally calculated roughly as the sum of statistical variance on each key.
+      Later (for Typer 2) I changed it to looking only at the variance of keys that were slower than average.
+
+      But neither method is very well thought out, nor theoretically sound. You can probably ignore this number. I'm not really sure what
+      the best measure would be.
+    </p>
+  </dd>
+   <dt>key shortcuts</dt><dd>Ctrl-Q quits.</dd>
+   <dt>can't type character / refuses to accept input</dt>
+   <dd>
+     <p>Amphetype requires the exact character as input. If the text asks for "—" (em dash) then "-" (hyphen) won't work, ordinarily.
+
+     The "force ASCII" option will try to change unicode symbols like these (“fancy”
+     quote characters, ellipses (…),
+       etc.) into regular ASCII equivalents.</p>
+
+     <p>Another option is to edit the file you're importing from directly. Just make sure you're not using an editor
+     that might change the text in unexpected ways on save (like Microsoft Word?). Be careful also when copy-pasting
+     text from the web, so it doesn't contain weirdness like invisible space
+       characters.</p>
+   </dd>
+   <dt>more help</dt><dd>
+<p>
+  For more help, check out
+  the <a href="https://gitlab.com/franksh/amphetype/-/wikis/FAQ">FAQ</a>.
+  If your question isn't answered, shoot me a message on GitLab or add
+  an issue there (or email me).
+</p>
+   </dd>
+</dl>
+
+<p>
+  This is a complicated program so it's tough to cover everything, but an example workflow might be the following (which is how I personally used it).
+</p>
+<ul>
+  <li>In a fresh install I'll download the text-file I want to type from Gutenberg. I'll edit it to remove all the legal notices.</li>
+  <li>In the Sources tab I'll import the file via the Import Text button. This gives a new "Source" (named collections of lessons)</li>
+  <li></li>
+</ul>
+<p>
+  This is a complicated program so it's tough to cover everything, but an example workflow might be the following (which is how I personally used it).
+</p>
+
+
+<h2>Links</h2>
+<ul>
+  <li><a href="https://gitlab.com/franksh/amphetype">Project Homepage</a></li>
+  <li><a href="https://gitlab.com/franksh/amphetype/-/wikis/FAQ">FAQ</a></li>
+  <li><a href="https://www.gutenberg.org/">Project Gutenberg</a> for
+    more free books in plain text format</li>
+</ul>
+
+<h2>Other Stuff</h2>
+<p>Text files
+  from <a href="http://www.gutenberg.org/about/">Project
+  Gutenberg</a>. Word lists
+  from <a href="http://wordlist.sourceforge.net/scowl-readme">SCOWL</a>
+  by Kevin Atkinson. Originally made with PyQt4, later PyQt5
+  by <a href="http://www.riverbankcomputing.co.uk/">Riverbank
+  Computing</a>, Python bindings for the wonderful Qt GUI library
+  by <a href="http://trolltech.com/">Trolltech</a>. Code less, create
+  more indeed. CSS themes includede are
+  from <a href="https://github.com/GTRONICK/QSS">GTRONICK/QSS</a>
+  GitHub project licensed under MIT. You're encouraged to modify
+  these.</p>
+
+<p>Licenced under
+the <a href="http://www.gnu.org/licenses/gpl-3.0.html">GNU v3</a>
+license. See project's LICENSE file for more information.</p>
+
+<small><pre>
+    Amphetype - advanced typing program
+    Copyright (C) 2008-2022  Frank S. Hestvik
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see http://www.gnu.org/licenses/.
+</pre></small>
+
+
+</body>
+</html>
+
+
+
