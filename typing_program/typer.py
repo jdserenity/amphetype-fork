@@ -69,52 +69,10 @@ _BADGE_FONT_PT = 13
 # Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
 TYPER_CHROME_COLOR = QColor('#4a4a4a')
 TYPER_CANVAS_DEFAULT = QColor('#383838')
+# Unselected footer modes — rgb(92, 92, 92); matches empty progress-bar grey.
+MODE_BTN_INACTIVE = '#5c5c5c'
 MODE_BTN_ACTIVE = '#ffffff'
 MODE_BTN_HOVER = '#ffffff'
-
-
-def _luminance(c):
-  return 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
-
-
-def sample_empty_progress_bar_color(prog):
-  """Painted colour of the empty progress *track*. Does not modify the bar.
-
-  Native QProgressBar has no colour constant in our code — the OS paints it.
-  A single center pixel is often pure white (highlight) or chrome; the real
-  empty track is the most common mid-luminance grey in the grab.
-  """
-  fallback = QApplication.palette().color(QPalette.Mid)
-  if prog is None:
-    return fallback
-  saved_val = prog.value()
-  if saved_val != 0:
-    prog.setValue(0)
-  try:
-    if prog.width() < 8 or prog.height() < 2:
-      return fallback
-    img = prog.grab().toImage()
-    if img.isNull() or img.width() < 2 or img.height() < 1:
-      return fallback
-    counts = {}
-    for y in range(img.height()):
-      for x in range(img.width()):
-        c = QColor(img.pixel(x, y))
-        if c.alpha() < 200:
-          continue
-        lum = _luminance(c)
-        # Skip pure white highlight and near-black chrome; keep track greys.
-        if lum >= 245 or lum <= 40:
-          continue
-        name = c.name()
-        counts[name] = counts.get(name, 0) + 1
-    if not counts:
-      return fallback
-    best = max(counts.items(), key=lambda kv: kv[1])[0]
-    return QColor(best)
-  finally:
-    if saved_val != 0:
-      prog.setValue(saved_val)
 
 
 def _footer_zero_margins(w):
@@ -123,10 +81,8 @@ def _footer_zero_margins(w):
     w.setMargin(0)
 
 
-def _footer_btn_style(active=False, inactive_color=None):
-  if inactive_color is None:
-    inactive_color = QApplication.palette().color(QPalette.Mid).name()
-  color = MODE_BTN_ACTIVE if active else inactive_color
+def _footer_btn_style(active=False):
+  color = MODE_BTN_ACTIVE if active else MODE_BTN_INACTIVE
   hover = MODE_BTN_HOVER
   return (
     'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
@@ -1336,8 +1292,12 @@ class TyperWindow(QWidget):
     self._source_lbl.installEventFilter(self)
     self._book_prog_text = ''
 
-    self._inactive_mode_color = QApplication.palette().color(QPalette.Mid).name()
-    self._mode_btn_style = self._build_mode_btn_style()
+    self._mode_btn_style = (
+      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
+      ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
+      'QPushButton:hover { color: %s; }'
+      'QPushButton[activeMode="true"] { color: %s; }' % (
+        MODE_BTN_INACTIVE, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
 
     self._btn_improve = QPushButton(_IMPROVE_BTN_LABEL, flat=True)
     self._btn_book = QPushButton('book', flat=True)
@@ -1409,32 +1369,6 @@ class TyperWindow(QWidget):
     self.S('improve_submode').bind_value(self._onImproveSubmodeSetting, call=True)
     self._apply_practice_mode_from_settings()
     self._apply_read_ahead_from_settings()
-
-  def _build_mode_btn_style(self):
-    return (
-      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
-      ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
-      'QPushButton:hover { color: %s; }'
-      'QPushButton[activeMode="true"] { color: %s; }' % (
-        self._inactive_mode_color, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
-
-  def _sync_inactive_mode_colors_from_progress_bar(self):
-    """Copy the *painted* empty progress-bar colour onto unselected mode labels.
-
-    Does not change the progress bar's style, palette, or stylesheet.
-    """
-    c = sample_empty_progress_bar_color(self._prog)
-    name = c.name()
-    if name == self._inactive_mode_color:
-      return
-    self._inactive_mode_color = name
-    self._mode_btn_style = self._build_mode_btn_style()
-    # Re-apply mode / toggle button styles with the sampled inactive colour.
-    self._set_mode_ui(self._mode, load=False)
-    self._set_improve_submode_ui(self._improve_submode)
-    self._set_read_ahead_ui(self._read_ahead_on, self._read_ahead_level, refresh_doc=False)
-    self._onBlockBkspcSetting()
-    self._onHeatmapSetting()
 
   def _polish_mode_btn(self, btn):
     btn.style().unpolish(btn)
@@ -1551,7 +1485,7 @@ class TyperWindow(QWidget):
     self.S('speed_heatmap_mode').set(mode)
 
   def _style_heatmap_footer_btn(self, btn, on):
-    btn.setStyleSheet(_footer_btn_style(on, inactive_color=self._inactive_mode_color))
+    btn.setStyleSheet(_footer_btn_style(on))
 
   def _onHeatmapSetting(self, *_):
     on = bool(self.S('speed_heatmap').get())
@@ -1630,8 +1564,6 @@ class TyperWindow(QWidget):
     self._typer.setFocus()
     if self._typer._pin_typing_center:
       QTimer.singleShot(0, self._typer._center_typing_when_ready)
-    # Sample after layout so the empty bar has real pixels; never styles the bar.
-    QTimer.singleShot(0, self._sync_inactive_mode_colors_from_progress_bar)
     return super().showEvent(evt)
 
   def _on_lesson_started(self):
@@ -1690,8 +1622,6 @@ class TyperWindow(QWidget):
     """Top area: empty or live progress bar (or wind text if progress pref is off)."""
     self._prog_layout.setCurrentIndex(1)
     self._progw.setCurrentIndex(1 if self.S['show_progress'] else 0)
-    if self.S['show_progress']:
-      QTimer.singleShot(0, self._sync_inactive_mode_colors_from_progress_bar)
 
   def _show_result_label(self):
     """Top area: post-lesson summary / prompts."""
