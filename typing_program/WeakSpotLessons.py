@@ -10,7 +10,7 @@ import random
 import re
 from collections import defaultdict
 
-from typing_program.stats_query import ALL_TIME_HIST, RAW_TARGETS_SQL
+from typing_program.stats_query import ALL_TIME_HIST, RAW_TARGETS_SQL, analysis_min_count
 
 # A target is (kind, data, weight); kind in {'char','trigram','word'}.
 TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}
@@ -729,10 +729,14 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=8
 
 
 def fetch_weak_targets(conn, hist=ALL_TIME_HIST, min_count=1, per_type=15):
-  """Pull weak chars/trigrams/words, scored by slowness (dominant) and frequency."""
+  """Pull weak chars/trigrams/words, scored by slowness (dominant) and frequency.
+
+  Words use the same count floor as Performance Analysis (analysis_min_count).
+  """
   targets = []
   for tp, tag in TYPE_TAGS.items():
-    rows = conn.execute(RAW_SQL, (hist, tp, min_count)).fetchall()
+    floor = analysis_min_count(tp, min_count)
+    rows = conn.execute(RAW_SQL, (hist, tp, floor)).fetchall()
     scored = []
     for data, t, total, misses in rows:
       s = score_target(t, total, misses)

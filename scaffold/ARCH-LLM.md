@@ -55,7 +55,7 @@ scaffold/         # agent docs (this file)
 | book | 1 | `book_mode.py` — chapters/chunks, progress in `book_progress` / `book_lesson_done` |
 | corpus | 2 | `TextManager.nextText`; re-click corpus → another text |
 
-Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on three weak **words**. Focus drill size: prefs `focus_min_chars` / `focus_max_chars` (default 80–300; General Options under lesson min/max); `build_focus_lesson` uses those directly. Focus drill from Performance Analysis: same builder; finish replays until user exits improve focus.
+Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on three weak **words**, all gated by `analysis_min_count` (oblivion via `fetch_oblivion_picks`; others via `fetch_analysis_top`). Focus drill size: prefs `focus_min_chars` / `focus_max_chars` (default 80–300; General Options under lesson min/max); `build_focus_lesson` uses those directly. Focus drill from Performance Analysis: same builder (targets already N-filtered in PA UI); finish replays until user exits improve focus.
 
 **Cold start:** every app launch forces practice mode improve + submode normal (`apply_cold_start_practice_mode` in `book_mode.py`, called from `TyperWindow` init). Last session’s book/corpus/submode is not restored.
 
@@ -85,7 +85,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 - Idle: `IDLE_THRESHOLD = 3.0` s in `timingtuple.py` — gaps capped for WPM/`active_duration`.
 - Focus/weakspot drills: `<Weakspot>` rows, `count=0` — affect medians/hesitation, not counted damage totals the same way (`stats_query.py`).
 - Counted practice writes `result` with `char_count`/`duration` (corpus, book, improve-normal). Focus drills skip counted `result`/counts.
-- Analysis: all-time (`ALL_TIME_HIST = 0`); words need ≥ `WORD_ANALYSIS_MIN_COUNT` (2); WPM card gated on `WPM_GATE_MIN_LESSONS` (10) qualifying results.
+- Analysis: all-time (`ALL_TIME_HIST = 0`); words need ≥ `WORD_ANALYSIS_MIN_COUNT` (2) via `analysis_min_count` — **holy floor for all word pulls** (Performance Analysis, focus drills oblivion/slowest/hesitant/damage, weakspot `fetch_weak_targets`, Lesson Generator “from typed”). Chars/trigrams may use a lower configured min. WPM card gated on `WPM_GATE_MIN_LESSONS` (10) qualifying results.
 - Damage/importance: time² · frequency-style factors (see weakspot / heatmap). Heatmap WPM uses median-time pool (`SPEED_STATS_SQL`).
 
 ## Weakspot rules (composer)

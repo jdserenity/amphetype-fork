@@ -103,7 +103,7 @@ OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
-  where 12.0/time < ?
+  where total >= ? and 12.0/time < ?
   order by wpm asc"""
 
 SPEED_STATS_ALL_TIME_SQL = f"""select data,
@@ -295,15 +295,17 @@ def lesson_qualifies_for_wpm_gate(mode, improve_submode=0, focus_drill=False):
   return mode == MODE_IMPROVE and improve_submode == 0
 
 
-def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):
+def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30, min_count=1):
+  """Slow items under oblivion_wpm; same count floor as Performance Analysis."""
   sql = OBLIVION_POOL_SQL % STATS_AGG_SUBQUERY
-  return db.execute(sql, (hist_cutoff, stat_type, oblivion_wpm)).fetchall()
+  floor = analysis_min_count(stat_type, min_count)
+  return db.execute(sql, (hist_cutoff, stat_type, floor, oblivion_wpm)).fetchall()
 
 
-def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=3, oblivion_wpm=30):
-  """Up to n oblivion targets from the statistic pool."""
+def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=3, oblivion_wpm=30, min_count=1):
+  """Up to n oblivion targets from the statistic pool (count-gated like Analysis)."""
   import random
-  pool = fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm)
+  pool = fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm, min_count)
   if not pool:
     return []
   return random.sample(pool, min(n, len(pool)))

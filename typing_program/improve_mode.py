@@ -30,7 +30,7 @@ def fetch_improve_submode_targets(db, submode, hist_cutoff, min_count, n=3):
   kind = 'word'
   stat_type = STAT_TYPE_WORD
   if submode == IMPROVE_SUBMODE_OBLIVION:
-    rows = fetch_oblivion_picks(db, hist_cutoff, stat_type, n, OBLIVION_WPM)
+    rows = fetch_oblivion_picks(db, hist_cutoff, stat_type, n, OBLIVION_WPM, min_count)
   elif submode == IMPROVE_SUBMODE_SLOWEST:
     rows = fetch_slowest_picks(db, hist_cutoff, stat_type, n, min_count)
   elif submode == IMPROVE_SUBMODE_HESITANT:

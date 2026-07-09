@@ -9,9 +9,11 @@ from typing_program.improve_mode import (
   IMPROVE_SUBMODE_NORMAL, IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST,
   IMPROVE_SUBMODE_TRIGRAMS, fetch_improve_submode_targets,
 )
-from typing_program.stats_query import STAT_TYPE_TRIGRAM, STAT_TYPE_WORD
+from typing_program.stats_query import (
+  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, WORD_ANALYSIS_MIN_COUNT,
+)
 from typing_program.WeakSpotLessons import (
-  build_trigram_gibberish_lesson, fetch_weak_trigram_targets,
+  build_trigram_gibberish_lesson, fetch_weak_targets, fetch_weak_trigram_targets,
 )
 
 
@@ -104,6 +106,45 @@ def test_improve_submode_oblivion_under_threshold():
   _seed_words(conn, now)
   picks = fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_OBLIVION, 0, 1, n=3)
   assert {t[1] for t in picks} == {'slow'}
+
+
+def test_focus_drill_submodes_exclude_words_below_analysis_min_count():
+  """Holy N: focus drills never pull words that would be hidden from Performance Analysis."""
+  conn = _test_db(); now = 1e9
+  # One-shot typo (count 1) is very slow; real word (count 2+) is mid-speed.
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'typo', STAT_TYPE_WORD, 12.0 / 8.0, 1, 1, 50.0, None),
+      (now, 'real', STAT_TYPE_WORD, 12.0 / 25.0, WORD_ANALYSIS_MIN_COUNT, 0, 20.0, None),
+      (now, 'solid', STAT_TYPE_WORD, 12.0 / 30.0, 10, 2, 15.0, None),
+    ])
+  # Even if caller passes min_count=1, words still floor at WORD_ANALYSIS_MIN_COUNT.
+  for submode in (
+      IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST,
+      IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_DAMAGE):
+    picks = fetch_improve_submode_targets(conn, submode, 0, 1, n=3)
+    names = {t[1] for t in picks}
+    assert 'typo' not in names, f'{submode} pulled one-shot word'
+    assert names <= {'real', 'solid'}
+    assert picks  # at least one eligible word
+
+
+def test_fetch_weak_targets_excludes_words_below_analysis_min_count():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'once', STAT_TYPE_WORD, 1.0, 1, 0, 1.0, None),
+      (now, 'often', STAT_TYPE_WORD, 0.5, WORD_ANALYSIS_MIN_COUNT, 0, 1.0, None),
+      (now, 'x', 0, 0.5, 1, 0, 1.0, None),  # chars still allow count 1
+    ])
+  targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
+  words = [t[1] for t in targets if t[0] == 'word']
+  chars = [t[1] for t in targets if t[0] == 'char']
+  assert words == ['often']
+  assert 'once' not in words
+  assert 'x' in chars
 
 
 def test_improve_submode_always_picks_words_not_trigrams():

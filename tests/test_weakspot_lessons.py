@@ -389,12 +389,24 @@ class TestDbIntegration(unittest.TestCase):
     conn.executemany(
       'insert into statistic (w,data,type,time,count,mistakes,viscosity) values (?,?,?,?,?,?,?)',
       [
-        (now, 'slow', 2, 1.0, 1, 0, 1.0),     # painful but typed once
+        (now, 'slow', 2, 1.0, 2, 0, 1.0),     # painful but rare (at analysis floor)
         (now, 'fast', 2, 0.3, 500, 0, 1.0),   # constant typing cost
       ])
     targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
     words = [t[1] for t in targets if t[0] == 'word']
     self.assertEqual(words[0], 'fast')
+
+  def test_one_shot_words_never_enter_weak_targets(self):
+    conn = _test_db(); now = 1e9
+    conn.executemany(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity) values (?,?,?,?,?,?,?)',
+      [
+        (now, 'once', 2, 2.0, 1, 1, 1.0),
+        (now, 'twice', 2, 0.4, 2, 0, 1.0),
+      ])
+    targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
+    words = [t[1] for t in targets if t[0] == 'word']
+    self.assertEqual(words, ['twice'])
 
   def test_discounted_source_stats_excluded_from_analysis_aggregate(self):
     conn = _test_db(); now = 1e9

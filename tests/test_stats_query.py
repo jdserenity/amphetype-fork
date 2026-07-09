@@ -345,18 +345,24 @@ def test_fetch_oblivion_pool_returns_all_under_threshold():
   assert len(fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM)) == 35
 
 
-def test_oblivion_pool_includes_drill_only_rows():
+def test_oblivion_pool_excludes_words_below_analysis_min_count():
+  """One-shot and drill-only words must not enter the oblivion focus-drill pool."""
+  from typing_program.stats_query import WORD_ANALYSIS_MIN_COUNT
   conn = _test_db(); now = 1e9
   weak = _add_source(conn, '<Weakspot>', 1)
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     [
-      (now, 'However', STAT_TYPE_WORD, 12.0 / 20.0, 0, 1, 1.0, weak),
-      (now, 'from', STAT_TYPE_WORD, 12.0 / 25.0, 0, 0, 1.0, weak),
-      (now, 'with', STAT_TYPE_WORD, 12.0 / 28.0, 0, 0, 1.0, weak),
+      (now, 'once', STAT_TYPE_WORD, 12.0 / 15.0, 1, 0, 1.0, None),
+      (now, 'drillonly', STAT_TYPE_WORD, 12.0 / 18.0, 0, 1, 1.0, weak),
+      (now, 'often', STAT_TYPE_WORD, 12.0 / 20.0, WORD_ANALYSIS_MIN_COUNT, 0, 1.0, None),
+      (now, 'plenty', STAT_TYPE_WORD, 12.0 / 22.0, 10, 0, 1.0, None),
     ])
-  pool = fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM)
-  assert {r[0] for r in pool} == {'However', 'from', 'with'}
+  pool = fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM, min_count=1)
+  names = {r[0] for r in pool}
+  assert names == {'often', 'plenty'}
+  assert 'once' not in names
+  assert 'drillonly' not in names
 
 
 def test_all_time_hist_is_zero():
