@@ -44,6 +44,8 @@ class FocusedSessionTimer:
   def __init__(self):
     self._saved = 0.0
     self._segment = 0.0
+    # Session clock (top-right): survives focus-loss flushes. Only resets on new instance.
+    self._session = 0.0
     self._running_since = None
     self._should_run = False
     self._last_interaction = None
@@ -60,11 +62,11 @@ class FocusedSessionTimer:
     return self._segment + (timer() - self._running_since)
 
   def elapsed(self):
-    """Current focused segment (top-right session clock)."""
-    return self.segment_elapsed()
+    """This-launch session clock (top-right). Keeps counting across focus pauses."""
+    return self._session + self.segment_elapsed()
 
   def total_seconds(self):
-    """All-time practice seconds: persisted total plus the live segment."""
+    """All-time practice seconds: persisted total plus the live unflushed segment."""
     return self._saved + self.segment_elapsed()
 
   def touch(self):
@@ -102,6 +104,9 @@ class FocusedSessionTimer:
 
   def flush_to_db(self, db):
     self._pause_segment()
+    # Fold unflushed time into the session clock before zeroing the segment so the
+    # top-right display does not jump back to 0:00:00 when the window loses focus.
+    self._session += self._segment
     total = int(self._saved + self._segment)
     self._saved = float(total)
     self._segment = 0.0
