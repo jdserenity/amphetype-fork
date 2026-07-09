@@ -1252,7 +1252,7 @@ class TyperWindow(QWidget):
     self._btn_corpus = QPushButton(_CORPUS_BTN_LABEL, flat=True)
     self._btn_read_ahead = QPushButton('read ahead', flat=True)
     self._btn_read_ahead_level = QPushButton('normal', flat=True)
-    self._btn_word_delete = QPushButton('word delete', flat=True)
+    self._btn_word_delete = QPushButton('Block ⌫', flat=True)
     self._btn_improve_level = QPushButton('normal', flat=True)
     self._btn_heatmap = QPushButton('heatmap', flat=True)
     self._btn_heatmap.clicked.connect(self._toggleHeatmap)
