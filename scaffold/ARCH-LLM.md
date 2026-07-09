@@ -65,6 +65,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 ## Typer behavior
 
+- **Page background:** `typer/background_color` solid fill on `TyperWindow` + `#TyperCanvas` (`_applyBackground`); lesson `QTextEdit` is transparent on top. Main tab `::pane` must stay transparent so this fill is never covered. Do not remove.
 - Document: type on top of target; styles untyped/correct/error/blocked.
 - ESC pause: Continue / New / Restart overlay; `RunStats.pause`/`resume`.
 - Footer order (left): improve [+submode] · corpus · book · read ahead [+level] · **Block ⌫** · heatmap [+kind + legend] · source title.
@@ -97,7 +98,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 ## Session timer
 
-`session_timer.py`: top-right; ticks when focused + interaction within 60s. Session clock keeps elapsed time across focus loss (pause + flush must not reset display). Persist `app_meta.total_practice_seconds`. Pref `show_session_timer` default on. Main tab bar top inset (`MAIN_TAB_TOP_INSET`); session clock vertically centered on tab labels.
+`session_timer.py`: top-right; ticks when focused + interaction within 60s. Session clock keeps elapsed time across focus loss (pause + flush must not reset display). Persist `app_meta.total_practice_seconds`. Pref `show_session_timer` default on. Main tabs: `documentMode` + `::pane { border: none; background: transparent }`; session clock vertically centered on tab labels.
 
 ## License
 
