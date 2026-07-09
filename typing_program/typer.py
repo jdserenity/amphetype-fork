@@ -34,6 +34,7 @@ from typing_program.read_ahead import (
 )
 from typing_program.block_bkspc import allows_backspace
 from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS
+from typing_program.keyboard_nav import cycle_practice_mode
 
 from typing_program.Data import Statistic
 from typing_program.speed_heatmap import (
@@ -955,6 +956,7 @@ class TyperWidget(QTextEdit):
     self._pause_overlay = None
     self._pin_typing_center = False
     self._on_awaiting_enter = None
+    self._on_tab_nav = None  # optional callback: Tab → cycle improve submode
     self._sounds = TypingSoundPlayer()
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
@@ -1146,6 +1148,14 @@ class TyperWidget(QTextEdit):
     pass
 
   def keyPressEvent(self, evt):
+    # Tab cycles improve submode (wired via parent TyperWindow callback).
+    # Handle even with no lesson so navigation always works on the typer canvas.
+    if evt.key() == Qt.Key_Tab:
+      if self._on_tab_nav is not None:
+        self._on_tab_nav()
+      evt.accept()
+      return
+
     if not self._lesson:
       evt.ignore()
       return
@@ -1243,6 +1253,7 @@ class TyperWindow(QWidget):
     self._book.progressChanged.connect(self._on_book_progress)
     self._book_meta = None
     self._typer = TyperWidget(self.S)
+    self._typer._on_tab_nav = self.cycle_improve_submode
     hack = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Ignored)
     self._label = QLabel(wordWrap=True, sizePolicy=hack)
     self._prog = QProgressBar()
@@ -1376,6 +1387,24 @@ class TyperWindow(QWidget):
     self.S('improve_submode').bind_value(self._onImproveSubmodeSetting, call=True)
     self._apply_practice_mode_from_settings()
     self._apply_read_ahead_from_settings()
+    self._install_keyboard_nav()
+
+  def _install_keyboard_nav(self):
+    """Cmd/Ctrl+←→ cycle practice mode. Tab cycles submode (TyperWidget.keyPressEvent).
+
+    QKeySequence 'Ctrl' is Command on macOS. Tab is not a QShortcut — QTextEdit
+    would otherwise swallow it or double-fire with the widget handler.
+    """
+    self._sc_submode = None  # Tab via TyperWidget._on_tab_nav → cycle_improve_submode
+    self._sc_mode_next = QShortcut(QKeySequence('Ctrl+Right'), self)
+    self._sc_mode_next.setContext(Qt.WidgetWithChildrenShortcut)
+    self._sc_mode_next.activated.connect(lambda: self._cycle_practice_mode(1))
+    self._sc_mode_prev = QShortcut(QKeySequence('Ctrl+Left'), self)
+    self._sc_mode_prev.setContext(Qt.WidgetWithChildrenShortcut)
+    self._sc_mode_prev.activated.connect(lambda: self._cycle_practice_mode(-1))
+
+  def _cycle_practice_mode(self, delta):
+    self.set_practice_mode(cycle_practice_mode(self._mode, delta))
 
   def _polish_mode_btn(self, btn):
     btn.style().unpolish(btn)
@@ -2074,11 +2103,13 @@ class TyperWindow(QWidget):
     if self._mode == MODE_BOOK and self._book_meta is not None:
       m = self._book_meta
       srcid = self._current_lesson[1]
+      # Always persist place on every finished chunk (not only chapter ends).
+      # Mid-chapter advances used to skip this and reopened the same chunk forever.
+      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
       if self._doc.has_next_book_chunk():
         self._pending_action = 'book_chunk'
         self._show_progress_summary(run, stats_saved=True)
         return
-      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
 
     self._pending_action = action
     self._show_progress_summary(run, stats_saved=True)
