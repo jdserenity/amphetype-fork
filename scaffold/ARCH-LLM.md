@@ -52,7 +52,7 @@ scaffold/         # agent docs (this file)
 | Mode | Value | Advance / content |
 |------|-------|-------------------|
 | improve | 0 (default) | Weakspot lesson (`WeakSpot.py` + `WeakSpotLessons.py`); submode via `typer/improve_submode` |
-| book | 1 | `book_mode.py` — chapters/chunks, progress in `book_progress` / `book_lesson_done` |
+| book | 1 | `book_mode.py` — chapters/chunks, progress in `book_progress` / `book_lesson_done`. **Every finished chunk** calls `BookLessonBuilder.on_chunk_completed` (marks done + advances `book_progress` to next chunk/chapter) — not only chapter ends. Mid-chapter advances used to skip the save and reopened the same place. |
 | corpus | 2 | `TextManager.nextText`; re-click corpus → another text |
 
 Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on **words**: take worst `FOCUS_DRILL_POOL_SIZE` (20) in category, random-sample `FOCUS_DRILL_PICK_COUNT` (5) — or fewer if the user has not typed that many eligible words yet; single-word pool ⇒ that word only. All word picks gated by `analysis_min_count`. **Oblivion** = display WPM (1 decimal, same as PA) **&lt; 32** (`OBLIVION_WPM`; 32 is red, ≤31.9 purple); omitted from the submode cycle when its pool is empty (`oblivion_submode_available` / `next_improve_submode`). Auto focus drills **re-sample targets every finish/new** (`_load_improve_lesson`); PA-started drills keep the chosen targets and only re-shuffle the lesson. Focus text: `build_focus_lesson` uses allocate_repeats + interleave (not strict round-robin). Focus size prefs: `focus_min_chars` / `focus_max_chars` (default 80–300).
@@ -62,6 +62,16 @@ Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`i
 **Idle mouse cursor:** on the typer canvas (`TyperWidget` + `idle_cursor.py`), the pointer blanks after `MOUSE_CURSOR_IDLE_MS` (2000) with no movement; reappears on move/enter.
 
 Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
+
+## Keyboard navigation
+
+| Shortcut | Action | Where |
+|----------|--------|--------|
+| **Tab** | Next improve submode (`cycle_improve_submode`; no-op outside improve) | Typer canvas (`TyperWidget.keyPressEvent` → `_on_tab_nav`) |
+| **Cmd/Ctrl+← / →** | Previous / next practice mode (improve · corpus · book) | `TyperWindow` QShortcut; helpers in `keyboard_nav.py` |
+| **Opt/Alt+Cmd/Ctrl+[ / ]** | Previous / next main toolbar tab (Typer / PA / Preferences) | `MainWindow` QShortcut |
+
+`QKeySequence` uses `Ctrl` for Command on macOS. Pure helpers: `cycle_practice_mode`, `cycle_index`.
 
 ## Typer behavior
 
@@ -156,6 +166,7 @@ Tests: `python -m pytest tests/ -q` (pytest-qt for GUI).
 | Read ahead | `read_ahead.py` |
 | Heatmap | `speed_heatmap.py` |
 | Book | `book_mode.py` |
+| Keyboard nav | `keyboard_nav.py` |
 | Weakspot | `WeakSpot.py`, `WeakSpotLessons.py`, `improve_mode.py` |
 | Stats I/O | `timingtuple.py`, `stats_query.py`, `Data.py` |
 | Analysis UI | `PerformanceAnalysis.py`, `progress_card.py` |

@@ -4,6 +4,10 @@ Hard-won lessons and context that should survive across agent sessions — setup
 
 Keep scaffold/ARCH-LLM.md for confirmed product and system facts only. One home per fact; don't duplicate architecture content here.
 
+## Book progress must save on every finished chunk
+
+`typingDone` used to call `BookLessonBuilder.on_chunk_completed` only when `has_next_book_chunk()` was false (last chunk of a chapter). Mid-chapter finishes only advanced in-memory (`book_chunk` pending action), so quitting/reopening always restarted the same chapter chunk. Save place in SQLite on **every** completed chunk, then decide whether the next action is mid-chapter advance or chapter load.
+
 ## Never strip the two-layer Typer background
 
 The Typer view has **two** background layers. Painting one color on both (or only on the outer widget) is the classic way agents “delete” the look.

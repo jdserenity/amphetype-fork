@@ -47,6 +47,10 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 
 **Cold start:** opening the app always lands on Typer in **improve · normal**, not whatever mode you left last time.
 
+**Keyboard (macOS):** **Tab** cycles improve submode (when you’re in improve). **⌘← / ⌘→** cycle practice mode (improve · corpus · book). **⌥⌘[ / ⌥⌘]** cycle the top tabs (Typer / Performance Analysis / Preferences).
+
+**Book place:** finishing a chunk always saves where you are (chapter + chunk). Reopening the book mode resumes from that place — not only after you finish a whole chapter.
+
 **Mouse pointer:** on the practice canvas it hides after about two seconds still, then comes back when you move the mouse.
 
 **Block ⌫** (on by default): plain Backspace does nothing; only Option/Ctrl/Alt/Cmd+Backspace deletes (whole word). Habit training for faster correction.
