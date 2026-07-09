@@ -40,6 +40,7 @@ from typing_program.typer import TyperWindow
 from typing_program.session_timer import FocusedSessionTimer, INTERACTION_EVENTS, SessionTimerLabel
 from typing_program.fwidgets import scroll_widget
 from typing_program.QtUtil import center_widget_on_screen, should_clear_focus_on_click
+from typing_program.keyboard_nav import cycle_index
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -53,7 +54,12 @@ class MainWindow(QMainWindow):
 
     self.quitSc = QShortcut(QKeySequence('Ctrl+Q'), self)
     self.quitSc.activated.connect(QApplication.instance().quit)
-    
+    # Opt/Alt+Cmd/Ctrl+[ ] cycle main toolbar tabs (Ctrl = Cmd on macOS in QKeySequence).
+    self._sc_tab_prev = QShortcut(QKeySequence('Ctrl+Alt+['), self)
+    self._sc_tab_prev.activated.connect(lambda: self._cycle_main_tab(-1))
+    self._sc_tab_next = QShortcut(QKeySequence('Ctrl+Alt+]'), self)
+    self._sc_tab_next.activated.connect(lambda: self._cycle_main_tab(1))
+
     tabs = QTabWidget()
     self._tabs = tabs
     # No full-width pane rule through the tab strip / session clock. Pane must stay
@@ -127,6 +133,10 @@ class MainWindow(QMainWindow):
       self._session_timer.resume()
 
     # Practice mode is forced to improve · normal in TyperWindow (cold start).
+
+  def _cycle_main_tab(self, delta):
+    tabs = self._tabs
+    tabs.setCurrentIndex(cycle_index(tabs.currentIndex(), tabs.count(), delta))
 
   def _apply_session_clock_visible(self):
     on = bool(Settings.get('show_session_timer'))
