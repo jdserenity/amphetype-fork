@@ -41,6 +41,8 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     
     "min_chars": 220,
     "max_chars": 600,
+    "focus_min_chars": 80,
+    "focus_max_chars": 300,
     "break_sentences": False,
     "lesson_stats": 0, # show text/lesson in perf -- not used anymore
     "perf_group_by": 0,
@@ -563,6 +565,8 @@ class GeneralOptions(QWidget):
       None,
       ["Try to limit texts and lessons to between", SettingsEdit("min_chars"),
         "and", SettingsEdit("max_chars"), "characters.", None],
+      ["Try to limit focus drills to between", SettingsEdit("focus_min_chars"),
+        "and", SettingsEdit("focus_max_chars"), "characters.", None],
       [SettingsCheckBox('break_sentences', "Break long sentences when importing external text."), None],
       ["Selection method for new lessons:",
         SettingsCombo('select_method', ['Random', 'In Order', 'Difficult', 'Easy']), None],

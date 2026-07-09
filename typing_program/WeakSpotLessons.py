@@ -665,14 +665,27 @@ def build_lesson(targets, dict_words, min_chars=220, max_chars=600, rng=None, re
 # DB selection + caching
 # ---------------------------------------------------------------------------
 
-def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=220, max_chars=600, rng=None):
-  """Repeat only the given type targets (Performance Analysis drill). targets: [(kind, data), ...]."""
+def normalize_focus_drill_chars(min_chars, max_chars):
+  """Clamp focus-drill length prefs so min ≥ 1 and max ≥ min (swap if inverted)."""
+  lo = max(int(min_chars), 1)
+  hi = max(int(max_chars), 1)
+  if lo > hi:
+    lo, hi = hi, lo
+  return lo, hi
+
+
+def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=80, max_chars=300, rng=None):
+  """Repeat only the given type targets (Performance Analysis drill). targets: [(kind, data), ...].
+
+  min_chars / max_chars are the focus-drill size prefs (not half of normal lesson size).
+  """
   if not targets:
     return ''
   if dict_words is None and wordlist_path:
     dict_words = load_wordlist(wordlist_path)
   weighted = [(k, d, 1.0) for k, d in targets]
-  focus_chars = max(80, max_chars // 2)
+  min_chars, max_chars = normalize_focus_drill_chars(min_chars, max_chars)
+  focus_chars = max_chars
   rng = rng or random.Random()
   index = _make_index(weighted, dict_words or [])
   all_keys = _keys(weighted)
@@ -706,7 +719,7 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=2
   while len(text) < focus_chars and fails < len(weighted) * 4:
     t = order[idx % len(order)]
     idx += 1
-    if all(c >= min_each for c in counts.values()) and len(text) >= focus_chars * 0.85:
+    if all(c >= min_each for c in counts.values()) and len(text) >= max(min_chars, int(focus_chars * 0.85)):
       break
     if _append_phrase(t):
       fails = 0

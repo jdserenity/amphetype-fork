@@ -223,6 +223,22 @@ class TestFocusDrill(unittest.TestCase):
     runs.append(n)
     self.assertLessEqual(max(runs), 4)
 
+  def test_focus_drill_respects_max_chars_not_half(self):
+    """Focus size is the configured max, not half of lesson max_chars."""
+    targets = [('word', 'from')]
+    short = build_focus_lesson(targets, DICT, min_chars=40, max_chars=80, rng=_R(1))
+    long = build_focus_lesson(targets, DICT, min_chars=40, max_chars=240, rng=_R(1))
+    self.assertLessEqual(len(short), 80 + 20)  # one trailing phrase may push slightly
+    self.assertGreater(len(long), len(short))
+    self.assertLessEqual(len(long), 240 + 30)
+
+  def test_normalize_focus_drill_chars(self):
+    from typing_program.WeakSpotLessons import normalize_focus_drill_chars
+    self.assertEqual(normalize_focus_drill_chars(80, 300), (80, 300))
+    self.assertEqual(normalize_focus_drill_chars(400, 100), (100, 400))  # swap inverted
+    self.assertEqual(normalize_focus_drill_chars(0, 50), (1, 50))
+
+
 
 class TestScoring(unittest.TestCase):
   """Importance ('damage') = slowness² x (count + misses). Frequency matters a lot."""

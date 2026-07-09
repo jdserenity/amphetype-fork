@@ -1689,7 +1689,9 @@ class TyperWindow(QWidget):
   def _emit_focus_lesson(self, targets):
     wl = str(Settings.DATA_DIR / 'wordlists' / 'words-20.txt')
     lesson = build_focus_lesson(
-      targets, wordlist_path=wl, max_chars=Settings.get('max_chars'))
+      targets, wordlist_path=wl,
+      min_chars=Settings.get('focus_min_chars'),
+      max_chars=Settings.get('focus_max_chars'))
     if not lesson:
       return False
     self._set_improve_footer_busy(False)
