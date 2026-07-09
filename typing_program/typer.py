@@ -73,12 +73,20 @@ MODE_BTN_ACTIVE = '#ffffff'
 MODE_BTN_HOVER = '#ffffff'
 
 
+def _luminance(c):
+  return 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+
+
 def sample_empty_progress_bar_color(prog):
-  """Painted colour of the empty progress track. Does not modify the bar."""
+  """Painted colour of the empty progress *track*. Does not modify the bar.
+
+  Native QProgressBar has no colour constant in our code — the OS paints it.
+  A single center pixel is often pure white (highlight) or chrome; the real
+  empty track is the most common mid-luminance grey in the grab.
+  """
   fallback = QApplication.palette().color(QPalette.Mid)
   if prog is None:
     return fallback
-  # Need a painted empty track (value 0). Never set stylesheets on the bar.
   saved_val = prog.value()
   if saved_val != 0:
     prog.setValue(0)
@@ -88,11 +96,22 @@ def sample_empty_progress_bar_color(prog):
     img = prog.grab().toImage()
     if img.isNull() or img.width() < 2 or img.height() < 1:
       return fallback
-    # Center of the groove — empty bar is all track colour.
-    c = QColor(img.pixel(img.width() // 2, img.height() // 2))
-    if not c.isValid() or c.alpha() == 0:
+    counts = {}
+    for y in range(img.height()):
+      for x in range(img.width()):
+        c = QColor(img.pixel(x, y))
+        if c.alpha() < 200:
+          continue
+        lum = _luminance(c)
+        # Skip pure white highlight and near-black chrome; keep track greys.
+        if lum >= 245 or lum <= 40:
+          continue
+        name = c.name()
+        counts[name] = counts.get(name, 0) + 1
+    if not counts:
       return fallback
-    return c
+    best = max(counts.items(), key=lambda kv: kv[1])[0]
+    return QColor(best)
   finally:
     if saved_val != 0:
       prog.setValue(saved_val)

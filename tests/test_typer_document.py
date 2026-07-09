@@ -839,6 +839,32 @@ def test_progress_bar_is_never_restyled(qapp):
   assert tw._prog.styleSheet() == ''
 
 
+def test_sample_empty_progress_skips_white_picks_track_grey(qapp):
+  """Native empty bars paint mostly white + a grey track; we want the track."""
+  import typing_program.mainwindow  # noqa: F401
+  from PyQt5.QtGui import QColor, QImage, QPainter
+  from typing_program.typer import sample_empty_progress_bar_color
+
+  # Fake a grab: white field with a grey groove band.
+  img = QImage(100, 10, QImage.Format_RGB32)
+  img.fill(QColor('#ffffff'))
+  for y in range(3, 7):
+    for x in range(100):
+      img.setPixel(x, y, QColor('#ababab').rgb())
+
+  class _FakeProg:
+    def width(self): return 100
+    def height(self): return 10
+    def value(self): return 0
+    def setValue(self, v): pass
+    def grab(self):
+      from PyQt5.QtGui import QPixmap
+      return QPixmap.fromImage(img)
+
+  c = sample_empty_progress_bar_color(_FakeProg())
+  assert c.name() == '#ababab'
+
+
 def test_inactive_mode_buttons_use_sampled_empty_progress_color(qapp, monkeypatch):
   """Unselected modes take the empty bar's painted colour; the bar itself is untouched."""
   import typing_program.mainwindow  # noqa: F401
@@ -847,15 +873,15 @@ def test_inactive_mode_buttons_use_sampled_empty_progress_color(qapp, monkeypatc
 
   monkeypatch.setattr(
     'typing_program.typer.sample_empty_progress_bar_color',
-    lambda prog: QColor('#9a9a9a'))
+    lambda prog: QColor('#ababab'))
   tw = TyperWindow()
   assert tw._prog.styleSheet() == ''
   tw._sync_inactive_mode_colors_from_progress_bar()
-  assert tw._inactive_mode_color == '#9a9a9a'
-  assert '#9a9a9a' in tw._mode_btn_style
+  assert tw._inactive_mode_color == '#ababab'
+  assert '#ababab' in tw._mode_btn_style
   assert MODE_BTN_ACTIVE in tw._mode_btn_style
   assert tw._prog.styleSheet() == ''
-  assert '#9a9a9a' in _footer_btn_style(False, inactive_color='#9a9a9a')
+  assert '#ababab' in _footer_btn_style(False, inactive_color='#ababab')
 
 
 def test_progress_bar_shown_before_lesson_starts(qapp):
