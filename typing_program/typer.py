@@ -1297,7 +1297,7 @@ class TyperWindow(QWidget):
     self._btn_heatmap.clicked.connect(self._toggleHeatmap)
     self._btn_heatmap_kind = QPushButton(flat=True)
     self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
-    for b in (self._btn_improve, self._btn_book, self._btn_corpus, self._btn_read_ahead,
+    for b in (self._btn_improve, self._btn_corpus, self._btn_book, self._btn_read_ahead,
               self._btn_read_ahead_level, self._btn_block_bkspc, self._btn_improve_level):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
@@ -1331,7 +1331,8 @@ class TyperWindow(QWidget):
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
     self._heatmap_panel.setVisible(False)
-    for w in (self._btn_improve, self._btn_improve_level, self._btn_book, self._btn_corpus,
+    # Footer mode order: improve · corpus · book · read ahead · Block ⌫ · heatmap
+    for w in (self._btn_improve, self._btn_improve_level, self._btn_corpus, self._btn_book,
               self._btn_read_ahead, self._btn_read_ahead_level, self._btn_block_bkspc,
               self._btn_heatmap, self._heatmap_panel):
       mode_lay.addWidget(w)
@@ -1768,7 +1769,7 @@ class TyperWindow(QWidget):
 
   def _set_mode_ui(self, mode, load):
     self._mode = mode
-    for btn, m in ((self._btn_improve, MODE_IMPROVE), (self._btn_book, MODE_BOOK), (self._btn_corpus, MODE_CORPUS)):
+    for btn, m in ((self._btn_improve, MODE_IMPROVE), (self._btn_corpus, MODE_CORPUS), (self._btn_book, MODE_BOOK)):
       btn.setStyleSheet(self._mode_btn_style)
       btn.setProperty('activeMode', mode == m)
       self._polish_mode_btn(btn)

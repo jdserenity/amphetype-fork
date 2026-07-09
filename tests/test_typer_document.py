@@ -813,3 +813,17 @@ def test_corpus_click_while_active_fetches_new_text(qapp):
   w._on_corpus_click()
   w.set_practice_mode.assert_called_once_with(MODE_CORPUS)
   w.wantText.emit.assert_not_called()
+
+
+def test_footer_mode_order_is_improve_corpus_book(qapp):
+  import typing_program.mainwindow  # noqa: F401 — init app.settings for TyperWindow
+  from typing_program.typer import TyperWindow
+
+  tw = TyperWindow()
+  mode_row = tw.layout().itemAt(2).widget()
+  lay = mode_row.layout()
+  # improve, improve_level, corpus, book — then extras
+  assert lay.itemAt(0).widget() is tw._btn_improve
+  assert lay.itemAt(1).widget() is tw._btn_improve_level
+  assert lay.itemAt(2).widget() is tw._btn_corpus
+  assert lay.itemAt(3).widget() is tw._btn_book
