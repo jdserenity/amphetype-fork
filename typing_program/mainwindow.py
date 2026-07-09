@@ -59,6 +59,11 @@ class MainWindow(QMainWindow):
     
     tabs = QTabWidget()
     self._tabs = tabs
+    # Drop the full-width pane rule that native styles draw through the tab strip
+    # (and through the session clock). Scoped so Preferences nested tabs stay framed.
+    tabs.setObjectName('mainTabs')
+    tabs.setDocumentMode(True)
+    tabs.setStyleSheet('QTabWidget#mainTabs::pane { border: none; }')
 
     tw = TyperWindow()
     tabs.addTab(tw, "Typer")

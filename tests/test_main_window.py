@@ -53,6 +53,21 @@ def test_session_clock_vertically_aligned_with_tabs(qapp):
   assert abs(tab_mid - clock_mid) <= 3
 
 
+def test_main_tabs_suppress_pane_border(qapp):
+  """Main tab strip must not draw the full-width line through tabs/session clock."""
+  import typing_program.mainwindow as A
+
+  w = A.MainWindow()
+  assert w._tabs.objectName() == 'mainTabs'
+  assert w._tabs.documentMode() is True
+  sheet = w._tabs.styleSheet().replace(' ', '')
+  assert 'QTabWidget#mainTabs::pane{border:none;}' in sheet
+  # Nested Preferences tabs keep the default framed look.
+  prefs = w._tabs.widget(2)
+  assert prefs is not None
+  assert prefs.styleSheet() == '' or 'mainTabs' not in prefs.styleSheet()
+
+
 def test_should_clear_focus_on_click(qapp):
   from PyQt5.QtWidgets import QComboBox, QLabel, QWidget
   from typing_program.QtUtil import should_clear_focus_on_click
