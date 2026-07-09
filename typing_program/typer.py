@@ -1502,7 +1502,12 @@ class TyperWindow(QWidget):
       self._heatmapStats())
 
   def _applyBackground(self, color):
-    """Uniform fill under the lesson; per-char formats stay clear except errors."""
+    """Uniform fill under the lesson; per-char formats stay clear except errors.
+
+    Do not remove this solid page fill. The lesson QTextEdit is transparent on
+    purpose; TyperWindow + TyperCanvas must paint the user background_color (and
+    parent tab panes must not cover it with an opaque frame).
+    """
     if hasattr(color, 'name'):
       name = color.name()
       qcolor = color
@@ -1512,6 +1517,13 @@ class TyperWindow(QWidget):
     sheet = f'background-color: "{name}";'
     self.setStyleSheet(f'TyperWindow {{ {sheet} }}')
     self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
+    # Palette + auto-fill so the page color still shows if a parent stylesheet
+    # fights the widget stylesheet (e.g. QTabWidget::pane).
+    for w in (self, self._canvas):
+      pal = w.palette()
+      pal.setColor(QPalette.Window, qcolor)
+      w.setAutoFillBackground(True)
+      w.setPalette(pal)
     configure_transparent_typer(self._typer)
     self._doc.set_page_background(qcolor)
 

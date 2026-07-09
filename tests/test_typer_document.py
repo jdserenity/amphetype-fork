@@ -827,3 +827,20 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(1).widget() is tw._btn_improve_level
   assert lay.itemAt(2).widget() is tw._btn_corpus
   assert lay.itemAt(3).widget() is tw._btn_book
+
+
+def test_typer_page_background_fill_is_applied(qapp):
+  """Lesson area must keep a solid user page color (not transparent / chrome gray)."""
+  import typing_program.mainwindow  # noqa: F401
+  from PyQt5.QtGui import QColor, QPalette
+  from typing_program.typer import TyperWindow
+
+  tw = TyperWindow()
+  color = QColor('#1a1a1a')
+  tw._applyBackground(color)
+  assert 'background-color: "#1a1a1a"' in tw.styleSheet().replace("'", '"')
+  assert 'background-color: "#1a1a1a"' in tw._canvas.styleSheet().replace("'", '"')
+  assert tw.autoFillBackground() is True
+  assert tw.palette().color(QPalette.Window) == color
+  assert tw._canvas.autoFillBackground() is True
+  assert tw._canvas.palette().color(QPalette.Window) == color
