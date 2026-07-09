@@ -829,13 +829,13 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(3).widget() is tw._btn_book
 
 
-def test_inactive_mode_buttons_use_rgb_130(qapp):
-  """Unselected footer modes are fixed rgb(130, 130, 130) / #828282."""
+def test_inactive_mode_buttons_use_rgb_140(qapp):
+  """Unselected footer modes are fixed rgb(140, 140, 140) / #8c8c8c."""
   import typing_program.mainwindow  # noqa: F401
   from typing_program.typer import MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, TyperWindow, _footer_btn_style
 
   tw = TyperWindow()
-  assert MODE_BTN_INACTIVE == '#828282'
+  assert MODE_BTN_INACTIVE == '#8c8c8c'
   assert MODE_BTN_INACTIVE in tw._mode_btn_style
   assert MODE_BTN_ACTIVE in tw._mode_btn_style
   assert tw._prog.styleSheet() == ''
