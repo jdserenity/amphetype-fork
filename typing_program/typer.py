@@ -69,6 +69,10 @@ _BADGE_FONT_PT = 13
 # Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
 TYPER_CHROME_COLOR = QColor('#4a4a4a')
 TYPER_CANVAS_DEFAULT = QColor('#383838')
+# Footer inactive labels match lesson text (correct_fg); active is pure white.
+MODE_BTN_INACTIVE = '#e8e8e8'
+MODE_BTN_ACTIVE = '#ffffff'
+MODE_BTN_HOVER = '#ffffff'
 
 
 def _footer_zero_margins(w):
@@ -78,8 +82,8 @@ def _footer_zero_margins(w):
 
 
 def _footer_btn_style(active=False):
-  color = '#ffffff' if active else '#555'
-  hover = '#888' if not active else '#ffffff'
+  color = MODE_BTN_ACTIVE if active else MODE_BTN_INACTIVE
+  hover = MODE_BTN_HOVER
   return (
     'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
     ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
@@ -1235,10 +1239,12 @@ class TyperWindow(QWidget):
     hack = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Ignored)
     self._label = QLabel(wordWrap=True, sizePolicy=hack)
     self._prog = QProgressBar()
+    self._prog.setTextVisible(False)
+    self._prog.setValue(0)
     self._progw = FStackedWidget([QLabel('Type like the wind!'), self._prog])
     self._prog_layout = FStackedWidget([self._label, self._progw])
 
-    self.S('show_progress').bind_value(self._progw.setCurrentIndex)
+    self.S('show_progress').bind_value(self._on_show_progress_pref, call=True)
     self.S('require_space').bind_change(lambda: self.updateLabel())
 
     # I am so confused. Settings system must have gone through 3 totally different paradigms.
@@ -1254,7 +1260,8 @@ class TyperWindow(QWidget):
       var.onChange.connect(doc.onColor)
       doc.onColor(var)
 
-    doc.started.connect(self._prog_layout.cycle)
+    # Progress strip is shown before the first keystroke (empty bar), not only after start.
+    doc.started.connect(self._show_progress_strip)
     doc.started.connect(self._on_lesson_started)
     doc.progress.connect(self._prog.setValue)
     doc.ready.connect(self.typingReady)
@@ -1286,10 +1293,11 @@ class TyperWindow(QWidget):
     self._book_prog_text = ''
 
     self._mode_btn_style = (
-      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px;'
+      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
       ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
-      'QPushButton:hover { color: #888; }'
-      'QPushButton[activeMode="true"] { color: #ffffff; }')
+      'QPushButton:hover { color: %s; }'
+      'QPushButton[activeMode="true"] { color: %s; }' % (
+        MODE_BTN_INACTIVE, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
 
     self._btn_improve = QPushButton(_IMPROVE_BTN_LABEL, flat=True)
     self._btn_book = QPushButton('book', flat=True)
@@ -1604,10 +1612,26 @@ class TyperWindow(QWidget):
     self._typer._pin_typing_center = True
     QTimer.singleShot(0, self._typer._center_typing_when_ready)
 
+  def _on_show_progress_pref(self, on):
+    self._progw.setCurrentIndex(1 if on else 0)
+    # Prefer the progress strip over an empty status label when the pref is on.
+    if on and not self._awaiting_next and not (self._label.text() or '').strip():
+      self._prog_layout.setCurrentIndex(1)
+
+  def _show_progress_strip(self):
+    """Top area: empty or live progress bar (or wind text if progress pref is off)."""
+    self._prog_layout.setCurrentIndex(1)
+    self._progw.setCurrentIndex(1 if self.S['show_progress'] else 0)
+
+  def _show_result_label(self):
+    """Top area: post-lesson summary / prompts."""
+    self._prog_layout.setCurrentIndex(0)
+
   def typingReady(self, text):
     self._pause_overlay.hide()
-    self._prog_layout.setCurrentIndex(0)
-    self._prog.setMaximum(len(text))
+    self._prog.setMaximum(max(1, len(text)))
+    self._prog.setValue(0)
+    self._show_progress_strip()
 
   def setDefaultText(self):
     log.error("setDefaultText() NOT IMPLEMENTED")
@@ -1634,7 +1658,9 @@ class TyperWindow(QWidget):
       self._typer._pin_typing_center = False
     self._refreshHeatmap()
     self._typer.setFocus()
+    self._prog.setMaximum(max(1, len(txt[2] or '')))
     self._prog.setValue(0)
+    self._show_progress_strip()
 
   def _update_source_label(self, srcid):
     row = self.DB.fetchone('select name from source where rowid=?', (None,), (srcid,))
@@ -1682,9 +1708,9 @@ class TyperWindow(QWidget):
     self._source_lbl.setVisible(False)
     self._typer.setReadOnly(True)
     self._typer._pin_typing_center = False
-    self._prog_layout.setCurrentIndex(0)
     self._prog.setValue(0)
-    self._prog.setMaximum(0)
+    self._prog.setMaximum(1)
+    self._show_progress_strip()
     self.updateLabel()
 
   def _on_book_lesson(self, lesson):
@@ -1710,7 +1736,8 @@ class TyperWindow(QWidget):
     self._refreshHeatmap()
     self._typer.setFocus()
     self._prog.setValue(0)
-    self._prog.setMaximum(len(active))
+    self._prog.setMaximum(max(1, len(active)))
+    self._show_progress_strip()
 
   def _apply_practice_mode_from_settings(self):
     mode = practice_mode_from_settings(self._settings.get('practice_mode'))
@@ -1893,9 +1920,9 @@ class TyperWindow(QWidget):
         tid = lesson_text_id(srcid, m['chapter_index'], m['chunk_index'])
         self._current_lesson = (tid, srcid, active)
         self._update_book_footer(m)
-        self._prog_layout.setCurrentIndex(0)
         self._prog.setValue(0)
-        self._prog.setMaximum(len(active))
+        self._prog.setMaximum(max(1, len(active)))
+        self._show_progress_strip()
         self._schedule_typing_center()
         self._refreshHeatmap()
       return
@@ -1919,12 +1946,14 @@ class TyperWindow(QWidget):
     if self._awaiting_next:
       text.append("Press ENTER to start the next exercise.")
     self._label.setText('<br />'.join(text) if text else '')
+    if text:
+      self._show_result_label()
 
   def typingFailed(self, txt):
     self.updateLabel(txt)
 
   def typingDone(self, run):
-    self._prog_layout.cycle()
+    self._show_result_label()
 
     # Various sanity tests.
     if self._current_lesson is None:

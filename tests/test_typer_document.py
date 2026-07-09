@@ -829,6 +829,49 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(3).widget() is tw._btn_book
 
 
+def test_inactive_mode_buttons_use_typer_text_color(qapp):
+  """Unselected footer modes must match lesson text grey, not faint #555."""
+  import typing_program.mainwindow  # noqa: F401
+  from typing_program.typer import MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, TyperWindow
+
+  tw = TyperWindow()
+  assert MODE_BTN_INACTIVE == '#e8e8e8'
+  assert MODE_BTN_INACTIVE in tw._mode_btn_style
+  assert MODE_BTN_ACTIVE in tw._mode_btn_style
+  assert '#555' not in tw._mode_btn_style
+  # Heatmap footer helper uses the same inactive colour.
+  from typing_program.typer import _footer_btn_style
+  assert MODE_BTN_INACTIVE in _footer_btn_style(False)
+  assert MODE_BTN_ACTIVE in _footer_btn_style(True)
+
+
+def test_progress_bar_shown_before_lesson_starts(qapp):
+  """Empty progress bar is visible while waiting for the first keystroke."""
+  import typing_program.mainwindow  # noqa: F401
+  from typing_program.typer import TyperWindow
+
+  tw = TyperWindow()
+  tw.S('show_progress').set(True)
+  tw._awaiting_next = False
+  tw.updateLabel()
+  tw._show_progress_strip()
+  assert tw._prog_layout.currentIndex() == 1
+  assert tw._progw.currentIndex() == 1
+  assert tw._prog.value() == 0
+
+  tw.typingReady('hello')
+  assert tw._prog_layout.currentIndex() == 1
+  assert tw._progw.currentIndex() == 1
+  assert tw._prog.maximum() == 5
+  assert tw._prog.value() == 0
+
+  # After a finished lesson, summary label takes the strip; then back to the bar.
+  tw._show_result_label()
+  assert tw._prog_layout.currentIndex() == 0
+  tw._show_progress_strip()
+  assert tw._prog_layout.currentIndex() == 1
+
+
 def test_typer_canvas_page_differs_from_window_chrome(qapp):
   """Canvas is the darker lesson rectangle; outer TyperWindow is lighter chrome."""
   import typing_program.mainwindow  # noqa: F401
