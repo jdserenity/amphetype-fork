@@ -99,11 +99,12 @@ WPM_GATE_FIRST_LESSON_SQL = """select r.char_count, r.duration from result r
     and r.char_count > 0 and r.duration > 0
   order by r.w asc limit 1"""
 
+# round(..., 1) matches Performance Analysis "%.1f wpm" so a displayed 32.0 is never oblivion.
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
-  where total >= ? and 12.0/time < ?
+  where total >= ? and round(12.0/time, 1) < ?
   order by wpm asc"""
 
 SPEED_STATS_ALL_TIME_SQL = f"""select data,

@@ -365,6 +365,23 @@ def test_oblivion_pool_excludes_words_below_analysis_min_count():
   assert 'drillonly' not in names
 
 
+def test_oblivion_pool_excludes_displayed_32_wpm():
+  """32 is red — raw 31.96 shows as 32.0 and must not enter the oblivion pool."""
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'edge32', STAT_TYPE_WORD, 12.0 / 31.96, 10, 0, 1.0, None),
+      (now, 'exact32', STAT_TYPE_WORD, 12.0 / 32.0, 10, 0, 1.0, None),
+      (now, 'slow31', STAT_TYPE_WORD, 12.0 / 31.0, 10, 0, 1.0, None),
+      (now, 'slow319', STAT_TYPE_WORD, 12.0 / 31.9, 10, 0, 1.0, None),
+    ])
+  names = {r[0] for r in fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM)}
+  assert names == {'slow31', 'slow319'}
+  assert 'edge32' not in names
+  assert 'exact32' not in names
+
+
 def test_all_time_hist_is_zero():
   assert ALL_TIME_HIST == 0
 
