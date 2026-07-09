@@ -829,18 +829,19 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(3).widget() is tw._btn_book
 
 
-def test_inactive_mode_buttons_use_typer_text_color(qapp):
-  """Unselected footer modes must match lesson text grey, not faint #555."""
+def test_inactive_mode_buttons_use_toolbar_color(qapp):
+  """Unselected footer modes match the top toolbar grey, not lesson text or faint #555."""
   import typing_program.mainwindow  # noqa: F401
-  from typing_program.typer import MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, TyperWindow
+  from typing_program.typer import (
+    MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, TYPER_TOOLBAR_COLOR, TyperWindow, _footer_btn_style,
+  )
 
   tw = TyperWindow()
-  assert MODE_BTN_INACTIVE == '#e8e8e8'
+  assert MODE_BTN_INACTIVE == TYPER_TOOLBAR_COLOR.name()
   assert MODE_BTN_INACTIVE in tw._mode_btn_style
   assert MODE_BTN_ACTIVE in tw._mode_btn_style
   assert '#555' not in tw._mode_btn_style
-  # Heatmap footer helper uses the same inactive colour.
-  from typing_program.typer import _footer_btn_style
+  assert '#e8e8e8' not in tw._mode_btn_style
   assert MODE_BTN_INACTIVE in _footer_btn_style(False)
   assert MODE_BTN_ACTIVE in _footer_btn_style(True)
 

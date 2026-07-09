@@ -69,8 +69,10 @@ _BADGE_FONT_PT = 13
 # Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
 TYPER_CHROME_COLOR = QColor('#4a4a4a')
 TYPER_CANVAS_DEFAULT = QColor('#383838')
-# Footer inactive labels match lesson text (correct_fg); active is pure white.
-MODE_BTN_INACTIVE = '#e8e8e8'
+# Main tab/toolbar strip (native dark bar under the title).
+TYPER_TOOLBAR_COLOR = QColor('#2c2c2c')
+# Footer inactive modes use toolbar grey; active stays pure white.
+MODE_BTN_INACTIVE = '#2c2c2c'
 MODE_BTN_ACTIVE = '#ffffff'
 MODE_BTN_HOVER = '#ffffff'
 
