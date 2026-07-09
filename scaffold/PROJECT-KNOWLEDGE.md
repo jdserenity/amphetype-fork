@@ -8,8 +8,8 @@ Keep scaffold/ARCH-LLM.md for confirmed product and system facts only. One home 
 
 The Typer view has **two** background layers. Painting one color on both (or only on the outer widget) is the classic way agents “delete” the look.
 
-1. **Outer chrome (`TyperWindow`)** — system `QPalette.Window` gray. This is the band under the tabs, the footer row (`improve` / `corpus` / …), and the margins around the lesson. Same family as the window frame.
-2. **Lesson canvas (`#TyperCanvas`)** — `typer/background_color` (default `#1e1e1e`). This rectangle is **exactly the same size as the ESC pause overlay**. Darker than chrome, lighter than the pause dim (`rgba(0,0,0,0.55)`). Preferences → Typer Options → “Page background (behind lesson)” edits this layer only.
+1. **Outer chrome (`TyperWindow`)** — `#4a4a4a` (`TYPER_CHROME_COLOR`). Footer row, margins around the lesson. Lighter than the canvas.
+2. **Lesson canvas (`#TyperCanvas`)** — `typer/background_color` (default `#383838`). Same size as the ESC pause overlay. Darker than chrome, lighter than pause dim — **not** near-black (`#1e1e1e` was too dark). Preferences → Typer Options → “Page background (behind lesson)” edits this layer only.
 3. **Pause overlay** — semi-transparent black on top of the canvas only.
 
 The lesson `QTextEdit` is transparent on the canvas.

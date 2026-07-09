@@ -108,10 +108,9 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
 
     'para_margin': 40,
     'para_lineheight': 1.0,
-    # Lesson canvas only (the rectangle matching the ESC pause overlay). Darker
-    # than window chrome, lighter than the pause dim. Outer TyperWindow chrome
-    # uses QPalette.Window — do not paint this color on the whole tab.
-    'background_color': QColor('#1e1e1e'),
+    # Lesson canvas only (rectangle matching the ESC pause overlay). Darker than
+    # outer chrome (#4a4a4a), lighter than pause dim — not near-black.
+    'background_color': QColor('#383838'),
 
     'speed_heatmap': False,
     'speed_heatmap_mode': 0,

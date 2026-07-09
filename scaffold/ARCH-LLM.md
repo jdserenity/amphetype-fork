@@ -65,7 +65,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 ## Typer behavior
 
-- **Backgrounds (two layers):** `TyperWindow` = system chrome (`QPalette.Window`); `#TyperCanvas` = `typer/background_color` (default `#1e1e1e`) — same rect as ESC pause overlay. Do not paint page color on the whole window. Lesson `QTextEdit` transparent on canvas. `_applyBackground` + `WA_StyledBackground`. Main tab `::pane` transparent.
+- **Backgrounds (two layers):** `TyperWindow` chrome `#4a4a4a` (`TYPER_CHROME_COLOR`); `#TyperCanvas` = `typer/background_color` (default `#383838`) — same rect as ESC pause overlay, darker than chrome, not near-black. Do not paint page color on the whole window. Lesson `QTextEdit` transparent on canvas. `_applyBackground` + `WA_StyledBackground`. Main tab `::pane` transparent.
 - Document: type on top of target; styles untyped/correct/error/blocked.
 - ESC pause: Continue / New / Restart overlay; `RunStats.pause`/`resume`.
 - Footer order (left): improve [+submode] · corpus · book · read ahead [+level] · **Block ⌫** · heatmap [+kind + legend] · source title.

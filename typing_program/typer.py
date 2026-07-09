@@ -66,6 +66,9 @@ _CORPUS_BTN_LABEL = 'corpus'
 _GENERATING_BTN_LABEL = 'generating…'
 _FOOTER_ITEM_GAP = 8
 _BADGE_FONT_PT = 13
+# Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
+TYPER_CHROME_COLOR = QColor('#4a4a4a')
+TYPER_CANVAS_DEFAULT = QColor('#383838')
 
 
 def _footer_zero_margins(w):
@@ -1533,8 +1536,7 @@ class TyperWindow(QWidget):
       page = color
     else:
       page = QColor(color)
-    chrome = QApplication.palette().color(QPalette.Window)
-    self._paint_solid_bg(self, 'TyperWindow', chrome)
+    self._paint_solid_bg(self, 'TyperWindow', TYPER_CHROME_COLOR)
     self._paint_solid_bg(self._canvas, 'QWidget#TyperCanvas', page)
     configure_transparent_typer(self._typer)
     self._doc.set_page_background(page)
