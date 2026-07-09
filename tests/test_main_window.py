@@ -19,19 +19,12 @@ def test_main_window_default_size_hint(qapp):
   assert hint.height() == 712
 
 
-def test_main_tabs_inset_from_window_edge(qapp):
-  """Tab buttons should sit below the top window edge, not flush against it."""
+def test_main_tabs_flush_with_window_top(qapp):
+  """Tab strip is the central widget — no spacer gap under the title bar."""
   import typing_program.mainwindow as A
 
   w = A.MainWindow()
-  w.resize(w.sizeHint())
-  w.show()
-  qapp.processEvents()
-  shell = w.centralWidget()
-  assert w._tabs.pos().y() >= A.MAIN_TAB_TOP_INSET
-  bar = w._tabs.tabBar()
-  tab_top = bar.mapTo(shell, bar.tabRect(0).topLeft()).y()
-  assert tab_top >= A.MAIN_TAB_TOP_INSET
+  assert w.centralWidget() is w._tabs
 
 
 def test_session_clock_vertically_aligned_with_tabs(qapp):
@@ -43,12 +36,10 @@ def test_session_clock_vertically_aligned_with_tabs(qapp):
   qapp.processEvents()
   w._reposition_session_clock()
   qapp.processEvents()
-  shell = w.centralWidget()
   bar = w._tabs.tabBar()
   tab_r = bar.tabRect(0)
-  tab_top = bar.mapTo(shell, tab_r.topLeft()).y()
   clock = w._session_clock
-  tab_mid = tab_top + tab_r.height() / 2.0
+  tab_mid = tab_r.y() + tab_r.height() / 2.0
   clock_mid = clock.y() + clock.height() / 2.0
   assert abs(tab_mid - clock_mid) <= 3
 
@@ -61,7 +52,7 @@ def test_main_tabs_suppress_pane_border(qapp):
   assert w._tabs.objectName() == 'mainTabs'
   assert w._tabs.documentMode() is True
   sheet = w._tabs.styleSheet().replace(' ', '')
-  assert 'QTabWidget#mainTabs::pane{border:none;}' in sheet
+  assert 'QTabWidget#mainTabs::pane{border:none;background:transparent;}' in sheet
   # Nested Preferences tabs keep the default framed look.
   prefs = w._tabs.widget(2)
   assert prefs is not None
