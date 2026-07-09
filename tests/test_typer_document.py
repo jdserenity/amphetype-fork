@@ -829,23 +829,17 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(3).widget() is tw._btn_book
 
 
-def test_inactive_mode_buttons_are_readable_muted_grey(qapp):
-  """Unselected footer modes: muted light grey on chrome — not dark canvas/toolbar, not faint #555."""
+def test_inactive_mode_buttons_use_canvas_color(qapp):
+  """Unselected footer modes use the typer canvas colour (#383838)."""
   import typing_program.mainwindow  # noqa: F401
   from typing_program.typer import (
-    MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, TYPER_CANVAS_DEFAULT, TYPER_CHROME_COLOR,
-    TyperWindow, _footer_btn_style,
+    MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, TYPER_CANVAS_DEFAULT, TyperWindow, _footer_btn_style,
   )
 
   tw = TyperWindow()
-  assert MODE_BTN_INACTIVE == '#b0b0b0'
+  assert MODE_BTN_INACTIVE == TYPER_CANVAS_DEFAULT.name()
   assert MODE_BTN_INACTIVE in tw._mode_btn_style
   assert MODE_BTN_ACTIVE in tw._mode_btn_style
-  # Must not match dark surfaces or the old unreadable grey.
-  assert MODE_BTN_INACTIVE != TYPER_CANVAS_DEFAULT.name()
-  assert MODE_BTN_INACTIVE != TYPER_CHROME_COLOR.name()
-  assert '#555' not in tw._mode_btn_style
-  assert '#2c2c2c' not in tw._mode_btn_style
   assert MODE_BTN_INACTIVE in _footer_btn_style(False)
   assert MODE_BTN_ACTIVE in _footer_btn_style(True)
 

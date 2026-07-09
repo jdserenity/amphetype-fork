@@ -69,11 +69,10 @@ _BADGE_FONT_PT = 13
 # Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
 TYPER_CHROME_COLOR = QColor('#4a4a4a')
 TYPER_CANVAS_DEFAULT = QColor('#383838')
-# Footer modes on dark chrome (#4a4a4a): inactive is muted light grey (readable,
-# not canvas/toolbar dark, not full white). Active is pure white.
-MODE_BTN_INACTIVE = '#b0b0b0'
+# Inactive footer modes = typer canvas grey; active is pure white.
+MODE_BTN_INACTIVE = TYPER_CANVAS_DEFAULT.name()  # #383838
 MODE_BTN_ACTIVE = '#ffffff'
-MODE_BTN_HOVER = '#d0d0d0'
+MODE_BTN_HOVER = '#ffffff'
 
 
 def _footer_zero_margins(w):
