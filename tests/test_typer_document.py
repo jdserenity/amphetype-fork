@@ -832,15 +832,41 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
 def test_typer_page_background_fill_is_applied(qapp):
   """Lesson area must keep a solid user page color (not transparent / chrome gray)."""
   import typing_program.mainwindow  # noqa: F401
+  from PyQt5.QtCore import Qt
   from PyQt5.QtGui import QColor, QPalette
   from typing_program.typer import TyperWindow
 
   tw = TyperWindow()
   color = QColor('#1a1a1a')
   tw._applyBackground(color)
-  assert 'background-color: "#1a1a1a"' in tw.styleSheet().replace("'", '"')
-  assert 'background-color: "#1a1a1a"' in tw._canvas.styleSheet().replace("'", '"')
+  assert 'background-color: #1a1a1a' in tw.styleSheet().replace('"', '')
+  assert 'background-color: #1a1a1a' in tw._canvas.styleSheet().replace('"', '')
+  assert tw.testAttribute(Qt.WA_StyledBackground) is True
+  assert tw._canvas.testAttribute(Qt.WA_StyledBackground) is True
   assert tw.autoFillBackground() is True
   assert tw.palette().color(QPalette.Window) == color
   assert tw._canvas.autoFillBackground() is True
   assert tw._canvas.palette().color(QPalette.Window) == color
+
+
+def test_typer_page_background_survives_main_tab_reparent(qapp):
+  """Regression: page fill must still be armed after the widget is put in main tabs."""
+  import typing_program.mainwindow as A
+  from PyQt5.QtCore import Qt
+  from PyQt5.QtGui import QColor, QPalette
+
+  w = A.MainWindow()
+  tw = w._tabs.widget(0)
+  w.show()
+  qapp.processEvents()
+  # showEvent re-applies the saved page color; default is the dark lesson page.
+  assert tw.testAttribute(Qt.WA_StyledBackground) is True
+  assert tw._canvas.testAttribute(Qt.WA_StyledBackground) is True
+  assert 'background-color: #1e1e1e' in tw.styleSheet().replace('"', '')
+  assert tw.palette().color(QPalette.Window) == QColor('#1e1e1e')
+  assert tw._canvas.palette().color(QPalette.Window) == QColor('#1e1e1e')
+  # Custom color must still stick when applied after show/polish.
+  color = QColor('#0d0d0d')
+  tw._applyBackground(color)
+  assert 'background-color: #0d0d0d' in tw.styleSheet().replace('"', '')
+  assert tw.palette().color(QPalette.Window) == color

@@ -1200,6 +1200,9 @@ class TyperWindow(QWidget):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self.setObjectName('TyperWindow')
+    # Required for background-color in stylesheets on QWidget (macOS/Qt otherwise
+    # ignores the fill once the widget is reparented into the tab pane).
+    self.setAttribute(Qt.WA_StyledBackground, True)
 
     app = QApplication.instance()
     self._settings = app.settings
@@ -1269,7 +1272,7 @@ class TyperWindow(QWidget):
     self._pause_overlay.newClicked.connect(self._new_lesson)
     self._canvas = QWidget()
     self._canvas.setObjectName('TyperCanvas')
-    self._canvas.setAutoFillBackground(False)
+    self._canvas.setAttribute(Qt.WA_StyledBackground, True)
     self._canvas.setLayout(FBoxLayout([self._typer]))
     self._pause_overlay.setParent(self._canvas)
     self._typer._pause_overlay = self._pause_overlay
@@ -1507,6 +1510,10 @@ class TyperWindow(QWidget):
     Do not remove this solid page fill. The lesson QTextEdit is transparent on
     purpose; TyperWindow + TyperCanvas must paint the user background_color (and
     parent tab panes must not cover it with an opaque frame).
+
+    WA_StyledBackground is mandatory: without it, Qt drops stylesheet backgrounds
+    on these widgets after they are placed in the main tab pane (looks like the
+    page color "vanished" into chrome gray).
     """
     if hasattr(color, 'name'):
       name = color.name()
@@ -1514,16 +1521,22 @@ class TyperWindow(QWidget):
     else:
       name = str(color)
       qcolor = QColor(color)
-    sheet = f'background-color: "{name}";'
-    self.setStyleSheet(f'TyperWindow {{ {sheet} }}')
-    self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
-    # Palette + auto-fill so the page color still shows if a parent stylesheet
-    # fights the widget stylesheet (e.g. QTabWidget::pane).
+    sheet = f'background-color: {name};'
     for w in (self, self._canvas):
+      w.setAttribute(Qt.WA_StyledBackground, True)
+      # Palette fill as a second path; stylesheets can zero autoFill on polish.
       pal = w.palette()
       pal.setColor(QPalette.Window, qcolor)
-      w.setAutoFillBackground(True)
+      pal.setColor(QPalette.Base, qcolor)
       w.setPalette(pal)
+      w.setAutoFillBackground(True)
+    self.setStyleSheet(f'TyperWindow {{ {sheet} }}')
+    self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
+    # Re-assert after setStyleSheet (polish can clear auto-fill).
+    self.setAttribute(Qt.WA_StyledBackground, True)
+    self._canvas.setAttribute(Qt.WA_StyledBackground, True)
+    self.setAutoFillBackground(True)
+    self._canvas.setAutoFillBackground(True)
     configure_transparent_typer(self._typer)
     self._doc.set_page_background(qcolor)
 
@@ -1537,6 +1550,8 @@ class TyperWindow(QWidget):
     return super().eventFilter(obj, evt)
 
   def showEvent(self, evt):
+    # Re-apply after tab reparent/style polish so the page fill cannot be lost.
+    self._applyBackground(self.S['background_color'])
     self._typer.setFocus()
     if self._typer._pin_typing_center:
       QTimer.singleShot(0, self._typer._center_typing_when_ready)

@@ -65,7 +65,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 ## Typer behavior
 
-- **Page background:** `typer/background_color` solid fill on `TyperWindow` + `#TyperCanvas` (`_applyBackground`); lesson `QTextEdit` is transparent on top. Main tab `::pane` must stay transparent so this fill is never covered. Do not remove.
+- **Page background:** `typer/background_color` (default `#1e1e1e`) solid fill on `TyperWindow` + `#TyperCanvas` (`_applyBackground`, requires `WA_StyledBackground`); lesson `QTextEdit` is transparent on top. Main tab `::pane` must stay transparent so this fill is never covered. Do not remove or default to system chrome color.
 - Document: type on top of target; styles untyped/correct/error/blocked.
 - ESC pause: Continue / New / Restart overlay; `RunStats.pause`/`resume`.
 - Footer order (left): improve [+submode] · corpus · book · read ahead [+level] · **Block ⌫** · heatmap [+kind + legend] · source title.

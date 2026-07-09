@@ -108,7 +108,9 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
 
     'para_margin': 40,
     'para_lineheight': 1.0,
-    'background_color': QColor('white'),
+    # Dark page under the lesson. Text colors are light; do not default to system
+    # chrome gray (palette Window) or the page disappears into the window frame.
+    'background_color': QColor('#1e1e1e'),
 
     'speed_heatmap': False,
     'speed_heatmap_mode': 0,
@@ -167,9 +169,7 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     assert QApplication.instance()
     self.defaults['qt_style'] = QApplication.instance().style().objectName().lower()
 
-    typer_defs = dict(self.typer_defaults)
-    typer_defs['background_color'] = QApplication.palette().color(QPalette.Window)
-    self.typer_settings = self.makeSettings('typer', typer_defs)
+    self.typer_settings = self.makeSettings('typer', dict(self.typer_defaults))
     self.typer_colors = self.makeSettings('colors', self.typer_color_defaults)
     self._migrate_legacy_settings()
 
