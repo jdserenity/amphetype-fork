@@ -2,7 +2,7 @@
 
 Shortcuts (wired in UI):
   Tab — next improve submode (Typer, improve mode only)
-  Cmd/Ctrl+← / → — previous / next practice mode (improve · corpus · book)
+  Cmd/Ctrl+Opt/Alt+← / → — previous / next practice mode (improve · corpus · book)
   Opt/Alt+Cmd/Ctrl+[ / ] — previous / next main toolbar tab
 """
 

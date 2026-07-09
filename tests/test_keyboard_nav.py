@@ -41,12 +41,16 @@ def test_cycle_index_empty_count():
 
 def test_typer_window_has_mode_and_submode_shortcuts(qapp):
   import typing_program.mainwindow  # noqa: F401 — init app.settings
+  from PyQt5.QtGui import QKeySequence
   from typing_program.typer import TyperWindow
 
   tw = TyperWindow()
   assert hasattr(tw, '_cycle_practice_mode')
   assert tw._sc_mode_next is not None
   assert tw._sc_mode_prev is not None
+  # Cmd/Ctrl+Opt/Alt+arrows (Ctrl = Cmd on macOS in QKeySequence).
+  assert tw._sc_mode_next.key() == QKeySequence('Ctrl+Alt+Right')
+  assert tw._sc_mode_prev.key() == QKeySequence('Ctrl+Alt+Left')
   # Tab is handled on the typer widget (not a QShortcut). Bound methods are new objects each access.
   assert tw._typer._on_tab_nav is not None
   assert tw._typer._on_tab_nav.__func__ is tw.cycle_improve_submode.__func__

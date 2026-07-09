@@ -68,7 +68,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 | Shortcut | Action | Where |
 |----------|--------|--------|
 | **Tab** | Next improve submode (`cycle_improve_submode`; no-op outside improve) | Typer canvas (`TyperWidget.keyPressEvent` → `_on_tab_nav`) |
-| **Cmd/Ctrl+← / →** | Previous / next practice mode (improve · corpus · book) | `TyperWindow` QShortcut; helpers in `keyboard_nav.py` |
+| **Cmd/Ctrl+Opt/Alt+← / →** | Previous / next practice mode (improve · corpus · book) | `TyperWindow` QShortcut (`Ctrl+Alt+Left/Right`); helpers in `keyboard_nav.py` |
 | **Opt/Alt+Cmd/Ctrl+[ / ]** | Previous / next main toolbar tab (Typer / PA / Preferences) | `MainWindow` QShortcut |
 
 `QKeySequence` uses `Ctrl` for Command on macOS. Pure helpers: `cycle_practice_mode`, `cycle_index`.

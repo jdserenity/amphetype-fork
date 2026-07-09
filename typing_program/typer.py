@@ -1390,16 +1390,16 @@ class TyperWindow(QWidget):
     self._install_keyboard_nav()
 
   def _install_keyboard_nav(self):
-    """Cmd/Ctrl+←→ cycle practice mode. Tab cycles submode (TyperWidget.keyPressEvent).
+    """Cmd/Ctrl+Opt/Alt+←→ cycle practice mode. Tab cycles submode (TyperWidget).
 
-    QKeySequence 'Ctrl' is Command on macOS. Tab is not a QShortcut — QTextEdit
-    would otherwise swallow it or double-fire with the widget handler.
+    QKeySequence 'Ctrl' is Command on macOS, 'Alt' is Option. Tab is not a
+    QShortcut — QTextEdit would otherwise swallow it or double-fire.
     """
     self._sc_submode = None  # Tab via TyperWidget._on_tab_nav → cycle_improve_submode
-    self._sc_mode_next = QShortcut(QKeySequence('Ctrl+Right'), self)
+    self._sc_mode_next = QShortcut(QKeySequence('Ctrl+Alt+Right'), self)
     self._sc_mode_next.setContext(Qt.WidgetWithChildrenShortcut)
     self._sc_mode_next.activated.connect(lambda: self._cycle_practice_mode(1))
-    self._sc_mode_prev = QShortcut(QKeySequence('Ctrl+Left'), self)
+    self._sc_mode_prev = QShortcut(QKeySequence('Ctrl+Alt+Left'), self)
     self._sc_mode_prev.setContext(Qt.WidgetWithChildrenShortcut)
     self._sc_mode_prev.activated.connect(lambda: self._cycle_practice_mode(-1))
 
