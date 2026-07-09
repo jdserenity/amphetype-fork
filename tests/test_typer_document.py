@@ -829,19 +829,20 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(3).widget() is tw._btn_book
 
 
-def test_inactive_mode_buttons_match_empty_progress_bar(qapp):
-  """Unselected footer modes use the same grey as the empty progress-bar track."""
+def test_inactive_mode_buttons_match_progress_bar_palette_mid(qapp):
+  """Unselected footer modes follow palette Mid (native empty progress-bar grey). Progress bar stays unstyled."""
   import typing_program.mainwindow  # noqa: F401
-  from typing_program.typer import (
-    MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, PROGRESS_EMPTY_COLOR, TyperWindow, _footer_btn_style,
-  )
+  from PyQt5.QtGui import QPalette
+  from PyQt5.QtWidgets import QApplication
+  from typing_program.typer import MODE_BTN_ACTIVE, TyperWindow, _footer_btn_style, _mode_btn_inactive_color
 
   tw = TyperWindow()
-  assert MODE_BTN_INACTIVE == PROGRESS_EMPTY_COLOR.name()
-  assert MODE_BTN_INACTIVE in tw._mode_btn_style
-  assert PROGRESS_EMPTY_COLOR.name() in tw._prog.styleSheet()
+  mid = QApplication.palette().color(QPalette.Mid).name()
+  assert _mode_btn_inactive_color() == mid
+  assert mid in tw._mode_btn_style
+  assert tw._prog.styleSheet() == ''
   assert MODE_BTN_ACTIVE in tw._mode_btn_style
-  assert MODE_BTN_INACTIVE in _footer_btn_style(False)
+  assert mid in _footer_btn_style(False)
   assert MODE_BTN_ACTIVE in _footer_btn_style(True)
 
 

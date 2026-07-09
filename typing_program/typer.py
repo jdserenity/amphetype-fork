@@ -69,11 +69,14 @@ _BADGE_FONT_PT = 13
 # Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
 TYPER_CHROME_COLOR = QColor('#4a4a4a')
 TYPER_CANVAS_DEFAULT = QColor('#383838')
-# Empty progress-bar track (also used for inactive footer mode labels).
-PROGRESS_EMPTY_COLOR = QColor('#808080')
-MODE_BTN_INACTIVE = PROGRESS_EMPTY_COLOR.name()
+# Inactive footer modes: same grey family as a native empty QProgressBar track
+# (palette Mid). Do not restyle the progress bar to force a match.
 MODE_BTN_ACTIVE = '#ffffff'
 MODE_BTN_HOVER = '#ffffff'
+
+
+def _mode_btn_inactive_color():
+  return QApplication.palette().color(QPalette.Mid).name()
 
 
 def _footer_zero_margins(w):
@@ -83,7 +86,7 @@ def _footer_zero_margins(w):
 
 
 def _footer_btn_style(active=False):
-  color = MODE_BTN_ACTIVE if active else MODE_BTN_INACTIVE
+  color = MODE_BTN_ACTIVE if active else _mode_btn_inactive_color()
   hover = MODE_BTN_HOVER
   return (
     'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
@@ -1242,12 +1245,6 @@ class TyperWindow(QWidget):
     self._prog = QProgressBar()
     self._prog.setTextVisible(False)
     self._prog.setValue(0)
-    # Explicit empty-track colour so footer inactive modes can match it exactly.
-    self._prog.setStyleSheet(
-      'QProgressBar { border: none; border-radius: 3px; max-height: 8px;'
-      ' background-color: %s; }'
-      'QProgressBar::chunk { border-radius: 3px; background-color: #5dade2; }' % (
-        PROGRESS_EMPTY_COLOR.name(),))
     self._progw = FStackedWidget([QLabel('Type like the wind!'), self._prog])
     self._prog_layout = FStackedWidget([self._label, self._progw])
 
@@ -1304,7 +1301,7 @@ class TyperWindow(QWidget):
       ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
       'QPushButton:hover { color: %s; }'
       'QPushButton[activeMode="true"] { color: %s; }' % (
-        MODE_BTN_INACTIVE, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
+        _mode_btn_inactive_color(), MODE_BTN_HOVER, MODE_BTN_ACTIVE))
 
     self._btn_improve = QPushButton(_IMPROVE_BTN_LABEL, flat=True)
     self._btn_book = QPushButton('book', flat=True)
