@@ -34,7 +34,10 @@ from typing_program.read_ahead import (
 )
 from typing_program.block_bkspc import allows_backspace
 from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS
-from typing_program.keyboard_nav import cycle_practice_mode
+from typing_program.keyboard_nav import (
+  SUBMODE_HEATMAP, SUBMODE_IMPROVE, SUBMODE_READ_AHEAD,
+  active_submode_keys, cycle_practice_mode, resolve_tab_submode_key,
+)
 
 from typing_program.Data import Statistic
 from typing_program.speed_heatmap import (
@@ -1253,7 +1256,8 @@ class TyperWindow(QWidget):
     self._book.progressChanged.connect(self._on_book_progress)
     self._book_meta = None
     self._typer = TyperWidget(self.S)
-    self._typer._on_tab_nav = self.cycle_improve_submode
+    self._typer._on_tab_nav = self.cycle_active_submode
+    self._tab_submode_key = SUBMODE_IMPROVE  # sticky Tab target among active families
     hack = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Ignored)
     self._label = QLabel(wordWrap=True, sizePolicy=hack)
     self._prog = QProgressBar()
@@ -1395,7 +1399,7 @@ class TyperWindow(QWidget):
     QKeySequence 'Ctrl' is Command on macOS. Tab is not a QShortcut — QTextEdit
     would otherwise swallow it or double-fire with the widget handler.
     """
-    self._sc_submode = None  # Tab via TyperWidget._on_tab_nav → cycle_improve_submode
+    self._sc_submode = None  # Tab via TyperWidget._on_tab_nav → cycle_active_submode
     self._sc_mode_next = QShortcut(QKeySequence('Ctrl+Right'), self)
     self._sc_mode_next.setContext(Qt.WidgetWithChildrenShortcut)
     self._sc_mode_next.activated.connect(lambda: self._cycle_practice_mode(1))
@@ -1405,6 +1409,28 @@ class TyperWindow(QWidget):
 
   def _cycle_practice_mode(self, delta):
     self.set_practice_mode(cycle_practice_mode(self._mode, delta))
+
+  def _active_submode_keys(self):
+    return active_submode_keys(
+      self._mode, self._read_ahead_on, bool(self.S('speed_heatmap').get()))
+
+  def _focus_tab_submode(self, key):
+    """Remember which submode family Tab should advance."""
+    self._tab_submode_key = key
+
+  def cycle_active_submode(self):
+    """Tab: step improve / read-ahead / heatmap submode (sticky among active)."""
+    keys = self._active_submode_keys()
+    key = resolve_tab_submode_key(self._tab_submode_key, keys)
+    if key is None:
+      return
+    self._tab_submode_key = key
+    if key == SUBMODE_IMPROVE:
+      self.cycle_improve_submode()
+    elif key == SUBMODE_READ_AHEAD:
+      self.cycle_read_ahead_level()
+    elif key == SUBMODE_HEATMAP:
+      self._cycleHeatmapMode()
 
   def _polish_mode_btn(self, btn):
     btn.style().unpolish(btn)
@@ -1427,6 +1453,7 @@ class TyperWindow(QWidget):
   def cycle_improve_submode(self):
     if self._mode != MODE_IMPROVE:
       return
+    self._focus_tab_submode(SUBMODE_IMPROVE)
     level = next_improve_submode(
       self._improve_submode, self.DB, ALL_TIME_HIST, Settings.get('analysis_count'))
     self._focus_drill_from_pa = False
@@ -1484,11 +1511,14 @@ class TyperWindow(QWidget):
   def toggle_read_ahead(self):
     enabled = not self._read_ahead_on
     self._settings.set('read_ahead_enabled', enabled)
+    if enabled:
+      self._focus_tab_submode(SUBMODE_READ_AHEAD)
     self._set_read_ahead_ui(enabled, self._read_ahead_level, refresh_doc=True)
 
   def cycle_read_ahead_level(self):
     if not self._read_ahead_on:
       return
+    self._focus_tab_submode(SUBMODE_READ_AHEAD)
     level = (self._read_ahead_level + 1) % len(READ_AHEAD_LEVEL_LABELS)
     self.S('read_ahead_level').set(level)
     self._set_read_ahead_ui(True, level, refresh_doc=True)
@@ -1521,9 +1551,13 @@ class TyperWindow(QWidget):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
 
   def _toggleHeatmap(self):
-    self.S('speed_heatmap').set(not self.S('speed_heatmap').get())
+    on = not self.S('speed_heatmap').get()
+    self.S('speed_heatmap').set(on)
+    if on:
+      self._focus_tab_submode(SUBMODE_HEATMAP)
 
   def _cycleHeatmapMode(self):
+    self._focus_tab_submode(SUBMODE_HEATMAP)
     mode = (self.S('speed_heatmap_mode').get() + 1) % len(MODE_LABELS)
     self.S('speed_heatmap_mode').set(mode)
 
@@ -1865,6 +1899,8 @@ class TyperWindow(QWidget):
     if mode != MODE_IMPROVE:
       self._focus_drill = None
       self._focus_drill_from_pa = False
+    else:
+      self._focus_tab_submode(SUBMODE_IMPROVE)
     self._focus_drill_wpm = {}
     self._settings.set('practice_mode', practice_mode_to_settings(mode))
     self._set_mode_ui(mode, load=True)
