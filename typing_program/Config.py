@@ -102,7 +102,7 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
 
     'show_progress': True,
     'read_ahead_level': 0,  # 0 = normal, 1 = hard, 2 = easy (when read_ahead_enabled)
-    'improve_submode': 0,  # 0 = normal … 4 = damage (when practice mode is improve)
+    'improve_submode': 0,  # 0 = normal … 5 = damage (when practice mode is improve)
 
     'para_margin': 40,
     'para_lineheight': 1.0,

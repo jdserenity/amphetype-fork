@@ -7,14 +7,19 @@ from typing_program.layout import FBoxLayout
 from typing_program.fwidgets import FStackedWidget
 from typing_program.timingtuple import RunStats, collect_focus_drill_stat_rows, collect_run_stat_rows, IDLE_THRESHOLD
 from typing_program.WeakSpot import WeakSpotLessonBuilder
-from typing_program.WeakSpotLessons import build_focus_lesson
+from typing_program.WeakSpotLessons import (
+  build_focus_lesson, build_trigram_gibberish_lesson, fetch_weak_trigram_targets,
+)
 from typing_program.Config import Settings
 from typing_program.book_mode import (
   BookLessonBuilder, MODE_BOOK, format_book_progress, lesson_text_id,
   practice_mode_from_settings, practice_mode_to_settings, ensure_practice_mode_migrated,
   MODE_IMPROVE, MODE_CORPUS,
 )
-from typing_program.improve_mode import IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, fetch_improve_submode_targets
+from typing_program.improve_mode import (
+  IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, IMPROVE_SUBMODE_TRIGRAMS,
+  fetch_improve_submode_targets,
+)
 from typing_program.lesson_placeholders import (
   BOOK_EMPTY_LABEL, CORPUS_EMPTY_LABEL, IMPROVE_EMPTY_LABEL, IMPROVE_SUBMODE_EMPTY_LABEL,
 )
@@ -1358,6 +1363,23 @@ class TyperWindow(QWidget):
       self._focus_drill_wpm = {}
       self._focus_drill_from_pa = False
       self._weakspot.request_next_lesson(force=True)
+      return
+    if submode == IMPROVE_SUBMODE_TRIGRAMS:
+      self._focus_drill = None
+      self._focus_drill_wpm = {}
+      self._focus_drill_from_pa = False
+      targets = fetch_weak_trigram_targets(
+        self.DB, ALL_TIME_HIST, Settings.get('analysis_count'), Settings.get('analysis_many'))
+      if not targets:
+        self._show_idle_placeholder(IMPROVE_SUBMODE_EMPTY_LABEL)
+        return
+      lesson = build_trigram_gibberish_lesson(
+        targets, min_chars=Settings.get('min_chars'), max_chars=Settings.get('max_chars'))
+      if not lesson:
+        self._show_idle_placeholder(IMPROVE_SUBMODE_EMPTY_LABEL)
+        return
+      self._set_improve_footer_busy(False)
+      self.needWeakspotLesson.emit(lesson)
       return
     targets = fetch_improve_submode_targets(
       self.DB, submode, ALL_TIME_HIST, Settings.get('analysis_count'))

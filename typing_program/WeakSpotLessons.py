@@ -731,6 +731,44 @@ def fetch_weak_targets(conn, hist=ALL_TIME_HIST, min_count=1, per_type=15):
   return targets
 
 
+def fetch_weak_trigram_targets(conn, hist=ALL_TIME_HIST, min_count=1, limit=30):
+  """Top weak trigrams only (damage score), for improve-trigrams gibberish lessons."""
+  rows = conn.execute(RAW_SQL, (hist, 1, min_count)).fetchall()  # type 1 = trigram
+  scored = []
+  for data, t, total, misses in rows:
+    s = score_target(t, total, misses)
+    if s > 0 and data:
+      scored.append(('trigram', data, s))
+  scored.sort(key=lambda x: x[2], reverse=True)
+  return scored[:limit]
+
+
+def build_trigram_gibberish_lesson(targets, min_chars=220, max_chars=600, rng=None, repeat_cap=8):
+  """Join raw weak trigrams into alien soup — no dictionary words, no coherent phrases.
+
+  Each token is exactly one 3-char trigram surface form; tokens are space-separated.
+  """
+  rng = rng or random.Random()
+  items = [t for t in targets if t[0] == 'trigram' and t[1]]
+  if not items:
+    return ''
+  # Short tokens need more instances than word lessons to hit min_chars.
+  budget = max(len(items), (min_chars // 4) + 1)
+  counts = allocate_repeats(items, budget, cap=repeat_cap)
+  instances = []
+  for t in items:
+    instances.extend([t] * counts[target_key(t)])
+  _interleave(instances, rng)
+  text = ''
+  for t in instances:
+    piece = t[1]
+    cand = (text + ' ' + piece).strip() if text else piece
+    if text and len(cand) > max_chars:
+      break
+    text = cand
+  return text
+
+
 def fetch_db_marker(conn):
   return conn.execute("select coalesce(max(w),0), count(*) from statistic").fetchone()
 

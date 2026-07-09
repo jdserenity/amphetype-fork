@@ -55,7 +55,7 @@ scaffold/         # agent docs (this file)
 | book | 1 | `book_mode.py` — chapters/chunks, progress in `book_progress` / `book_lesson_done` |
 | corpus | 2 | `TextManager.nextText`; re-click corpus → another text |
 
-Improve submodes: normal | oblivion | slowest | hesitant | damage (`improve_mode.py`). Non-normal = focus drills on three weak **words**. Focus drill from Performance Analysis: `build_focus_lesson`, half length; finish replays until user exits improve focus.
+Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on three weak **words**. Focus drill from Performance Analysis: `build_focus_lesson`, half length; finish replays until user exits improve focus.
 
 Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 

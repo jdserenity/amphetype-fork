@@ -1,12 +1,18 @@
 """Tests for improve mode submode target selection."""
 
+import random
+import re
 import sqlite3
 
 from typing_program.improve_mode import (
-  IMPROVE_SUBMODE_DAMAGE, IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_NORMAL,
-  IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST, fetch_improve_submode_targets,
+  IMPROVE_SUBMODE_DAMAGE, IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_LABELS,
+  IMPROVE_SUBMODE_NORMAL, IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST,
+  IMPROVE_SUBMODE_TRIGRAMS, fetch_improve_submode_targets,
 )
-from typing_program.stats_query import STAT_TYPE_WORD
+from typing_program.stats_query import STAT_TYPE_TRIGRAM, STAT_TYPE_WORD
+from typing_program.WeakSpotLessons import (
+  build_trigram_gibberish_lesson, fetch_weak_trigram_targets,
+)
 
 
 class _MedianAggregate(list):
@@ -43,9 +49,27 @@ def _seed_words(conn, now):
     ])
 
 
+def test_improve_submode_labels_trigrams_second_after_normal():
+  assert IMPROVE_SUBMODE_LABELS[0] == 'normal'
+  assert IMPROVE_SUBMODE_LABELS[1] == 'trigrams'
+  assert IMPROVE_SUBMODE_TRIGRAMS == 1
+  assert IMPROVE_SUBMODE_LABELS == (
+    'normal', 'trigrams', 'oblivion', 'slowest', 'hesitant', 'damage')
+  assert IMPROVE_SUBMODE_OBLIVION == 2
+  assert IMPROVE_SUBMODE_SLOWEST == 3
+  assert IMPROVE_SUBMODE_HESITANT == 4
+  assert IMPROVE_SUBMODE_DAMAGE == 5
+
+
 def test_improve_submode_normal_returns_empty():
   conn = _test_db()
   assert fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_NORMAL, 0, 1) == []
+
+
+def test_improve_submode_trigrams_returns_empty_targets():
+  """Trigrams uses its own lesson builder, not the word focus-drill path."""
+  conn = _test_db()
+  assert fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_TRIGRAMS, 0, 1) == []
 
 
 def test_improve_submode_slowest_picks_lowest_wpm():
@@ -92,3 +116,41 @@ def test_improve_submode_always_picks_words_not_trigrams():
     ])
   picks = fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_SLOWEST, 0, 1, n=3)
   assert picks == [('word', 'slowword', 15.0)]
+
+
+def test_fetch_weak_trigram_targets_only_trigrams_by_damage():
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'xqz', STAT_TYPE_TRIGRAM, 12.0 / 15.0, 20, 5, 1.0, None),
+      (now, 'the', STAT_TYPE_TRIGRAM, 12.0 / 80.0, 20, 0, 1.0, None),
+      (now, 'e h', STAT_TYPE_TRIGRAM, 12.0 / 40.0, 10, 2, 1.0, None),
+      (now, 'slowword', STAT_TYPE_WORD, 12.0 / 10.0, 50, 10, 1.0, None),
+    ])
+  picks = fetch_weak_trigram_targets(conn, hist=0, min_count=1, limit=10)
+  assert all(t[0] == 'trigram' for t in picks)
+  assert [t[1] for t in picks] == ['xqz', 'e h', 'the']
+  assert 'slowword' not in [t[1] for t in picks]
+
+
+def test_build_trigram_gibberish_lesson_is_raw_trigram_soup():
+  targets = [
+    ('trigram', 'xqz', 10.0),
+    ('trigram', 'th,', 5.0),
+    ('trigram', 'e h', 3.0),
+  ]
+  lesson = build_trigram_gibberish_lesson(
+    targets, min_chars=40, max_chars=120, rng=random.Random(0))
+  assert lesson
+  # Space-joined raw trigrams only — no dictionary padding words.
+  assert re.fullmatch(r'(?:xqz|th,|e h)(?: (?:xqz|th,|e h))*', lesson)
+  for tri in ('xqz', 'th,', 'e h'):
+    assert tri in lesson
+  # Must not look like normal English practice.
+  for word in ('the', 'home', 'community', 'harbor', 'above'):
+    assert word not in lesson.split()
+
+
+def test_build_trigram_gibberish_lesson_empty_without_targets():
+  assert build_trigram_gibberish_lesson([], min_chars=40, max_chars=120) == ''
