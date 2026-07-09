@@ -695,9 +695,20 @@ def test_request_new_lesson_per_mode(qapp):
   w._load_improve_lesson.assert_called_once()
 
   w._load_improve_lesson.reset_mock()
+  w._emit_focus_lesson.reset_mock()
   w._focus_drill = [('word', 'the')]
+  w._focus_drill_from_pa = True
   w._request_new_lesson()
   w._emit_focus_lesson.assert_called_once_with(w._focus_drill)
+  w._load_improve_lesson.assert_not_called()
+
+  # Auto improve focus drills re-sample (regenerate targets) each new lesson.
+  w._load_improve_lesson.reset_mock()
+  w._emit_focus_lesson.reset_mock()
+  w._focus_drill_from_pa = False
+  w._request_new_lesson()
+  w._load_improve_lesson.assert_called_once()
+  w._emit_focus_lesson.assert_not_called()
 
 
 def test_continue_lesson_clears_progress_label(qapp):

@@ -7,10 +7,12 @@ import sqlite3
 from typing_program.improve_mode import (
   IMPROVE_SUBMODE_DAMAGE, IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_LABELS,
   IMPROVE_SUBMODE_NORMAL, IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST,
-  IMPROVE_SUBMODE_TRIGRAMS, fetch_improve_submode_targets,
+  IMPROVE_SUBMODE_TRIGRAMS, clamp_improve_submode, fetch_improve_submode_targets,
+  is_improve_submode_available, next_improve_submode, oblivion_submode_available,
 )
 from typing_program.stats_query import (
-  STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, WORD_ANALYSIS_MIN_COUNT,
+  FOCUS_DRILL_PICK_COUNT, FOCUS_DRILL_POOL_SIZE, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD,
+  WORD_ANALYSIS_MIN_COUNT, fetch_slowest_picks,
 )
 from typing_program.WeakSpotLessons import (
   build_trigram_gibberish_lesson, fetch_weak_targets, fetch_weak_trigram_targets,
@@ -74,21 +76,51 @@ def test_improve_submode_trigrams_returns_empty_targets():
   assert fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_TRIGRAMS, 0, 1) == []
 
 
-def test_improve_submode_slowest_picks_lowest_wpm():
+def test_focus_drill_defaults_are_pool_20_pick_5():
+  assert FOCUS_DRILL_POOL_SIZE == 20
+  assert FOCUS_DRILL_PICK_COUNT == 5
+
+
+def test_improve_submode_slowest_samples_from_slowest_pool():
   conn = _test_db(); now = 1e9
   _seed_words(conn, now)
-  picks = fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_SLOWEST, 0, 1, n=3)
-  assert [t[1] for t in picks] == ['slow', 'mid', 'risky']
+  # Only 4 eligible words → pick all of them (order random).
+  picks = fetch_improve_submode_targets(
+    conn, IMPROVE_SUBMODE_SLOWEST, 0, 1, n=5, rng=random.Random(0))
+  assert {t[1] for t in picks} == {'slow', 'mid', 'fast', 'risky'}
+  assert all(t[0] == 'word' for t in picks)
 
 
-def test_improve_submode_hesitant_picks_highest_viscosity():
+def test_improve_submode_samples_five_from_bottom_twenty():
+  conn = _test_db(); now = 1e9
+  rows = []
+  for i in range(30):
+    # Lower i → slower WPM so w0..w19 are the slowest 20.
+    wpm = 10 + i
+    rows.append((now, 'w%02d' % i, STAT_TYPE_WORD, 12.0 / wpm, 10, 0, 1.0, None))
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    rows)
+  picks = fetch_slowest_picks(conn, 0, STAT_TYPE_WORD, n=5, min_count=1, pool_size=20, rng=random.Random(1))
+  assert len(picks) == 5
+  names = {r[0] for r in picks}
+  assert names <= {'w%02d' % i for i in range(20)}
+  assert names.isdisjoint({'w%02d' % i for i in range(20, 30)})
+
+
+def test_improve_submode_hesitant_samples_high_viscosity_pool():
   conn = _test_db(); now = 1e9
   _seed_words(conn, now)
-  picks = fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_HESITANT, 0, 1, n=3)
-  assert [t[1] for t in picks[0:3]] == ['mid', 'slow', 'risky']
+  picks = fetch_improve_submode_targets(
+    conn, IMPROVE_SUBMODE_HESITANT, 0, 1, n=3, rng=random.Random(2))
+  assert len(picks) == 3
+  assert {t[1] for t in picks} <= {'slow', 'mid', 'fast', 'risky'}
+  # mid has highest viscosity (12); with pool of 4 and pick 3, mid is usually included.
+  # At minimum every pick is from the ranked pool.
+  assert all(t[0] == 'word' for t in picks)
 
 
-def test_improve_submode_damage_picks_highest_damage():
+def test_improve_submode_damage_includes_highest_damage_in_pool():
   conn = _test_db(); now = 1e9
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
@@ -97,15 +129,35 @@ def test_improve_submode_damage_picks_highest_damage():
       (now, 'ok', STAT_TYPE_WORD, 12.0 / 80.0, 20, 1, 1.0, None),
       (now, 'fine', STAT_TYPE_WORD, 12.0 / 100.0, 20, 0, 1.0, None),
     ])
-  picks = fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_DAMAGE, 0, 1, n=3)
-  assert picks[0][1] == 'risky'
+  picks = fetch_improve_submode_targets(
+    conn, IMPROVE_SUBMODE_DAMAGE, 0, 1, n=3, rng=random.Random(0))
+  assert {t[1] for t in picks} == {'risky', 'ok', 'fine'}
+  assert 'risky' in {t[1] for t in picks}
 
 
 def test_improve_submode_oblivion_under_threshold():
   conn = _test_db(); now = 1e9
   _seed_words(conn, now)
-  picks = fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_OBLIVION, 0, 1, n=3)
+  picks = fetch_improve_submode_targets(
+    conn, IMPROVE_SUBMODE_OBLIVION, 0, 1, n=5, rng=random.Random(0))
   assert {t[1] for t in picks} == {'slow'}
+
+
+def test_oblivion_submode_hidden_when_no_words():
+  conn = _test_db()
+  assert not oblivion_submode_available(conn, 0, 1)
+  assert not is_improve_submode_available(conn, IMPROVE_SUBMODE_OBLIVION, 0, 1)
+  assert next_improve_submode(IMPROVE_SUBMODE_TRIGRAMS, conn, 0, 1) == IMPROVE_SUBMODE_SLOWEST
+  assert clamp_improve_submode(IMPROVE_SUBMODE_OBLIVION, conn, 0, 1) == IMPROVE_SUBMODE_NORMAL
+
+
+def test_oblivion_submode_available_with_one_word():
+  conn = _test_db(); now = 1e9
+  conn.execute(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    (now, 'slow', STAT_TYPE_WORD, 12.0 / 20.0, 10, 0, 1.0, None))
+  assert oblivion_submode_available(conn, 0, 1)
+  assert next_improve_submode(IMPROVE_SUBMODE_TRIGRAMS, conn, 0, 1) == IMPROVE_SUBMODE_OBLIVION
 
 
 def test_focus_drill_submodes_exclude_words_below_analysis_min_count():
@@ -155,7 +207,8 @@ def test_improve_submode_always_picks_words_not_trigrams():
       (now, 'ol,', 1, 12.0 / 10.0, 10, 0, 1.0, None),
       (now, 'slowword', STAT_TYPE_WORD, 12.0 / 15.0, 10, 0, 1.0, None),
     ])
-  picks = fetch_improve_submode_targets(conn, IMPROVE_SUBMODE_SLOWEST, 0, 1, n=3)
+  picks = fetch_improve_submode_targets(
+    conn, IMPROVE_SUBMODE_SLOWEST, 0, 1, n=5, rng=random.Random(0))
   assert picks == [('word', 'slowword', 15.0)]
 
 

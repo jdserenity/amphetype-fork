@@ -675,9 +675,11 @@ def normalize_focus_drill_chars(min_chars, max_chars):
 
 
 def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=80, max_chars=300, rng=None):
-  """Repeat only the given type targets (Performance Analysis drill). targets: [(kind, data), ...].
+  """Repeat only the given type targets (Performance Analysis / improve focus drill).
 
-  min_chars / max_chars are the focus-drill size prefs (not half of normal lesson size).
+  targets: [(kind, data), ...]. min/max chars are focus-drill size prefs.
+  Ordering: allocate weighted repeats, shuffle, then separate adjacent duplicates —
+  not a strict round-robin (word1 word2 word3 word1 …). One target ⇒ that surface only.
   """
   if not targets:
     return ''
@@ -689,42 +691,49 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=8
   rng = rng or random.Random()
   index = _make_index(weighted, dict_words or [])
   all_keys = _keys(weighted)
-  counts = {target_key(t): 0 for t in weighted}
-  min_each = max(3, (focus_chars // 12) // len(weighted))
+  # Enough slots to fill the lesson; cap high enough that 5 short words still pack.
+  avg_tok = max(4, sum(len(t[1]) for t in weighted) // len(weighted))
+  budget = max(len(weighted) * 3, (focus_chars // (avg_tok + 1)) + 1)
+  cap = max(8, budget // max(1, len(weighted)) + 2)
+  counts = allocate_repeats(weighted, budget, cap=cap)
+  instances = []
+  for t in weighted:
+    instances.extend([t] * counts[target_key(t)])
+  _interleave(instances, rng)
+
   text = ''
   covered = set()
-  order = list(weighted)
-  rng.shuffle(order)
-
-  def _append_phrase(t, force=False):
-    nonlocal text, covered
+  for t in instances:
     toks = _tokens_for_target(t, index, all_keys - covered, weighted, rng, exact_surface=True)
     if not toks:
-      return False
+      continue
     phrase = ' '.join(toks)
     if not focus_covered_targets(phrase, weighted):
-      return False
+      continue
     cand = (text + ' ' + phrase).strip() if text else phrase
-    if not force and text and len(cand) > focus_chars:
-      return False
+    if text and len(cand) > focus_chars:
+      if len(text) >= min_chars and covered >= all_keys:
+        break
+      # Force first coverage of any still-missing target even if slightly over max.
+      if target_key(t) not in covered:
+        text = cand
+        covered = focus_covered_targets(text, weighted)
+      break
     text = cand
     covered = focus_covered_targets(text, weighted)
-    counts[target_key(t)] += 1
-    return True
 
-  for t in weighted:
-    if not _append_phrase(t):
-      _append_phrase(t, force=True)
-  idx = 0; fails = 0
-  while len(text) < focus_chars and fails < len(weighted) * 4:
-    t = order[idx % len(order)]
-    idx += 1
-    if all(c >= min_each for c in counts.values()) and len(text) >= max(min_chars, int(focus_chars * 0.85)):
-      break
-    if _append_phrase(t):
-      fails = 0
-    else:
-      fails += 1
+  # Guarantee every target appears at least once (tiny pool / one long word).
+  if covered < all_keys:
+    for t in weighted:
+      if target_key(t) in covered:
+        continue
+      toks = _tokens_for_target(t, index, all_keys - covered, weighted, rng, exact_surface=True)
+      if not toks:
+        continue
+      phrase = ' '.join(toks)
+      cand = (text + ' ' + phrase).strip() if text else phrase
+      text = cand
+      covered = focus_covered_targets(text, weighted)
   return text
 
 

@@ -213,7 +213,7 @@ class TestFocusDrill(unittest.TestCase):
     toks = lesson.lower().split()
     for w in ('from', 'with', 'blue'):
       self.assertGreaterEqual(toks.count(w), 3, w)
-    # no long run of one target without the others (round-robin, not A A A … C)
+    # Adjacent duplicates are separated by interleave; no long monotony.
     runs = []
     last = None; n = 0
     for t in toks:
@@ -222,6 +222,21 @@ class TestFocusDrill(unittest.TestCase):
         else: runs.append(n); last = t; n = 1
     runs.append(n)
     self.assertLessEqual(max(runs), 4)
+
+  def test_focus_drill_not_strict_round_robin(self):
+    """Ordering should not be word1 word2 word3 word1 word2 word3 forever."""
+    words = ['from', 'with', 'blue', 'home', 'safe']
+    targets = [('word', w) for w in words]
+    pure = 0
+    for seed in range(24):
+      lesson = build_focus_lesson(targets, DICT, max_chars=240, rng=_R(seed))
+      toks = [t for t in lesson.split() if t in words]
+      if len(toks) < 10:
+        continue
+      head = toks[:5]
+      if set(head) == set(words) and all(toks[i] == head[i % 5] for i in range(len(toks))):
+        pure += 1
+    self.assertLess(pure, 6)
 
   def test_focus_drill_respects_max_chars_not_half(self):
     """Focus size is the configured max, not half of lesson max_chars."""

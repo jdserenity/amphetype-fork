@@ -19,7 +19,7 @@ from typing_program.book_mode import (
 )
 from typing_program.improve_mode import (
   IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, IMPROVE_SUBMODE_TRIGRAMS,
-  fetch_improve_submode_targets,
+  clamp_improve_submode, fetch_improve_submode_targets, next_improve_submode,
 )
 from typing_program.lesson_placeholders import (
   BOOK_EMPTY_LABEL, CORPUS_EMPTY_LABEL, IMPROVE_EMPTY_LABEL, IMPROVE_SUBMODE_EMPTY_LABEL,
@@ -1391,7 +1391,8 @@ class TyperWindow(QWidget):
   def cycle_improve_submode(self):
     if self._mode != MODE_IMPROVE:
       return
-    level = (self._improve_submode + 1) % len(IMPROVE_SUBMODE_LABELS)
+    level = next_improve_submode(
+      self._improve_submode, self.DB, ALL_TIME_HIST, Settings.get('analysis_count'))
     self._focus_drill_from_pa = False
     self.S('improve_submode').set(level)
     self._load_improve_lesson()
@@ -1407,7 +1408,13 @@ class TyperWindow(QWidget):
       self._polish_mode_btn(self._btn_improve_level)
 
   def _load_improve_lesson(self):
-    submode = self._improve_submode
+    # Drop empty oblivion (and any other unavailable saved index) before loading.
+    submode = clamp_improve_submode(
+      self._improve_submode, self.DB, ALL_TIME_HIST, Settings.get('analysis_count'))
+    if submode != self._improve_submode:
+      self._improve_submode = submode
+      self._set_improve_submode_ui(submode)
+      self.S('improve_submode').set(submode)
     if submode == IMPROVE_SUBMODE_NORMAL:
       self._focus_drill = None
       self._focus_drill_wpm = {}
@@ -1596,8 +1603,12 @@ class TyperWindow(QWidget):
     """Load a fresh exercise for the current practice mode."""
     if self._mode in (MODE_WEAKSPOT, MODE_IMPROVE):
       if self._focus_drill:
-        if not self._emit_focus_lesson(self._focus_drill):
-          self.updateLabel('Could not rebuild focus drill for those targets.')
+        # Auto improve drills re-sample targets; PA drills keep the chosen targets.
+        if self._focus_drill_from_pa:
+          if not self._emit_focus_lesson(self._focus_drill):
+            self.updateLabel('Could not rebuild focus drill for those targets.')
+        else:
+          self._load_improve_lesson()
         return
       self._load_improve_lesson()
     elif self._mode == MODE_BOOK:
@@ -1904,9 +1915,12 @@ class TyperWindow(QWidget):
     self._clear_awaiting()
     self.updateLabel()
     if action == 'focus_repeat':
-      if self._focus_drill:
+      if self._focus_drill and self._focus_drill_from_pa:
         if not self._emit_focus_lesson(self._focus_drill):
           self.updateLabel('Could not rebuild focus drill for those targets.')
+      elif self._focus_drill:
+        # New random 5 from the bottom 20 (or smaller pool) each finish.
+        self._load_improve_lesson()
       else:
         self.setText(self._current_lesson)
       return
