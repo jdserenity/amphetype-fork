@@ -4,14 +4,20 @@ Hard-won lessons and context that should survive across agent sessions — setup
 
 Keep scaffold/ARCH-LLM.md for confirmed product and system facts only. One home per fact; don't duplicate architecture content here.
 
-## Never strip the Typer page background
+## Never strip the two-layer Typer background
 
-The lesson area is **not** the system window chrome color. Default page is **`#1e1e1e`** (dark). `typer/background_color` (Preferences → Typer Options → “Page background (behind lesson)”) paints a solid fill on `TyperWindow` and `TyperCanvas` via `_applyBackground`. The lesson `QTextEdit` is intentionally transparent so text sits *on* that page fill. Never default this to `QPalette.Window` — that makes the page the same gray as the frame so it looks “gone.”
+The Typer view has **two** background layers. Painting one color on both (or only on the outer widget) is the classic way agents “delete” the look.
 
-Agents keep deleting or covering this by accident (tab pane styles, document mode, “cleanup”). Rules:
+1. **Outer chrome (`TyperWindow`)** — system `QPalette.Window` gray. This is the band under the tabs, the footer row (`improve` / `corpus` / …), and the margins around the lesson. Same family as the window frame.
+2. **Lesson canvas (`#TyperCanvas`)** — `typer/background_color` (default `#1e1e1e`). This rectangle is **exactly the same size as the ESC pause overlay**. Darker than chrome, lighter than the pause dim (`rgba(0,0,0,0.55)`). Preferences → Typer Options → “Page background (behind lesson)” edits this layer only.
+3. **Pause overlay** — semi-transparent black on top of the canvas only.
 
-- Do **not** remove `_applyBackground`, the `background_color` setting, or the solid fill on `TyperWindow` / `#TyperCanvas`.
-- **`Qt.WA_StyledBackground` must stay True** on both widgets. Without it, Qt ignores `background-color` in their stylesheets after they are reparented into the main tab pane — the page looks like flat chrome gray even though the stylesheet string is still set.
-- If you style `QTabWidget::pane` on the main tabs (e.g. to kill the full-width rule through the session clock), the pane background must be **`transparent`** so the typer page color shows through. Opaque pane = gray void over the user’s dark page.
-- Do not make the lesson text edit itself the only place that holds the page color.
-- Regression tests: `test_typer_page_background_fill_is_applied`, `test_typer_page_background_survives_main_tab_reparent`.
+The lesson `QTextEdit` is transparent on the canvas.
+
+Rules:
+
+- Do **not** apply `background_color` to `TyperWindow`. Canvas only.
+- Do **not** make canvas transparent “over” a painted window — the visible dark page *is* the canvas fill.
+- **`Qt.WA_StyledBackground` must stay True** on the canvas (and chrome widget if styled). Without it, Qt ignores stylesheet fills after tab reparent.
+- Main tab `QTabWidget::pane` must stay **`background: transparent`** so the layers show through.
+- Regression tests: `test_typer_canvas_page_differs_from_window_chrome`, `test_typer_page_background_survives_main_tab_reparent`.

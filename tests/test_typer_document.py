@@ -829,44 +829,47 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(3).widget() is tw._btn_book
 
 
-def test_typer_page_background_fill_is_applied(qapp):
-  """Lesson area must keep a solid user page color (not transparent / chrome gray)."""
+def test_typer_canvas_page_differs_from_window_chrome(qapp):
+  """Canvas is the dark lesson rectangle; outer TyperWindow stays system chrome."""
   import typing_program.mainwindow  # noqa: F401
   from PyQt5.QtCore import Qt
   from PyQt5.QtGui import QColor, QPalette
+  from PyQt5.QtWidgets import QApplication
   from typing_program.typer import TyperWindow
 
   tw = TyperWindow()
-  color = QColor('#1a1a1a')
-  tw._applyBackground(color)
-  assert 'background-color: #1a1a1a' in tw.styleSheet().replace('"', '')
+  page = QColor('#1a1a1a')
+  chrome = QApplication.palette().color(QPalette.Window)
+  tw._applyBackground(page)
+  # Canvas = user page color (same rect as pause overlay).
   assert 'background-color: #1a1a1a' in tw._canvas.styleSheet().replace('"', '')
-  assert tw.testAttribute(Qt.WA_StyledBackground) is True
+  assert tw._canvas.palette().color(QPalette.Window) == page
   assert tw._canvas.testAttribute(Qt.WA_StyledBackground) is True
-  assert tw.autoFillBackground() is True
-  assert tw.palette().color(QPalette.Window) == color
   assert tw._canvas.autoFillBackground() is True
-  assert tw._canvas.palette().color(QPalette.Window) == color
+  # Outer chrome is NOT the page color (footer / margins stay lighter).
+  assert tw.palette().color(QPalette.Window) == chrome
+  assert page.name() not in tw.styleSheet().replace('"', '') or chrome == page
 
 
 def test_typer_page_background_survives_main_tab_reparent(qapp):
-  """Regression: page fill must still be armed after the widget is put in main tabs."""
+  """Regression: canvas page fill must still be armed after main-tab reparent."""
   import typing_program.mainwindow as A
   from PyQt5.QtCore import Qt
   from PyQt5.QtGui import QColor, QPalette
+  from PyQt5.QtWidgets import QApplication
 
   w = A.MainWindow()
   tw = w._tabs.widget(0)
   w.show()
   qapp.processEvents()
-  # showEvent re-applies the saved page color; default is the dark lesson page.
-  assert tw.testAttribute(Qt.WA_StyledBackground) is True
+  chrome = QApplication.palette().color(QPalette.Window)
   assert tw._canvas.testAttribute(Qt.WA_StyledBackground) is True
-  assert 'background-color: #1e1e1e' in tw.styleSheet().replace('"', '')
-  assert tw.palette().color(QPalette.Window) == QColor('#1e1e1e')
+  assert 'background-color: #1e1e1e' in tw._canvas.styleSheet().replace('"', '')
   assert tw._canvas.palette().color(QPalette.Window) == QColor('#1e1e1e')
-  # Custom color must still stick when applied after show/polish.
-  color = QColor('#0d0d0d')
-  tw._applyBackground(color)
-  assert 'background-color: #0d0d0d' in tw.styleSheet().replace('"', '')
-  assert tw.palette().color(QPalette.Window) == color
+  assert tw.palette().color(QPalette.Window) == chrome
+  # Custom canvas color must stick; chrome must not follow it.
+  page = QColor('#0d0d0d')
+  tw._applyBackground(page)
+  assert 'background-color: #0d0d0d' in tw._canvas.styleSheet().replace('"', '')
+  assert tw._canvas.palette().color(QPalette.Window) == page
+  assert tw.palette().color(QPalette.Window) == chrome

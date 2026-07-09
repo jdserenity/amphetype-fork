@@ -1263,9 +1263,8 @@ class TyperWindow(QWidget):
     self._typer.setLesson(doc)
     self._doc = doc
 
-    # Canvas wrapper: provides the uniform background color chosen by the user.
-    # The TyperWidget inside it is transparent + borderless, so there is no
-    # distinct "text entry box" — the styled lesson text just lives on the canvas.
+    # Canvas = darker lesson page (background_color), same rect as the pause overlay.
+    # Outer TyperWindow stays chrome gray. TyperWidget is transparent on the canvas.
     self._pause_overlay = _LessonPauseOverlay(None)
     self._pause_overlay.continueClicked.connect(self._doc.resume)
     self._pause_overlay.restartClicked.connect(self._restart_lesson)
@@ -1504,41 +1503,41 @@ class TyperWindow(QWidget):
       self.S('speed_heatmap_mode').get(),
       self._heatmapStats())
 
+  def _paint_solid_bg(self, widget, selector, color):
+    """Solid fill that survives tab reparent on macOS (needs WA_StyledBackground)."""
+    qcolor = color if isinstance(color, QColor) else QColor(color)
+    name = qcolor.name()
+    widget.setAttribute(Qt.WA_StyledBackground, True)
+    pal = widget.palette()
+    pal.setColor(QPalette.Window, qcolor)
+    pal.setColor(QPalette.Base, qcolor)
+    widget.setPalette(pal)
+    widget.setAutoFillBackground(True)
+    widget.setStyleSheet('%s { background-color: %s; }' % (selector, name))
+    # Re-assert after setStyleSheet (polish can clear these).
+    widget.setAttribute(Qt.WA_StyledBackground, True)
+    widget.setAutoFillBackground(True)
+
   def _applyBackground(self, color):
-    """Uniform fill under the lesson; per-char formats stay clear except errors.
+    """Two layers — do not collapse them into one color.
 
-    Do not remove this solid page fill. The lesson QTextEdit is transparent on
-    purpose; TyperWindow + TyperCanvas must paint the user background_color (and
-    parent tab panes must not cover it with an opaque frame).
+    1. TyperWindow (chrome around the lesson): system window gray — footer,
+       margins, area outside the pause rectangle.
+    2. TyperCanvas (lesson page): user background_color — same rectangle as the
+       ESC pause overlay; darker than chrome, lighter than the pause dim.
 
-    WA_StyledBackground is mandatory: without it, Qt drops stylesheet backgrounds
-    on these widgets after they are placed in the main tab pane (looks like the
-    page color "vanished" into chrome gray).
+    The lesson QTextEdit stays transparent on the canvas. Main tab ::pane must
+    stay transparent so neither layer is covered.
     """
     if hasattr(color, 'name'):
-      name = color.name()
-      qcolor = color
+      page = color
     else:
-      name = str(color)
-      qcolor = QColor(color)
-    sheet = f'background-color: {name};'
-    for w in (self, self._canvas):
-      w.setAttribute(Qt.WA_StyledBackground, True)
-      # Palette fill as a second path; stylesheets can zero autoFill on polish.
-      pal = w.palette()
-      pal.setColor(QPalette.Window, qcolor)
-      pal.setColor(QPalette.Base, qcolor)
-      w.setPalette(pal)
-      w.setAutoFillBackground(True)
-    self.setStyleSheet(f'TyperWindow {{ {sheet} }}')
-    self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
-    # Re-assert after setStyleSheet (polish can clear auto-fill).
-    self.setAttribute(Qt.WA_StyledBackground, True)
-    self._canvas.setAttribute(Qt.WA_StyledBackground, True)
-    self.setAutoFillBackground(True)
-    self._canvas.setAutoFillBackground(True)
+      page = QColor(color)
+    chrome = QApplication.palette().color(QPalette.Window)
+    self._paint_solid_bg(self, 'TyperWindow', chrome)
+    self._paint_solid_bg(self._canvas, 'QWidget#TyperCanvas', page)
     configure_transparent_typer(self._typer)
-    self._doc.set_page_background(qcolor)
+    self._doc.set_page_background(page)
 
   def eventFilter(self, obj, evt):
     if obj is self._canvas and evt.type() == QEvent.Resize:

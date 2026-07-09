@@ -108,8 +108,9 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
 
     'para_margin': 40,
     'para_lineheight': 1.0,
-    # Dark page under the lesson. Text colors are light; do not default to system
-    # chrome gray (palette Window) or the page disappears into the window frame.
+    # Lesson canvas only (the rectangle matching the ESC pause overlay). Darker
+    # than window chrome, lighter than the pause dim. Outer TyperWindow chrome
+    # uses QPalette.Window — do not paint this color on the whole tab.
     'background_color': QColor('#1e1e1e'),
 
     'speed_heatmap': False,
