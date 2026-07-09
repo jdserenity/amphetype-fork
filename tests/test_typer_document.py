@@ -282,6 +282,7 @@ class _FakeTyperSettings:
         self._vals.setdefault('lenient_mode', False)
         self._vals.setdefault('overwrite_mode', True)
         self._vals.setdefault('limit_backspace', False)
+        self._vals.setdefault('word_delete_enabled', False)
         self._vals.setdefault('show_progress', False)
         self._vals.setdefault('background_color', QColor('white'))
         self._vals.setdefault('typing_sound', '')
@@ -694,9 +695,20 @@ def test_request_new_lesson_per_mode(qapp):
   w._load_improve_lesson.assert_called_once()
 
   w._load_improve_lesson.reset_mock()
+  w._emit_focus_lesson.reset_mock()
   w._focus_drill = [('word', 'the')]
+  w._focus_drill_from_pa = True
   w._request_new_lesson()
   w._emit_focus_lesson.assert_called_once_with(w._focus_drill)
+  w._load_improve_lesson.assert_not_called()
+
+  # Auto improve focus drills re-sample (regenerate targets) each new lesson.
+  w._load_improve_lesson.reset_mock()
+  w._emit_focus_lesson.reset_mock()
+  w._focus_drill_from_pa = False
+  w._request_new_lesson()
+  w._load_improve_lesson.assert_called_once()
+  w._emit_focus_lesson.assert_not_called()
 
 
 def test_continue_lesson_clears_progress_label(qapp):
@@ -812,3 +824,101 @@ def test_corpus_click_while_active_fetches_new_text(qapp):
   w._on_corpus_click()
   w.set_practice_mode.assert_called_once_with(MODE_CORPUS)
   w.wantText.emit.assert_not_called()
+
+
+def test_footer_mode_order_is_improve_corpus_book(qapp):
+  import typing_program.mainwindow  # noqa: F401 — init app.settings for TyperWindow
+  from typing_program.typer import TyperWindow
+
+  tw = TyperWindow()
+  mode_row = tw.layout().itemAt(2).widget()
+  lay = mode_row.layout()
+  # improve, improve_level, corpus, book — then extras
+  assert lay.itemAt(0).widget() is tw._btn_improve
+  assert lay.itemAt(1).widget() is tw._btn_improve_level
+  assert lay.itemAt(2).widget() is tw._btn_corpus
+  assert lay.itemAt(3).widget() is tw._btn_book
+
+
+def test_inactive_mode_buttons_use_rgb_140(qapp):
+  """Unselected footer modes are fixed rgb(140, 140, 140) / #8c8c8c."""
+  import typing_program.mainwindow  # noqa: F401
+  from typing_program.typer import MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, TyperWindow, _footer_btn_style
+
+  tw = TyperWindow()
+  assert MODE_BTN_INACTIVE == '#8c8c8c'
+  assert MODE_BTN_INACTIVE in tw._mode_btn_style
+  assert MODE_BTN_ACTIVE in tw._mode_btn_style
+  assert tw._prog.styleSheet() == ''
+  assert MODE_BTN_INACTIVE in _footer_btn_style(False)
+  assert MODE_BTN_ACTIVE in _footer_btn_style(True)
+
+
+def test_progress_bar_shown_before_lesson_starts(qapp):
+  """Empty progress bar is visible while waiting for the first keystroke."""
+  import typing_program.mainwindow  # noqa: F401
+  from typing_program.typer import TyperWindow
+
+  tw = TyperWindow()
+  tw.S('show_progress').set(True)
+  tw._awaiting_next = False
+  tw.updateLabel()
+  tw._show_progress_strip()
+  assert tw._prog_layout.currentIndex() == 1
+  assert tw._progw.currentIndex() == 1
+  assert tw._prog.value() == 0
+
+  tw.typingReady('hello')
+  assert tw._prog_layout.currentIndex() == 1
+  assert tw._progw.currentIndex() == 1
+  assert tw._prog.maximum() == 5
+  assert tw._prog.value() == 0
+
+  # After a finished lesson, summary label takes the strip; then back to the bar.
+  tw._show_result_label()
+  assert tw._prog_layout.currentIndex() == 0
+  tw._show_progress_strip()
+  assert tw._prog_layout.currentIndex() == 1
+
+
+def test_typer_canvas_page_differs_from_window_chrome(qapp):
+  """Canvas is the darker lesson rectangle; outer TyperWindow is lighter chrome."""
+  import typing_program.mainwindow  # noqa: F401
+  from PyQt5.QtCore import Qt
+  from PyQt5.QtGui import QColor, QPalette
+  from typing_program.typer import TYPER_CHROME_COLOR, TyperWindow
+
+  tw = TyperWindow()
+  page = QColor('#2a2a2a')
+  tw._applyBackground(page)
+  # Canvas = user page color (same rect as pause overlay).
+  assert 'background-color: #2a2a2a' in tw._canvas.styleSheet().replace('"', '')
+  assert tw._canvas.palette().color(QPalette.Window) == page
+  assert tw._canvas.testAttribute(Qt.WA_StyledBackground) is True
+  assert tw._canvas.autoFillBackground() is True
+  # Outer chrome is the fixed lighter band (footer / margins).
+  assert tw.palette().color(QPalette.Window) == TYPER_CHROME_COLOR
+  assert 'background-color: #4a4a4a' in tw.styleSheet().replace('"', '')
+
+
+def test_typer_page_background_survives_main_tab_reparent(qapp):
+  """Regression: canvas page fill must still be armed after main-tab reparent."""
+  import typing_program.mainwindow as A
+  from PyQt5.QtCore import Qt
+  from PyQt5.QtGui import QColor, QPalette
+  from typing_program.typer import TYPER_CANVAS_DEFAULT, TYPER_CHROME_COLOR
+
+  w = A.MainWindow()
+  tw = w._tabs.widget(0)
+  w.show()
+  qapp.processEvents()
+  assert tw._canvas.testAttribute(Qt.WA_StyledBackground) is True
+  assert TYPER_CANVAS_DEFAULT.name() in tw._canvas.styleSheet().replace('"', '')
+  assert tw._canvas.palette().color(QPalette.Window) == TYPER_CANVAS_DEFAULT
+  assert tw.palette().color(QPalette.Window) == TYPER_CHROME_COLOR
+  # Custom canvas color must stick; chrome must not follow it.
+  page = QColor('#303030')
+  tw._applyBackground(page)
+  assert 'background-color: #303030' in tw._canvas.styleSheet().replace('"', '')
+  assert tw._canvas.palette().color(QPalette.Window) == page
+  assert tw.palette().color(QPalette.Window) == TYPER_CHROME_COLOR

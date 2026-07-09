@@ -93,6 +93,23 @@ def test_flush_to_db_persists_total(monkeypatch):
   assert t.total_seconds() == pytest.approx(45.0)
 
 
+def test_session_elapsed_survives_flush_on_focus_loss(monkeypatch):
+  """Focus loss flushes practice total to DB but the top-right session clock must not reset."""
+  # resume@0 → run to 20 → flush (pause@20) → resume@20 → run to 35 → pause@35
+  times = [0.0, 20.0, 20.0, 35.0]
+  monkeypatch.setattr('typing_program.session_timer.timer', lambda: times.pop(0) if times else 35.0)
+  db = _meta_db()
+  t = FocusedSessionTimer()
+  t.resume()
+  t.flush_to_db(db)
+  assert t.elapsed() == pytest.approx(20.0)
+  assert get_app_meta_int(db, TOTAL_PRACTICE_SECONDS_KEY, 0) == 20
+  t.resume()
+  t.pause()
+  assert t.elapsed() == pytest.approx(35.0)
+  assert t.total_seconds() == pytest.approx(35.0)
+
+
 def test_total_practice_seconds_from_db():
   db = _meta_db()
   db.execute(

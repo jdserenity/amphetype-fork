@@ -34,7 +34,11 @@ class StringListWidget(QTextEdit):
     return str(self.toPlainText()).split()
 
   def addFromTyped(self):
-    words = [x[0] for x in DB.fetchall('select distinct data from statistic where type = 2 order by random()')]
+    # Same N floor as Performance Analysis — one-shot typos are not vocabulary.
+    from typing_program.stats_query import WORD_ANALYSIS_MIN_COUNT, STATS_AGG_SUBQUERY, STAT_TYPE_WORD
+    sql = f"""select data from ({STATS_AGG_SUBQUERY})
+      where total >= ? order by random()"""
+    words = [x[0] for x in DB.fetchall(sql, (0, STAT_TYPE_WORD, WORD_ANALYSIS_MIN_COUNT))]
     self.filterWords(words)
 
   def addFromFile(self):

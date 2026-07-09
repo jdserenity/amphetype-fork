@@ -3,8 +3,9 @@
 import pytest
 
 from typing_program.speed_heatmap import (
-  MODE_CHAR, MODE_TRIGRAM, MODE_WORD,
-  WPM_BUCKETS, char_heatmap_colors, fetch_speed_stats, spc_to_wpm, wpm_color, wpm_color_q,
+  MODE_CHAR, MODE_TRIGRAM, MODE_WORD, OBLIVION_WPM,
+  WPM_BUCKETS, char_heatmap_colors, display_wpm, fetch_speed_stats, is_oblivion_wpm,
+  spc_to_wpm, wpm_color, wpm_color_q,
 )
 
 
@@ -23,6 +24,17 @@ def test_wpm_color_buckets():
   assert wpm_color(99.9) == WPM_BUCKETS[3][1]
   assert wpm_color(100) == WPM_BUCKETS[4][1]
   assert wpm_color(200) == WPM_BUCKETS[4][1]
+
+
+def test_display_32_wpm_is_red_not_oblivion():
+  """Values that show as 32.0 wpm in Analysis must be red, not purple/oblivion."""
+  # 31.96 rounds to 32.0 with %.1f / round(..., 1)
+  assert display_wpm(31.96) == 32.0
+  assert not is_oblivion_wpm(31.96)
+  assert wpm_color(31.96) == WPM_BUCKETS[1][1]
+  assert is_oblivion_wpm(31.0)
+  assert is_oblivion_wpm(31.9)
+  assert not is_oblivion_wpm(OBLIVION_WPM)
 
 
 def test_wpm_color_none_for_unknown():

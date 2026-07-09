@@ -7,23 +7,34 @@ from typing_program.layout import FBoxLayout
 from typing_program.fwidgets import FStackedWidget
 from typing_program.timingtuple import RunStats, collect_focus_drill_stat_rows, collect_run_stat_rows, IDLE_THRESHOLD
 from typing_program.WeakSpot import WeakSpotLessonBuilder
-from typing_program.WeakSpotLessons import build_focus_lesson
+from typing_program.WeakSpotLessons import (
+  build_focus_lesson, build_trigram_gibberish_lesson, fetch_weak_trigram_targets,
+)
 from typing_program.Config import Settings
 from typing_program.book_mode import (
   BookLessonBuilder, MODE_BOOK, format_book_progress, lesson_text_id,
+  apply_cold_start_practice_mode,
   practice_mode_from_settings, practice_mode_to_settings, ensure_practice_mode_migrated,
   MODE_IMPROVE, MODE_CORPUS,
 )
-from typing_program.improve_mode import IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, fetch_improve_submode_targets
+from typing_program.improve_mode import (
+  IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, IMPROVE_SUBMODE_TRIGRAMS,
+  clamp_improve_submode, fetch_improve_submode_targets, next_improve_submode,
+)
 from typing_program.lesson_placeholders import (
   BOOK_EMPTY_LABEL, CORPUS_EMPTY_LABEL, IMPROVE_EMPTY_LABEL, IMPROVE_SUBMODE_EMPTY_LABEL,
 )
-from typing_program.stats_query import ALL_TIME_HIST
+from typing_program.stats_query import (
+  ALL_TIME_HIST, STAT_TYPE_WORD, analysis_min_count, fetch_word_counted_totals,
+)
 from typing_program.speed_heatmap import book_return_role
 from typing_program.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
   READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
 )
+from typing_program.block_bkspc import allows_backspace
+from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS
+from typing_program.keyboard_nav import cycle_practice_mode
 
 from typing_program.Data import Statistic
 from typing_program.speed_heatmap import (
@@ -58,6 +69,13 @@ _CORPUS_BTN_LABEL = 'corpus'
 _GENERATING_BTN_LABEL = 'generating…'
 _FOOTER_ITEM_GAP = 8
 _BADGE_FONT_PT = 13
+# Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
+TYPER_CHROME_COLOR = QColor('#4a4a4a')
+TYPER_CANVAS_DEFAULT = QColor('#383838')
+# Unselected footer modes — rgb(140, 140, 140).
+MODE_BTN_INACTIVE = '#8c8c8c'
+MODE_BTN_ACTIVE = '#ffffff'
+MODE_BTN_HOVER = '#ffffff'
 
 
 def _footer_zero_margins(w):
@@ -67,8 +85,8 @@ def _footer_zero_margins(w):
 
 
 def _footer_btn_style(active=False):
-  color = '#ffffff' if active else '#555'
-  hover = '#888' if not active else '#ffffff'
+  color = MODE_BTN_ACTIVE if active else MODE_BTN_INACTIVE
+  hover = MODE_BTN_HOVER
   return (
     'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
     ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
@@ -241,6 +259,7 @@ class LessonDocument(QTextDocument):
     self._book_chunk_index = 0
     self._pre_start_paused = False
     self._word_baselines = {}
+    self._word_prior_counts = {}
     self._word_spans = []
     self._progress_badges = []
     self.style_progress = text_style(kerning=False, color=QBrush(QColor(PROGRESS_GREEN)))
@@ -260,6 +279,7 @@ class LessonDocument(QTextDocument):
     self._pre_start_paused = False
     self._progress_badges = []
     self._word_baselines = {}
+    self._word_prior_counts = {}
     self._word_spans = []
     self._read_ahead_preview = False
     self._read_ahead_revealed = set()
@@ -781,6 +801,9 @@ class LessonDocument(QTextDocument):
 
   def set_word_baselines(self, baselines):
     self._word_baselines = dict(baselines or {})
+
+  def set_word_prior_counts(self, counts):
+    self._word_prior_counts = dict(counts or {})
     self._word_spans = word_spans(self._match_text) if self._match_text else []
 
   def progress_badges(self):
@@ -795,8 +818,8 @@ class LessonDocument(QTextDocument):
       for j in range(start, end):
         self._style_match_index(j, self.style_progress)
 
-  def apply_new_word_styles(self, run, baselines):
-    for start, end in new_word_spans(run, baselines, self._match_text):
+  def apply_new_word_styles(self, run, new_common):
+    for start, end in new_word_spans(run, new_common, self._match_text):
       for j in range(start, end):
         self._style_match_index(j, self.style_progress_new)
 
@@ -933,6 +956,7 @@ class TyperWidget(QTextEdit):
     self._pause_overlay = None
     self._pin_typing_center = False
     self._on_awaiting_enter = None
+    self._on_tab_nav = None  # optional callback: Tab → cycle improve submode
     self._sounds = TypingSoundPlayer()
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
@@ -943,6 +967,38 @@ class TyperWidget(QTextEdit):
     self._reload_sounds()
     configure_transparent_typer(self)
     settings('background_color').bind_value(lambda v: configure_transparent_typer(self))
+
+    # Blank the mouse pointer after a couple seconds still; show it on move.
+    self.setMouseTracking(True)
+    self.viewport().setMouseTracking(True)
+    self._mouse_cursor_timer = QTimer(self)
+    self._mouse_cursor_timer.setSingleShot(True)
+    self._mouse_cursor_timer.setInterval(MOUSE_CURSOR_IDLE_MS)
+    self._mouse_cursor_timer.timeout.connect(self._hide_idle_mouse_cursor)
+    self._mouse_cursor_timer.start()
+
+  def _show_mouse_cursor(self):
+    self.unsetCursor()
+    self.viewport().unsetCursor()
+    self._mouse_cursor_timer.start()
+
+  def _hide_idle_mouse_cursor(self):
+    self.setCursor(Qt.BlankCursor)
+    self.viewport().setCursor(Qt.BlankCursor)
+
+  def mouseMoveEvent(self, e):
+    self._show_mouse_cursor()
+    super().mouseMoveEvent(e)
+
+  def enterEvent(self, e):
+    self._show_mouse_cursor()
+    super().enterEvent(e)
+
+  def leaveEvent(self, e):
+    self._mouse_cursor_timer.stop()
+    self.unsetCursor()
+    self.viewport().unsetCursor()
+    super().leaveEvent(e)
 
   def _typing_region_doc_y_range(self):
     lesson = self._lesson
@@ -1092,6 +1148,14 @@ class TyperWidget(QTextEdit):
     pass
 
   def keyPressEvent(self, evt):
+    # Tab cycles improve submode (wired via parent TyperWindow callback).
+    # Handle even with no lesson so navigation always works on the typer canvas.
+    if evt.key() == Qt.Key_Tab:
+      if self._on_tab_nav is not None:
+        self._on_tab_nav()
+      evt.accept()
+      return
+
     if not self._lesson:
       evt.ignore()
       return
@@ -1117,6 +1181,9 @@ class TyperWidget(QTextEdit):
 
     if evt.key() == Qt.Key_Backspace or evt.key() == Qt.Key_Back:
       by_word = bool(evt.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier))
+      if not allows_backspace(self._settings['word_delete_enabled'], by_word):
+        evt.accept()
+        return
       self.backspace(word=by_word)
     elif evt.key() == Qt.Key_Enter or evt.key() == Qt.Key_Return:
       self.insert(RETURN_CHAR)
@@ -1142,6 +1209,8 @@ class TyperWidget(QTextEdit):
   def backspace(self, word=False):
     if self._lesson is None or not self._lesson.is_running() or self._lesson.is_paused():
       return
+    if not allows_backspace(self._settings['word_delete_enabled'], word):
+      return
     self._lesson.backspace(by_word=word, protected=self._settings['limit_backspace'])
 
 
@@ -1155,6 +1224,9 @@ class TyperWindow(QWidget):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self.setObjectName('TyperWindow')
+    # Required for background-color in stylesheets on QWidget (macOS/Qt otherwise
+    # ignores the fill once the widget is reparented into the tab pane).
+    self.setAttribute(Qt.WA_StyledBackground, True)
 
     app = QApplication.instance()
     self._settings = app.settings
@@ -1181,13 +1253,16 @@ class TyperWindow(QWidget):
     self._book.progressChanged.connect(self._on_book_progress)
     self._book_meta = None
     self._typer = TyperWidget(self.S)
+    self._typer._on_tab_nav = self.cycle_improve_submode
     hack = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Ignored)
     self._label = QLabel(wordWrap=True, sizePolicy=hack)
     self._prog = QProgressBar()
+    self._prog.setTextVisible(False)
+    self._prog.setValue(0)
     self._progw = FStackedWidget([QLabel('Type like the wind!'), self._prog])
     self._prog_layout = FStackedWidget([self._label, self._progw])
 
-    self.S('show_progress').bind_value(self._progw.setCurrentIndex)
+    self.S('show_progress').bind_value(self._on_show_progress_pref, call=True)
     self.S('require_space').bind_change(lambda: self.updateLabel())
 
     # I am so confused. Settings system must have gone through 3 totally different paradigms.
@@ -1203,7 +1278,8 @@ class TyperWindow(QWidget):
       var.onChange.connect(doc.onColor)
       doc.onColor(var)
 
-    doc.started.connect(self._prog_layout.cycle)
+    # Progress strip is shown before the first keystroke (empty bar), not only after start.
+    doc.started.connect(self._show_progress_strip)
     doc.started.connect(self._on_lesson_started)
     doc.progress.connect(self._prog.setValue)
     doc.ready.connect(self.typingReady)
@@ -1215,16 +1291,15 @@ class TyperWindow(QWidget):
     self._typer.setLesson(doc)
     self._doc = doc
 
-    # Canvas wrapper: provides the uniform background color chosen by the user.
-    # The TyperWidget inside it is transparent + borderless, so there is no
-    # distinct "text entry box" — the styled lesson text just lives on the canvas.
+    # Canvas = darker lesson page (background_color), same rect as the pause overlay.
+    # Outer TyperWindow stays chrome gray. TyperWidget is transparent on the canvas.
     self._pause_overlay = _LessonPauseOverlay(None)
     self._pause_overlay.continueClicked.connect(self._doc.resume)
     self._pause_overlay.restartClicked.connect(self._restart_lesson)
     self._pause_overlay.newClicked.connect(self._new_lesson)
     self._canvas = QWidget()
     self._canvas.setObjectName('TyperCanvas')
-    self._canvas.setAutoFillBackground(False)
+    self._canvas.setAttribute(Qt.WA_StyledBackground, True)
     self._canvas.setLayout(FBoxLayout([self._typer]))
     self._pause_overlay.setParent(self._canvas)
     self._typer._pause_overlay = self._pause_overlay
@@ -1236,23 +1311,25 @@ class TyperWindow(QWidget):
     self._book_prog_text = ''
 
     self._mode_btn_style = (
-      'QPushButton { color: #555; border: none; background: transparent; font-size: 11px;'
+      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
       ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
-      'QPushButton:hover { color: #888; }'
-      'QPushButton[activeMode="true"] { color: #ffffff; }')
+      'QPushButton:hover { color: %s; }'
+      'QPushButton[activeMode="true"] { color: %s; }' % (
+        MODE_BTN_INACTIVE, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
 
     self._btn_improve = QPushButton(_IMPROVE_BTN_LABEL, flat=True)
     self._btn_book = QPushButton('book', flat=True)
     self._btn_corpus = QPushButton(_CORPUS_BTN_LABEL, flat=True)
     self._btn_read_ahead = QPushButton('read ahead', flat=True)
     self._btn_read_ahead_level = QPushButton('normal', flat=True)
+    self._btn_block_bkspc = QPushButton('Block ⌫', flat=True)
     self._btn_improve_level = QPushButton('normal', flat=True)
     self._btn_heatmap = QPushButton('heatmap', flat=True)
     self._btn_heatmap.clicked.connect(self._toggleHeatmap)
     self._btn_heatmap_kind = QPushButton(flat=True)
     self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
-    for b in (self._btn_improve, self._btn_book, self._btn_corpus, self._btn_read_ahead,
-              self._btn_read_ahead_level, self._btn_improve_level):
+    for b in (self._btn_improve, self._btn_corpus, self._btn_book, self._btn_read_ahead,
+              self._btn_read_ahead_level, self._btn_block_bkspc, self._btn_improve_level):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setStyleSheet(self._mode_btn_style)
@@ -1268,6 +1345,7 @@ class TyperWindow(QWidget):
     self._btn_book.clicked.connect(lambda: self.set_practice_mode(MODE_BOOK))
     self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
     self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
+    self._btn_block_bkspc.clicked.connect(self.toggle_block_bkspc)
     self._btn_improve_level.clicked.connect(self.cycle_improve_submode)
     self._weakspot_generating = False
 
@@ -1284,14 +1362,16 @@ class TyperWindow(QWidget):
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
     self._heatmap_panel.setVisible(False)
-    for w in (self._btn_improve, self._btn_improve_level, self._btn_book, self._btn_corpus,
-              self._btn_read_ahead, self._btn_read_ahead_level, self._btn_heatmap,
-              self._heatmap_panel):
+    # Footer mode order: improve · corpus · book · read ahead · Block ⌫ · heatmap
+    for w in (self._btn_improve, self._btn_improve_level, self._btn_corpus, self._btn_book,
+              self._btn_read_ahead, self._btn_read_ahead_level, self._btn_block_bkspc,
+              self._btn_heatmap, self._heatmap_panel):
       mode_lay.addWidget(w)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
     self.S('speed_heatmap').bind_value(self._onHeatmapSetting, call=True)
     self.S('speed_heatmap_mode').bind_value(self._onHeatmapSetting, call=True)
+    self.S('word_delete_enabled').bind_value(self._onBlockBkspcSetting, call=True)
 
     self.setLayout(FBoxLayout([
       (self._prog_layout, 0),
@@ -1301,10 +1381,30 @@ class TyperWindow(QWidget):
 
     self.S('background_color').bind_value(self._applyBackground, call=True)
     self.statsChanged.connect(self._weakspot.on_stats_changed)
-    self.S('improve_submode').bind_value(self._onImproveSubmodeSetting, call=True)
     ensure_practice_mode_migrated(self._settings)
+    # Cold start always Typer at improve · normal (ignore last session's mode).
+    apply_cold_start_practice_mode(self._settings, self.S)
+    self.S('improve_submode').bind_value(self._onImproveSubmodeSetting, call=True)
     self._apply_practice_mode_from_settings()
     self._apply_read_ahead_from_settings()
+    self._install_keyboard_nav()
+
+  def _install_keyboard_nav(self):
+    """Cmd/Ctrl+Opt/Alt+←→ cycle practice mode. Tab cycles submode (TyperWidget).
+
+    QKeySequence 'Ctrl' is Command on macOS, 'Alt' is Option. Tab is not a
+    QShortcut — QTextEdit would otherwise swallow it or double-fire.
+    """
+    self._sc_submode = None  # Tab via TyperWidget._on_tab_nav → cycle_improve_submode
+    self._sc_mode_next = QShortcut(QKeySequence('Ctrl+Alt+Right'), self)
+    self._sc_mode_next.setContext(Qt.WidgetWithChildrenShortcut)
+    self._sc_mode_next.activated.connect(lambda: self._cycle_practice_mode(1))
+    self._sc_mode_prev = QShortcut(QKeySequence('Ctrl+Alt+Left'), self)
+    self._sc_mode_prev.setContext(Qt.WidgetWithChildrenShortcut)
+    self._sc_mode_prev.activated.connect(lambda: self._cycle_practice_mode(-1))
+
+  def _cycle_practice_mode(self, delta):
+    self.set_practice_mode(cycle_practice_mode(self._mode, delta))
 
   def _polish_mode_btn(self, btn):
     btn.style().unpolish(btn)
@@ -1327,7 +1427,8 @@ class TyperWindow(QWidget):
   def cycle_improve_submode(self):
     if self._mode != MODE_IMPROVE:
       return
-    level = (self._improve_submode + 1) % len(IMPROVE_SUBMODE_LABELS)
+    level = next_improve_submode(
+      self._improve_submode, self.DB, ALL_TIME_HIST, Settings.get('analysis_count'))
     self._focus_drill_from_pa = False
     self.S('improve_submode').set(level)
     self._load_improve_lesson()
@@ -1343,12 +1444,35 @@ class TyperWindow(QWidget):
       self._polish_mode_btn(self._btn_improve_level)
 
   def _load_improve_lesson(self):
-    submode = self._improve_submode
+    # Drop empty oblivion (and any other unavailable saved index) before loading.
+    submode = clamp_improve_submode(
+      self._improve_submode, self.DB, ALL_TIME_HIST, Settings.get('analysis_count'))
+    if submode != self._improve_submode:
+      self._improve_submode = submode
+      self._set_improve_submode_ui(submode)
+      self.S('improve_submode').set(submode)
     if submode == IMPROVE_SUBMODE_NORMAL:
       self._focus_drill = None
       self._focus_drill_wpm = {}
       self._focus_drill_from_pa = False
       self._weakspot.request_next_lesson(force=True)
+      return
+    if submode == IMPROVE_SUBMODE_TRIGRAMS:
+      self._focus_drill = None
+      self._focus_drill_wpm = {}
+      self._focus_drill_from_pa = False
+      targets = fetch_weak_trigram_targets(
+        self.DB, ALL_TIME_HIST, Settings.get('analysis_count'), Settings.get('analysis_many'))
+      if not targets:
+        self._show_idle_placeholder(IMPROVE_SUBMODE_EMPTY_LABEL)
+        return
+      lesson = build_trigram_gibberish_lesson(
+        targets, min_chars=Settings.get('min_chars'), max_chars=Settings.get('max_chars'))
+      if not lesson:
+        self._show_idle_placeholder(IMPROVE_SUBMODE_EMPTY_LABEL)
+        return
+      self._set_improve_footer_busy(False)
+      self.needWeakspotLesson.emit(lesson)
       return
     targets = fetch_improve_submode_targets(
       self.DB, submode, ALL_TIME_HIST, Settings.get('analysis_count'))
@@ -1383,6 +1507,15 @@ class TyperWindow(QWidget):
       self._polish_mode_btn(self._btn_read_ahead_level)
     if refresh_doc:
       self._doc.set_read_ahead_mode(document_read_ahead_mode(enabled, level))
+
+  def toggle_block_bkspc(self):
+    self.S('word_delete_enabled').set(not self.S('word_delete_enabled').get())
+
+  def _onBlockBkspcSetting(self, *_):
+    on = bool(self.S('word_delete_enabled').get())
+    self._btn_block_bkspc.setStyleSheet(self._mode_btn_style)
+    self._btn_block_bkspc.setProperty('activeMode', on)
+    self._polish_mode_btn(self._btn_block_bkspc)
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
@@ -1424,19 +1557,40 @@ class TyperWindow(QWidget):
       self.S('speed_heatmap_mode').get(),
       self._heatmapStats())
 
+  def _paint_solid_bg(self, widget, selector, color):
+    """Solid fill that survives tab reparent on macOS (needs WA_StyledBackground)."""
+    qcolor = color if isinstance(color, QColor) else QColor(color)
+    name = qcolor.name()
+    widget.setAttribute(Qt.WA_StyledBackground, True)
+    pal = widget.palette()
+    pal.setColor(QPalette.Window, qcolor)
+    pal.setColor(QPalette.Base, qcolor)
+    widget.setPalette(pal)
+    widget.setAutoFillBackground(True)
+    widget.setStyleSheet('%s { background-color: %s; }' % (selector, name))
+    # Re-assert after setStyleSheet (polish can clear these).
+    widget.setAttribute(Qt.WA_StyledBackground, True)
+    widget.setAutoFillBackground(True)
+
   def _applyBackground(self, color):
-    """Uniform fill under the lesson; per-char formats stay clear except errors."""
+    """Two layers — do not collapse them into one color.
+
+    1. TyperWindow (chrome around the lesson): system window gray — footer,
+       margins, area outside the pause rectangle.
+    2. TyperCanvas (lesson page): user background_color — same rectangle as the
+       ESC pause overlay; darker than chrome, lighter than the pause dim.
+
+    The lesson QTextEdit stays transparent on the canvas. Main tab ::pane must
+    stay transparent so neither layer is covered.
+    """
     if hasattr(color, 'name'):
-      name = color.name()
-      qcolor = color
+      page = color
     else:
-      name = str(color)
-      qcolor = QColor(color)
-    sheet = f'background-color: "{name}";'
-    self.setStyleSheet(f'TyperWindow {{ {sheet} }}')
-    self._canvas.setStyleSheet(f'QWidget#TyperCanvas {{ {sheet} }}')
+      page = QColor(color)
+    self._paint_solid_bg(self, 'TyperWindow', TYPER_CHROME_COLOR)
+    self._paint_solid_bg(self._canvas, 'QWidget#TyperCanvas', page)
     configure_transparent_typer(self._typer)
-    self._doc.set_page_background(qcolor)
+    self._doc.set_page_background(page)
 
   def eventFilter(self, obj, evt):
     if obj is self._canvas and evt.type() == QEvent.Resize:
@@ -1448,6 +1602,8 @@ class TyperWindow(QWidget):
     return super().eventFilter(obj, evt)
 
   def showEvent(self, evt):
+    # Re-apply after tab reparent/style polish so the page fill cannot be lost.
+    self._applyBackground(self.S['background_color'])
     self._typer.setFocus()
     if self._typer._pin_typing_center:
       QTimer.singleShot(0, self._typer._center_typing_when_ready)
@@ -1483,8 +1639,12 @@ class TyperWindow(QWidget):
     """Load a fresh exercise for the current practice mode."""
     if self._mode in (MODE_WEAKSPOT, MODE_IMPROVE):
       if self._focus_drill:
-        if not self._emit_focus_lesson(self._focus_drill):
-          self.updateLabel('Could not rebuild focus drill for those targets.')
+        # Auto improve drills re-sample targets; PA drills keep the chosen targets.
+        if self._focus_drill_from_pa:
+          if not self._emit_focus_lesson(self._focus_drill):
+            self.updateLabel('Could not rebuild focus drill for those targets.')
+        else:
+          self._load_improve_lesson()
         return
       self._load_improve_lesson()
     elif self._mode == MODE_BOOK:
@@ -1499,10 +1659,26 @@ class TyperWindow(QWidget):
     self._typer._pin_typing_center = True
     QTimer.singleShot(0, self._typer._center_typing_when_ready)
 
+  def _on_show_progress_pref(self, on):
+    self._progw.setCurrentIndex(1 if on else 0)
+    # Prefer the progress strip over an empty status label when the pref is on.
+    if on and not self._awaiting_next and not (self._label.text() or '').strip():
+      self._prog_layout.setCurrentIndex(1)
+
+  def _show_progress_strip(self):
+    """Top area: empty or live progress bar (or wind text if progress pref is off)."""
+    self._prog_layout.setCurrentIndex(1)
+    self._progw.setCurrentIndex(1 if self.S['show_progress'] else 0)
+
+  def _show_result_label(self):
+    """Top area: post-lesson summary / prompts."""
+    self._prog_layout.setCurrentIndex(0)
+
   def typingReady(self, text):
     self._pause_overlay.hide()
-    self._prog_layout.setCurrentIndex(0)
-    self._prog.setMaximum(len(text))
+    self._prog.setMaximum(max(1, len(text)))
+    self._prog.setValue(0)
+    self._show_progress_strip()
 
   def setDefaultText(self):
     log.error("setDefaultText() NOT IMPLEMENTED")
@@ -1529,7 +1705,9 @@ class TyperWindow(QWidget):
       self._typer._pin_typing_center = False
     self._refreshHeatmap()
     self._typer.setFocus()
+    self._prog.setMaximum(max(1, len(txt[2] or '')))
     self._prog.setValue(0)
+    self._show_progress_strip()
 
   def _update_source_label(self, srcid):
     row = self.DB.fetchone('select name from source where rowid=?', (None,), (srcid,))
@@ -1577,9 +1755,9 @@ class TyperWindow(QWidget):
     self._source_lbl.setVisible(False)
     self._typer.setReadOnly(True)
     self._typer._pin_typing_center = False
-    self._prog_layout.setCurrentIndex(0)
     self._prog.setValue(0)
-    self._prog.setMaximum(0)
+    self._prog.setMaximum(1)
+    self._show_progress_strip()
     self.updateLabel()
 
   def _on_book_lesson(self, lesson):
@@ -1605,7 +1783,8 @@ class TyperWindow(QWidget):
     self._refreshHeatmap()
     self._typer.setFocus()
     self._prog.setValue(0)
-    self._prog.setMaximum(len(active))
+    self._prog.setMaximum(max(1, len(active)))
+    self._show_progress_strip()
 
   def _apply_practice_mode_from_settings(self):
     mode = practice_mode_from_settings(self._settings.get('practice_mode'))
@@ -1649,7 +1828,9 @@ class TyperWindow(QWidget):
   def _emit_focus_lesson(self, targets):
     wl = str(Settings.DATA_DIR / 'wordlists' / 'words-20.txt')
     lesson = build_focus_lesson(
-      targets, wordlist_path=wl, max_chars=Settings.get('max_chars'))
+      targets, wordlist_path=wl,
+      min_chars=Settings.get('focus_min_chars'),
+      max_chars=Settings.get('focus_max_chars'))
     if not lesson:
       return False
     self._set_improve_footer_busy(False)
@@ -1690,7 +1871,7 @@ class TyperWindow(QWidget):
 
   def _set_mode_ui(self, mode, load):
     self._mode = mode
-    for btn, m in ((self._btn_improve, MODE_IMPROVE), (self._btn_book, MODE_BOOK), (self._btn_corpus, MODE_CORPUS)):
+    for btn, m in ((self._btn_improve, MODE_IMPROVE), (self._btn_corpus, MODE_CORPUS), (self._btn_book, MODE_BOOK)):
       btn.setStyleSheet(self._mode_btn_style)
       btn.setProperty('activeMode', mode == m)
       self._polish_mode_btn(btn)
@@ -1743,7 +1924,9 @@ class TyperWindow(QWidget):
       self.updateLabel()
 
   def _load_word_baselines(self, match_text):
-    self._doc.set_word_baselines(fetch_word_baselines(self.DB, lesson_words(match_text)))
+    words = lesson_words(match_text)
+    self._doc.set_word_baselines(fetch_word_baselines(self.DB, words))
+    self._doc.set_word_prior_counts(fetch_word_counted_totals(self.DB, words))
 
   def _clear_awaiting(self):
     self._awaiting_next = False
@@ -1755,8 +1938,16 @@ class TyperWindow(QWidget):
   def _show_progress_summary(self, run, stats_saved=True):
     baselines = self._doc._word_baselines
     match_text = self._doc._match_text
-    progress = analyze_run_progress(run, baselines, match_text)
-    self._doc.apply_new_word_styles(run, baselines)
+    # Improve modes (normal + focus drills) never gather counted word samples, so they
+    # cannot mint "new common words" for the analysis pool — hide that feedback entirely.
+    show_new_common = self._mode != MODE_IMPROVE
+    min_count = analysis_min_count(STAT_TYPE_WORD, Settings.get('analysis_count'))
+    progress = analyze_run_progress(
+      run, baselines, match_text,
+      prior_counts=self._doc._word_prior_counts, min_count=min_count,
+      include_new_common=show_new_common)
+    if show_new_common:
+      self._doc.apply_new_word_styles(run, progress.new_words)
     self._doc.apply_improved_word_styles(run, baselines)
     self._doc.set_progress_badges(progress_badges_for_run(run, baselines, match_text))
     self._awaiting_next = True
@@ -1770,9 +1961,12 @@ class TyperWindow(QWidget):
     self._clear_awaiting()
     self.updateLabel()
     if action == 'focus_repeat':
-      if self._focus_drill:
+      if self._focus_drill and self._focus_drill_from_pa:
         if not self._emit_focus_lesson(self._focus_drill):
           self.updateLabel('Could not rebuild focus drill for those targets.')
+      elif self._focus_drill:
+        # New random 5 from the bottom 20 (or smaller pool) each finish.
+        self._load_improve_lesson()
       else:
         self.setText(self._current_lesson)
       return
@@ -1786,9 +1980,9 @@ class TyperWindow(QWidget):
         tid = lesson_text_id(srcid, m['chapter_index'], m['chunk_index'])
         self._current_lesson = (tid, srcid, active)
         self._update_book_footer(m)
-        self._prog_layout.setCurrentIndex(0)
         self._prog.setValue(0)
-        self._prog.setMaximum(len(active))
+        self._prog.setMaximum(max(1, len(active)))
+        self._show_progress_strip()
         self._schedule_typing_center()
         self._refreshHeatmap()
       return
@@ -1812,12 +2006,14 @@ class TyperWindow(QWidget):
     if self._awaiting_next:
       text.append("Press ENTER to start the next exercise.")
     self._label.setText('<br />'.join(text) if text else '')
+    if text:
+      self._show_result_label()
 
   def typingFailed(self, txt):
     self.updateLabel(txt)
 
   def typingDone(self, run):
-    self._prog_layout.cycle()
+    self._show_result_label()
 
     # Various sanity tests.
     if self._current_lesson is None:
@@ -1907,11 +2103,13 @@ class TyperWindow(QWidget):
     if self._mode == MODE_BOOK and self._book_meta is not None:
       m = self._book_meta
       srcid = self._current_lesson[1]
+      # Always persist place on every finished chunk (not only chapter ends).
+      # Mid-chapter advances used to skip this and reopened the same chunk forever.
+      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
       if self._doc.has_next_book_chunk():
         self._pending_action = 'book_chunk'
         self._show_progress_summary(run, stats_saved=True)
         return
-      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
 
     self._pending_action = action
     self._show_progress_summary(run, stats_saved=True)

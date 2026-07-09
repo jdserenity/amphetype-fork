@@ -346,6 +346,15 @@ def practice_mode_to_settings(mode):
   return 0
 
 
+def apply_cold_start_practice_mode(settings, typer_settings):
+  """Every app launch starts on improve · normal, not last session's mode/submode.
+
+  settings: AppSettings (practice_mode). typer_settings: FSettings group with improve_submode.
+  """
+  settings.set('practice_mode', practice_mode_to_settings(MODE_IMPROVE))
+  typer_settings('improve_submode').set(0)
+
+
 def _chunks_from_lengths(body, lengths):
   chunks = []
   pos = 0

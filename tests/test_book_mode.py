@@ -9,6 +9,7 @@ import pytest
 from typing_program.Data import AppDatabase
 from typing_program.book_mode import (
   BookCatalog,
+  apply_cold_start_practice_mode,
   done_chunk_count,
   ensure_practice_mode_migrated,
   format_book_progress,
@@ -134,6 +135,32 @@ def test_practice_mode_migration_skips_when_v3():
   assert s.get('practice_mode') == 2
 
 
+class _FakeTyperVar:
+  def __init__(self, data, key):
+    self._data = data; self._key = key
+  def set(self, val):
+    self._data[self._key] = val
+  def get(self):
+    return self._data[self._key]
+
+
+class _FakeTyperSettings:
+  def __init__(self, data):
+    self._data = data
+  def __call__(self, key):
+    return _FakeTyperVar(self._data, key)
+  def get(self, key):
+    return self._data[key]
+
+
+def test_cold_start_forces_improve_normal():
+  s = _FakeSettings({'practice_mode': 2, 'practice_mode_v3': True})
+  ts = _FakeTyperSettings({'improve_submode': 4})
+  apply_cold_start_practice_mode(s, ts)
+  assert s.get('practice_mode') == 0
+  assert ts.get('improve_submode') == 0
+
+
 def _mem_db():
   return sqlite3.connect(':memory:', 5, 0, 'DEFERRED', False, AppDatabase)
 
@@ -237,3 +264,86 @@ def test_book_chunk_result_row_records_char_count_and_duration():
     'insert into result (w,text_id,source,wpm,accuracy,viscosity,char_count,duration) values (?,?,?,?,?,?,?,?)',
     (now, tid, sid, 72.0, 1.0, 1.0, 360, 60.0))
   assert aggregate_session_wpm_from_results(conn, now - 86400) == pytest.approx(72.0)
+
+
+def test_on_chunk_completed_saves_mid_chapter_progress(tmp_path):
+  """Finishing any chunk (not only the last in a chapter) must advance book_progress."""
+  from typing_program.book_mode import BookLessonBuilder
+  from typing_program.Config import Settings
+
+  conn = _mem_db()
+  ensure_book_tables(conn)
+  texts = tmp_path / 'texts'
+  texts.mkdir()
+  # Longer than default max_chars (600) so one chapter splits into multiple chunks.
+  body = ("It is a truth universally acknowledged that a single man in possession of "
+          "a good fortune must be in want of a wife. " * 20)
+  assert len(body) > int(Settings.get('max_chars'))
+  book = texts / 'Novel.txt'
+  book.write_text("Chapter 1\n\n%s\n\nChapter 2\n\nShort epilogue.\n" % body, encoding='utf-8')
+  conn.execute("insert into source (name) values ('Novel.txt')")
+  sid = conn.execute('select rowid from source').fetchone()[0]
+  conn.commit()
+
+  builder = BookLessonBuilder(conn)
+  builder._catalog = BookCatalog(conn, texts)
+  chapters = builder._catalog.chapters(sid, 'Novel.txt')
+  assert len(chapters[0]['chunks']) >= 2, len(chapters[0]['chunks'])
+
+  assert get_book_progress(conn, sid) == (0, 0)
+  now = time.time()
+  builder.on_chunk_completed(sid, 0, 0, now)
+  assert get_book_progress(conn, sid) == (0, 1)
+  assert done_chunk_count(conn, sid) == 1
+
+  builder.on_chunk_completed(sid, 0, 1, now + 1)
+  assert get_book_progress(conn, sid) == (0, 2)
+  assert done_chunk_count(conn, sid) == 2
+
+  # After last chunk of chapter 0 → chapter 1 chunk 0
+  last = len(chapters[0]['chunks']) - 1
+  set_book_progress(conn, sid, 0, last)
+  builder.on_chunk_completed(sid, 0, last, now + 2)
+  assert get_book_progress(conn, sid) == (1, 0)
+
+
+def test_typing_done_saves_progress_when_more_chunks_remain(qapp, tmp_path, monkeypatch):
+  """Regression: mid-chapter finishes used to skip on_chunk_completed and lose place on reopen."""
+  import typing_program.mainwindow  # noqa: F401
+  from unittest.mock import MagicMock
+  from typing_program.typer import TyperWindow
+  from typing_program.timingtuple import RunStats
+  from typing_program.book_mode import MODE_BOOK
+
+  tw = TyperWindow()
+  tw._mode = MODE_BOOK
+  tw._focus_drill = None
+  tw._book_meta = {
+    'chapter_index': 0, 'chunk_index': 0, 'chunk_count': 3,
+    'title': 'Chapter 1', 'book_name': 'Novel', 'chunks': ['aaa', 'bbb', 'ccc'],
+  }
+  tw._current_lesson = (lesson_text_id(9, 0, 0), 9, 'aaa')
+  tw._book = MagicMock()
+  tw._doc = MagicMock()
+  tw._doc.has_next_book_chunk.return_value = True
+  tw._show_progress_summary = MagicMock()
+  tw._refreshHeatmap = MagicMock()
+  tw.statsChanged = MagicMock()
+  tw.DB = MagicMock()
+  tw.DB.fetchone.return_value = (0,)  # discount
+  tw.DB.getSource = MagicMock(return_value=1)
+  tw._settings = MagicMock()
+  tw._settings.get.return_value = False
+
+  run = RunStats.make('aaa', started=1000.0)
+  t = 1000.1
+  for c in run:
+    c.first = t; c.last = t; c.timing = 0.1; t += 0.1
+  run.index = len(run)
+
+  tw.typingDone(run)
+
+  tw._book.on_chunk_completed.assert_called_once_with(9, 0, 0, tw._pending_now)
+  assert tw._pending_action == 'book_chunk'
+  # Must not fall through to a path that only saves at chapter end.
+  assert tw._show_progress_summary.called

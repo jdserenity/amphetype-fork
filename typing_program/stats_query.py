@@ -99,11 +99,12 @@ WPM_GATE_FIRST_LESSON_SQL = """select r.char_count, r.duration from result r
     and r.char_count > 0 and r.duration > 0
   order by r.w asc limit 1"""
 
+# round(..., 1) matches Performance Analysis "%.1f wpm" so a displayed 32.0 is never oblivion.
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   viscosity, total, total - mistakes as perfect, drilled,
   total*time*time*(1.0+mistakes/total) as damage
   from (%s)
-  where 12.0/time < ?
+  where total >= ? and round(12.0/time, 1) < ?
   order by wpm asc"""
 
 SPEED_STATS_ALL_TIME_SQL = f"""select data,
@@ -215,6 +216,21 @@ def count_analysis_words(db, hist_cutoff):
   return int(row[0]) if row else 0
 
 
+def fetch_word_counted_totals(db, words, hist_cutoff=ALL_TIME_HIST):
+  """Counted sample totals per word (same floor basis as Performance Analysis)."""
+  if not words:
+    return {}
+  qs = ','.join('?' * len(words))
+  rows = db.execute(
+    '''select st.data, sum(case when %s then st.count else 0 end)
+    from statistic as st
+    left join source as src on st.source = src.rowid
+    where st.w >= ? and st.type = ? and st.data in (%s)
+    group by st.data''' % (_STAT_IS_COUNTED, qs),
+    (hist_cutoff, STAT_TYPE_WORD, *words)).fetchall()
+  return {data: int(total or 0) for data, total in rows}
+
+
 def aggregate_session_wpm(total_chars, total_seconds):
   """Session WPM across finished lessons: total chars / total typing seconds * (60/5)."""
   if not total_chars or not total_seconds:
@@ -295,18 +311,35 @@ def lesson_qualifies_for_wpm_gate(mode, improve_submode=0, focus_drill=False):
   return mode == MODE_IMPROVE and improve_submode == 0
 
 
-def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30):
-  sql = OBLIVION_POOL_SQL % STATS_AGG_SUBQUERY
-  return db.execute(sql, (hist_cutoff, stat_type, oblivion_wpm)).fetchall()
+# Focus-drill auto picks: take worst `pool` in category, then random-sample `n`.
+FOCUS_DRILL_POOL_SIZE = 20
+FOCUS_DRILL_PICK_COUNT = 5
 
 
-def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=3, oblivion_wpm=30):
-  """Up to n oblivion targets from the statistic pool."""
+def sample_stat_rows(rows, n, rng=None):
+  """Random sample of up to n rows (order not meaningful)."""
   import random
-  pool = fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm)
+  if not rows:
+    return []
+  k = min(int(n), len(rows))
+  r = rng if rng is not None else random
+  return r.sample(list(rows), k)
+
+
+def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30, min_count=1):
+  """Slow items under oblivion_wpm; same count floor as Performance Analysis."""
+  sql = OBLIVION_POOL_SQL % STATS_AGG_SUBQUERY
+  floor = analysis_min_count(stat_type, min_count)
+  return db.execute(sql, (hist_cutoff, stat_type, floor, oblivion_wpm)).fetchall()
+
+
+def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=FOCUS_DRILL_PICK_COUNT,
+                         oblivion_wpm=30, min_count=1, pool_size=FOCUS_DRILL_POOL_SIZE, rng=None):
+  """Sample n from the slowest pool_size oblivion words (or fewer if the pool is small)."""
+  pool = fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm, min_count)
   if not pool:
     return []
-  return random.sample(pool, min(n, len(pool)))
+  return sample_stat_rows(pool[:pool_size], n, rng)
 
 
 def fetch_analysis_top(db, hist_cutoff, stat_type, order, limit, min_count=1):
@@ -314,16 +347,22 @@ def fetch_analysis_top(db, hist_cutoff, stat_type, order, limit, min_count=1):
   return db.execute(sql, (hist_cutoff, stat_type, analysis_min_count(stat_type, min_count))).fetchall()
 
 
-def fetch_slowest_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
-  return fetch_analysis_top(db, hist_cutoff, stat_type, 'wpm asc', n, min_count)[:n]
+def fetch_slowest_picks(db, hist_cutoff, stat_type, n=FOCUS_DRILL_PICK_COUNT, min_count=1,
+                        pool_size=FOCUS_DRILL_POOL_SIZE, rng=None):
+  rows = fetch_analysis_top(db, hist_cutoff, stat_type, 'wpm asc', pool_size, min_count)
+  return sample_stat_rows(rows, n, rng)
 
 
-def fetch_hesitant_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
-  return fetch_analysis_top(db, hist_cutoff, stat_type, 'viscosity desc', n, min_count)[:n]
+def fetch_hesitant_picks(db, hist_cutoff, stat_type, n=FOCUS_DRILL_PICK_COUNT, min_count=1,
+                         pool_size=FOCUS_DRILL_POOL_SIZE, rng=None):
+  rows = fetch_analysis_top(db, hist_cutoff, stat_type, 'viscosity desc', pool_size, min_count)
+  return sample_stat_rows(rows, n, rng)
 
 
-def fetch_damage_picks(db, hist_cutoff, stat_type, n=3, min_count=1):
-  return fetch_analysis_top(db, hist_cutoff, stat_type, 'damage desc', n, min_count)[:n]
+def fetch_damage_picks(db, hist_cutoff, stat_type, n=FOCUS_DRILL_PICK_COUNT, min_count=1,
+                       pool_size=FOCUS_DRILL_POOL_SIZE, rng=None):
+  rows = fetch_analysis_top(db, hist_cutoff, stat_type, 'damage desc', pool_size, min_count)
+  return sample_stat_rows(rows, n, rng)
 
 
 DELETE_STAT_TARGET_SQL = 'delete from statistic where type = ? and data = ?'

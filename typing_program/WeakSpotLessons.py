@@ -10,7 +10,7 @@ import random
 import re
 from collections import defaultdict
 
-from typing_program.stats_query import ALL_TIME_HIST, RAW_TARGETS_SQL
+from typing_program.stats_query import ALL_TIME_HIST, RAW_TARGETS_SQL, analysis_min_count
 
 # A target is (kind, data, weight); kind in {'char','trigram','word'}.
 TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}
@@ -665,61 +665,87 @@ def build_lesson(targets, dict_words, min_chars=220, max_chars=600, rng=None, re
 # DB selection + caching
 # ---------------------------------------------------------------------------
 
-def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=220, max_chars=600, rng=None):
-  """Repeat only the given type targets (Performance Analysis drill). targets: [(kind, data), ...]."""
+def normalize_focus_drill_chars(min_chars, max_chars):
+  """Clamp focus-drill length prefs so min ≥ 1 and max ≥ min (swap if inverted)."""
+  lo = max(int(min_chars), 1)
+  hi = max(int(max_chars), 1)
+  if lo > hi:
+    lo, hi = hi, lo
+  return lo, hi
+
+
+def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=80, max_chars=300, rng=None):
+  """Repeat only the given type targets (Performance Analysis / improve focus drill).
+
+  targets: [(kind, data), ...]. min/max chars are focus-drill size prefs.
+  Ordering: allocate weighted repeats, shuffle, then separate adjacent duplicates —
+  not a strict round-robin (word1 word2 word3 word1 …). One target ⇒ that surface only.
+  """
   if not targets:
     return ''
   if dict_words is None and wordlist_path:
     dict_words = load_wordlist(wordlist_path)
   weighted = [(k, d, 1.0) for k, d in targets]
-  focus_chars = max(80, max_chars // 2)
+  min_chars, max_chars = normalize_focus_drill_chars(min_chars, max_chars)
+  focus_chars = max_chars
   rng = rng or random.Random()
   index = _make_index(weighted, dict_words or [])
   all_keys = _keys(weighted)
-  counts = {target_key(t): 0 for t in weighted}
-  min_each = max(3, (focus_chars // 12) // len(weighted))
+  # Enough slots to fill the lesson; cap high enough that 5 short words still pack.
+  avg_tok = max(4, sum(len(t[1]) for t in weighted) // len(weighted))
+  budget = max(len(weighted) * 3, (focus_chars // (avg_tok + 1)) + 1)
+  cap = max(8, budget // max(1, len(weighted)) + 2)
+  counts = allocate_repeats(weighted, budget, cap=cap)
+  instances = []
+  for t in weighted:
+    instances.extend([t] * counts[target_key(t)])
+  _interleave(instances, rng)
+
   text = ''
   covered = set()
-  order = list(weighted)
-  rng.shuffle(order)
-
-  def _append_phrase(t, force=False):
-    nonlocal text, covered
+  for t in instances:
     toks = _tokens_for_target(t, index, all_keys - covered, weighted, rng, exact_surface=True)
     if not toks:
-      return False
+      continue
     phrase = ' '.join(toks)
     if not focus_covered_targets(phrase, weighted):
-      return False
+      continue
     cand = (text + ' ' + phrase).strip() if text else phrase
-    if not force and text and len(cand) > focus_chars:
-      return False
+    if text and len(cand) > focus_chars:
+      if len(text) >= min_chars and covered >= all_keys:
+        break
+      # Force first coverage of any still-missing target even if slightly over max.
+      if target_key(t) not in covered:
+        text = cand
+        covered = focus_covered_targets(text, weighted)
+      break
     text = cand
     covered = focus_covered_targets(text, weighted)
-    counts[target_key(t)] += 1
-    return True
 
-  for t in weighted:
-    if not _append_phrase(t):
-      _append_phrase(t, force=True)
-  idx = 0; fails = 0
-  while len(text) < focus_chars and fails < len(weighted) * 4:
-    t = order[idx % len(order)]
-    idx += 1
-    if all(c >= min_each for c in counts.values()) and len(text) >= focus_chars * 0.85:
-      break
-    if _append_phrase(t):
-      fails = 0
-    else:
-      fails += 1
+  # Guarantee every target appears at least once (tiny pool / one long word).
+  if covered < all_keys:
+    for t in weighted:
+      if target_key(t) in covered:
+        continue
+      toks = _tokens_for_target(t, index, all_keys - covered, weighted, rng, exact_surface=True)
+      if not toks:
+        continue
+      phrase = ' '.join(toks)
+      cand = (text + ' ' + phrase).strip() if text else phrase
+      text = cand
+      covered = focus_covered_targets(text, weighted)
   return text
 
 
 def fetch_weak_targets(conn, hist=ALL_TIME_HIST, min_count=1, per_type=15):
-  """Pull weak chars/trigrams/words, scored by slowness (dominant) and frequency."""
+  """Pull weak chars/trigrams/words, scored by slowness (dominant) and frequency.
+
+  Words use the same count floor as Performance Analysis (analysis_min_count).
+  """
   targets = []
   for tp, tag in TYPE_TAGS.items():
-    rows = conn.execute(RAW_SQL, (hist, tp, min_count)).fetchall()
+    floor = analysis_min_count(tp, min_count)
+    rows = conn.execute(RAW_SQL, (hist, tp, floor)).fetchall()
     scored = []
     for data, t, total, misses in rows:
       s = score_target(t, total, misses)
@@ -729,6 +755,44 @@ def fetch_weak_targets(conn, hist=ALL_TIME_HIST, min_count=1, per_type=15):
     targets.extend(scored[:per_type])
   targets.sort(key=lambda t: t[2], reverse=True)
   return targets
+
+
+def fetch_weak_trigram_targets(conn, hist=ALL_TIME_HIST, min_count=1, limit=30):
+  """Top weak trigrams only (damage score), for improve-trigrams gibberish lessons."""
+  rows = conn.execute(RAW_SQL, (hist, 1, min_count)).fetchall()  # type 1 = trigram
+  scored = []
+  for data, t, total, misses in rows:
+    s = score_target(t, total, misses)
+    if s > 0 and data:
+      scored.append(('trigram', data, s))
+  scored.sort(key=lambda x: x[2], reverse=True)
+  return scored[:limit]
+
+
+def build_trigram_gibberish_lesson(targets, min_chars=220, max_chars=600, rng=None, repeat_cap=8):
+  """Join raw weak trigrams into alien soup — no dictionary words, no coherent phrases.
+
+  Each token is exactly one 3-char trigram surface form; tokens are space-separated.
+  """
+  rng = rng or random.Random()
+  items = [t for t in targets if t[0] == 'trigram' and t[1]]
+  if not items:
+    return ''
+  # Short tokens need more instances than word lessons to hit min_chars.
+  budget = max(len(items), (min_chars // 4) + 1)
+  counts = allocate_repeats(items, budget, cap=repeat_cap)
+  instances = []
+  for t in items:
+    instances.extend([t] * counts[target_key(t)])
+  _interleave(instances, rng)
+  text = ''
+  for t in instances:
+    piece = t[1]
+    cand = (text + ' ' + piece).strip() if text else piece
+    if text and len(cand) > max_chars:
+      break
+    text = cand
+  return text
 
 
 def fetch_db_marker(conn):

@@ -1,4 +1,4 @@
-# PyInstaller build recipe for Typing Program (see docs/DEPLOY.md → Packaging).
+# PyInstaller build recipe for Typing Program (see scaffold/archive/DEPLOY.md → Packaging).
 # Build: pyinstaller typing_program.spec  (run ON the OS you are shipping for)
 # Output: dist/Typing Program.app (macOS), dist/Typing Program/ (Windows/Linux).
 

@@ -6,11 +6,13 @@ import time
 import pytest
 
 from typing_program.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED
+from typing_program.stats_query import WORD_ANALYSIS_MIN_COUNT, fetch_word_counted_totals
 from typing_program.timingtuple import RunStats
 from typing_program.word_progress import (
   analyze_run_progress, avg_wpm_bump, fetch_word_baselines, format_progress_html,
   improved_word_spans, lesson_words, lifetime_wpm_gain, median_wpm_bump,
-  new_word_spans, progress_badges_for_run, word_wpm_from_slice,
+  new_word_spans, progress_badges_for_run, run_word_sample_counts,
+  word_wpm_from_slice, words_crossing_min_count,
 )
 
 
@@ -134,10 +136,19 @@ def test_progress_badges_for_run():
   assert badges[0][2] == 11
 
 
-def test_new_word_spans():
-  run = _make_run('fast newword', spc=12.0 / 80.0)
-  spans = new_word_spans(run, {'fast': _bl(50.0)}, 'fast newword')
-  assert spans == [(5, 12)]
+def test_words_crossing_min_count_needs_pool_floor():
+  # One shot is not enough when floor is 2.
+  assert words_crossing_min_count({}, {'brand': 1}, min_count=2) == []
+  assert words_crossing_min_count({}, {'brand': 2}, min_count=2) == ['brand']
+  assert words_crossing_min_count({'brand': 1}, {'brand': 1}, min_count=2) == ['brand']
+  assert words_crossing_min_count({'brand': 2}, {'brand': 1}, min_count=2) == []
+
+
+def test_new_word_spans_only_new_common():
+  run = _make_run('fast brand', spc=12.0 / 80.0)
+  spans = new_word_spans(run, ['brand'], 'fast brand')
+  assert spans == [(5, 10)]
+  assert new_word_spans(run, [], 'fast brand') == []
 
 
 def test_improved_word_spans_includes_last_word():
@@ -147,14 +158,30 @@ def test_improved_word_spans_includes_last_word():
   assert spans[0][1] == 2
 
 
-def test_analyze_run_progress_improved_and_new():
-  run = _make_run('fast slow newword', spc=12.0 / 80.0)
-  baselines = {'fast': _bl(50.0), 'slow': _bl(90.0)}
-  p = analyze_run_progress(run, baselines)
-  assert p.known == 2
-  assert p.improved == 1  # fast 80 vs 50; slow 80 vs 90 not improved
-  assert p.avg_gain == 11
-  assert p.new_words == ['newword']
+def test_analyze_run_progress_improved_and_new_common():
+  # brand prior=1 + one sample this run → crosses floor 2; once prior=0 stays out.
+  run = _make_run('fast slow brand once', spc=12.0 / 80.0)
+  baselines = {'fast': _bl(50.0), 'slow': _bl(90.0), 'brand': _bl(40.0)}
+  p = analyze_run_progress(
+    run, baselines, prior_counts={'brand': 1}, min_count=WORD_ANALYSIS_MIN_COUNT)
+  assert p.known == 3
+  assert p.improved == 2  # fast + brand; slow not improved
+  assert p.avg_gain > 0
+  assert p.new_words == ['brand']
+
+
+def test_analyze_run_progress_two_shots_in_one_lesson_cross_floor():
+  run = _make_run('new new', spc=12.0 / 80.0)
+  p = analyze_run_progress(run, {}, prior_counts={}, min_count=2)
+  assert p.new_words == ['new']
+  assert run_word_sample_counts(run)['new'] == 2
+
+
+def test_analyze_run_progress_skips_new_common_when_disabled():
+  run = _make_run('brand brand', spc=12.0 / 80.0)
+  p = analyze_run_progress(
+    run, {}, prior_counts={}, min_count=2, include_new_common=False)
+  assert p.new_words == []
 
 
 def test_analyze_run_progress_skips_mistyped_words():
@@ -179,11 +206,13 @@ def test_format_progress_html_zero_improved_is_red():
   assert '+0</span>wpm!' in html
 
 
-def test_format_progress_html_new_words_orange():
-  p = analyze_run_progress(_make_run('newword', spc=0.1), {})
+def test_format_progress_html_new_common_words_orange():
+  p = analyze_run_progress(
+    _make_run('brand brand', spc=0.1), {}, prior_counts={}, min_count=2)
   html = format_progress_html(p)
   assert PROGRESS_ORANGE in html
-  assert '1</span> unique new word!' in html
+  assert '1</span> new common word!' in html
+  assert 'unique' not in html
 
 
 def test_format_progress_html_drill_note():
@@ -203,6 +232,21 @@ def test_fetch_word_baselines_case_sensitive():
   assert baselines['Lady']['wpm'] == 70.0
   assert baselines['lady']['wpm'] == 40.0
   assert len(baselines['Lady']['times']) == 1
+
+
+def test_fetch_word_counted_totals_ignores_weakspot_drills():
+  conn = _test_db(); now = time.time()
+  conn.execute('insert into source (name, disabled, discount) values (?,?,?)', ('<Weakspot>', 1, 1))
+  ws = conn.execute('select rowid from source where name=?', ('<Weakspot>',)).fetchone()[0]
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'real', 2, 0.2, 1, 0, 1.0, None),
+      (now, 'real', 2, 0.2, 0, 0, 1.0, ws),  # drill: count 0 + discounted
+      (now, 'drillonly', 2, 0.2, 0, 0, 1.0, ws),
+    ])
+  totals = fetch_word_counted_totals(conn, ['real', 'drillonly', 'missing'])
+  assert totals == {'real': 1, 'drillonly': 0}
 
 
 def test_format_progress_html_improved_green():

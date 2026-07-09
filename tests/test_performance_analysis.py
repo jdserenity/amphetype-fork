@@ -61,7 +61,7 @@ def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
     'typing_program.PerformanceAnalysis.PerformanceAnalysis.updateAll',
     lambda self, *a: calls.append(1))
   w = MainWindow()
-  tabs = w.centralWidget()
+  tabs = w._tabs
   perf_idx = tabs.indexOf(tabs.widget(1))
   tabs.setCurrentIndex(0)
   calls.clear()
@@ -242,7 +242,7 @@ def test_analysis_sort_combo_shows_most_improved_for_words(qapp, monkeypatch):
 def test_main_window_has_performance_analysis_tab(qapp):
   from typing_program.mainwindow import MainWindow
   w = MainWindow()
-  tabs = w.centralWidget()
+  tabs = w._tabs
   labels = [tabs.tabText(i) for i in range(tabs.count())]
   assert labels == ["Typer", "Performance Analysis", "Preferences"]
 

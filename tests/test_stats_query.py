@@ -12,7 +12,7 @@ from typing_program.stats_query import (
   aggregate_session_wpm_from_results, analysis_min_count, analysis_order_clause,
   analysis_order_sql, count_analysis_words, count_unique_typed,
   fetch_analysis_baseline_wpm, fetch_analysis_search, fetch_oblivion_pool, fetch_oblivion_picks,
-  delete_stat_target,
+  fetch_word_counted_totals, delete_stat_target,
 )
 from typing_program.WeakSpotLessons import fetch_weak_targets, score_target
 
@@ -286,6 +286,21 @@ def test_count_analysis_words_excludes_one_shot():
   assert count_unique_typed(conn, 0, STAT_TYPE_WORD) == 2
 
 
+def test_count_analysis_words_ignores_improve_mode_drill_rows():
+  """Improve (including normal) writes discounted Weakspot rows with count=0 — no new common words."""
+  conn = _test_db(); now = 1e9
+  weak = _add_source(conn, '<Weakspot>', 1)
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'onlydrill', STAT_TYPE_WORD, 0.2, 0, 0, 1.0, weak),
+      (now, 'onlydrill', STAT_TYPE_WORD, 0.2, 0, 0, 1.0, weak),
+      (now, 'onlydrill', STAT_TYPE_WORD, 0.2, 0, 0, 1.0, weak),
+    ])
+  assert count_analysis_words(conn, 0) == 0
+  assert fetch_word_counted_totals(conn, ['onlydrill']) == {'onlydrill': 0}
+
+
 def test_fetch_analysis_baseline_wpm_one_sample():
   conn = _test_db(); now = 1e9
   conn.executemany(
@@ -345,18 +360,41 @@ def test_fetch_oblivion_pool_returns_all_under_threshold():
   assert len(fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM)) == 35
 
 
-def test_oblivion_pool_includes_drill_only_rows():
+def test_oblivion_pool_excludes_words_below_analysis_min_count():
+  """One-shot and drill-only words must not enter the oblivion focus-drill pool."""
+  from typing_program.stats_query import WORD_ANALYSIS_MIN_COUNT
   conn = _test_db(); now = 1e9
   weak = _add_source(conn, '<Weakspot>', 1)
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     [
-      (now, 'However', STAT_TYPE_WORD, 12.0 / 20.0, 0, 1, 1.0, weak),
-      (now, 'from', STAT_TYPE_WORD, 12.0 / 25.0, 0, 0, 1.0, weak),
-      (now, 'with', STAT_TYPE_WORD, 12.0 / 28.0, 0, 0, 1.0, weak),
+      (now, 'once', STAT_TYPE_WORD, 12.0 / 15.0, 1, 0, 1.0, None),
+      (now, 'drillonly', STAT_TYPE_WORD, 12.0 / 18.0, 0, 1, 1.0, weak),
+      (now, 'often', STAT_TYPE_WORD, 12.0 / 20.0, WORD_ANALYSIS_MIN_COUNT, 0, 1.0, None),
+      (now, 'plenty', STAT_TYPE_WORD, 12.0 / 22.0, 10, 0, 1.0, None),
     ])
-  pool = fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM)
-  assert {r[0] for r in pool} == {'However', 'from', 'with'}
+  pool = fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM, min_count=1)
+  names = {r[0] for r in pool}
+  assert names == {'often', 'plenty'}
+  assert 'once' not in names
+  assert 'drillonly' not in names
+
+
+def test_oblivion_pool_excludes_displayed_32_wpm():
+  """32 is red — raw 31.96 shows as 32.0 and must not enter the oblivion pool."""
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'edge32', STAT_TYPE_WORD, 12.0 / 31.96, 10, 0, 1.0, None),
+      (now, 'exact32', STAT_TYPE_WORD, 12.0 / 32.0, 10, 0, 1.0, None),
+      (now, 'slow31', STAT_TYPE_WORD, 12.0 / 31.0, 10, 0, 1.0, None),
+      (now, 'slow319', STAT_TYPE_WORD, 12.0 / 31.9, 10, 0, 1.0, None),
+    ])
+  names = {r[0] for r in fetch_oblivion_pool(conn, 0, STAT_TYPE_WORD, OBLIVION_WPM)}
+  assert names == {'slow31', 'slow319'}
+  assert 'edge32' not in names
+  assert 'exact32' not in names
 
 
 def test_all_time_hist_is_zero():

@@ -15,19 +15,21 @@ def mode_stat_type(mode):
   return _STAT_TYPE[mode]
 
 # Stoplight buckets — bright, full saturation (legend + underlines).
-OBLIVION_WPM = 32
+# Red (and every higher band) starts at this WPM. Oblivion is strictly below it.
+# Compare on 1-decimal WPM so bands match Performance Analysis ("%.1f wpm").
+OBLIVION_WPM = 32  # first non-oblivion speed; oblivion is display_wpm < 32 (≤31.9)
 WPM_GREEN = '#00e676'
 PROGRESS_GREEN = WPM_GREEN
 PROGRESS_RED = '#d64545'
-PROGRESS_ORANGE = '#ff8c00'
+PROGRESS_ORANGE = '#ffb347'  # warm sunny orange (progress "new common words")
 WPM_BUCKETS = (
-  (0, '#a855f7'),     # 0–31 (oblivion)
+  (0, '#a855f7'),     # display < 32 (≤31.9) — oblivion
   (32, '#d64545'),    # 32–54
   (55, '#ff8c00'),    # 55–77
   (78, '#ffd600'),    # 78–99
   (100, WPM_GREEN),   # 100+
 )
-WPM_BUCKET_LABELS = ('<31', '32–54', '55–77', '78–99', '100+')
+WPM_BUCKET_LABELS = ('≤31', '32–54', '55–77', '78–99', '100+')
 
 _WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
 
@@ -36,12 +38,26 @@ def spc_to_wpm(spc):
   return 12.0 / spc
 
 
+def display_wpm(wpm):
+  """Round to one decimal — same as Performance Analysis speed column."""
+  if wpm is None:
+    return None
+  return round(float(wpm), 1)
+
+
+def is_oblivion_wpm(wpm):
+  """True for purple-band speeds: displayed WPM strictly below OBLIVION_WPM (32 is red)."""
+  d = display_wpm(wpm)
+  return d is not None and d < OBLIVION_WPM
+
+
 def wpm_color(wpm):
   if wpm is None:
     return None
+  w = display_wpm(wpm)
   color = WPM_BUCKETS[0][1]
   for threshold, c in WPM_BUCKETS:
-    if wpm >= threshold:
+    if w >= threshold:
       color = c
   return color
 

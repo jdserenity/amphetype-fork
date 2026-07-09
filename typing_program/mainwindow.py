@@ -40,6 +40,7 @@ from typing_program.typer import TyperWindow
 from typing_program.session_timer import FocusedSessionTimer, INTERACTION_EVENTS, SessionTimerLabel
 from typing_program.fwidgets import scroll_widget
 from typing_program.QtUtil import center_widget_on_screen, should_clear_focus_on_click
+from typing_program.keyboard_nav import cycle_index
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -53,8 +54,20 @@ class MainWindow(QMainWindow):
 
     self.quitSc = QShortcut(QKeySequence('Ctrl+Q'), self)
     self.quitSc.activated.connect(QApplication.instance().quit)
-    
+    # Opt/Alt+Cmd/Ctrl+[ ] cycle main toolbar tabs (Ctrl = Cmd on macOS in QKeySequence).
+    self._sc_tab_prev = QShortcut(QKeySequence('Ctrl+Alt+['), self)
+    self._sc_tab_prev.activated.connect(lambda: self._cycle_main_tab(-1))
+    self._sc_tab_next = QShortcut(QKeySequence('Ctrl+Alt+]'), self)
+    self._sc_tab_next.activated.connect(lambda: self._cycle_main_tab(1))
+
     tabs = QTabWidget()
+    self._tabs = tabs
+    # No full-width pane rule through the tab strip / session clock. Pane must stay
+    # transparent so TyperWindow's page background_color fills the lesson area.
+    tabs.setObjectName('mainTabs')
+    tabs.setDocumentMode(True)
+    tabs.setStyleSheet(
+      'QTabWidget#mainTabs::pane { border: none; background: transparent; }')
 
     tw = TyperWindow()
     tabs.addTab(tw, "Typer")
@@ -119,11 +132,11 @@ class MainWindow(QMainWindow):
     if self.isActiveWindow():
       self._session_timer.resume()
 
-    pm = Settings.get('practice_mode')
-    if pm == 2:
-      tm.nextText()
-    elif pm == 1:
-      tw._book.request_lesson(advance_chapter=False)
+    # Practice mode is forced to improve · normal in TyperWindow (cold start).
+
+  def _cycle_main_tab(self, delta):
+    tabs = self._tabs
+    tabs.setCurrentIndex(cycle_index(tabs.currentIndex(), tabs.count(), delta))
 
   def _apply_session_clock_visible(self):
     on = bool(Settings.get('show_session_timer'))
@@ -132,17 +145,22 @@ class MainWindow(QMainWindow):
       self._reposition_session_clock()
 
   def _reposition_session_clock(self):
-    tabs = self.centralWidget()
-    if tabs is None or not self._session_clock.isVisible():
+    tabs = self._tabs
+    if not self._session_clock.isVisible():
       return
-    y = tabs.tabBar().height() - 5
     self._session_clock.adjustSize()
-    self._session_clock.move(tabs.width() - self._session_clock.width() - 2, y)
+    bar = tabs.tabBar()
+    # Vertically center on the first tab so the clock lines up with the tab labels.
+    if bar.count() > 0:
+      r = bar.tabRect(0)
+      y = r.y() + max(0, (r.height() - self._session_clock.height()) // 2)
+    else:
+      y = 0
+    self._session_clock.move(tabs.width() - self._session_clock.width() - 8, y)
     self._session_clock.raise_()
 
   def _maybe_refresh_practice_time(self):
-    tabs = self.centralWidget()
-    if tabs is None or tabs.currentIndex() != self._perf_tab_idx:
+    if self._tabs.currentIndex() != self._perf_tab_idx:
       return
     self._perf._progress._practice_lbl.setText(self._perf._progress._practice_time_text())
 
@@ -154,7 +172,7 @@ class MainWindow(QMainWindow):
       w = QApplication.widgetAt(evt.globalPos())
       if should_clear_focus_on_click(fw, w):
         fw.clearFocus()
-    if obj is self.centralWidget() and evt.type() in (QEvent.Resize, QEvent.Show):
+    if obj is self._tabs and evt.type() in (QEvent.Resize, QEvent.Show):
       self._reposition_session_clock()
     return super().eventFilter(obj, evt)
 

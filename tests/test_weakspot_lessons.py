@@ -213,7 +213,7 @@ class TestFocusDrill(unittest.TestCase):
     toks = lesson.lower().split()
     for w in ('from', 'with', 'blue'):
       self.assertGreaterEqual(toks.count(w), 3, w)
-    # no long run of one target without the others (round-robin, not A A A … C)
+    # Adjacent duplicates are separated by interleave; no long monotony.
     runs = []
     last = None; n = 0
     for t in toks:
@@ -222,6 +222,37 @@ class TestFocusDrill(unittest.TestCase):
         else: runs.append(n); last = t; n = 1
     runs.append(n)
     self.assertLessEqual(max(runs), 4)
+
+  def test_focus_drill_not_strict_round_robin(self):
+    """Ordering should not be word1 word2 word3 word1 word2 word3 forever."""
+    words = ['from', 'with', 'blue', 'home', 'safe']
+    targets = [('word', w) for w in words]
+    pure = 0
+    for seed in range(24):
+      lesson = build_focus_lesson(targets, DICT, max_chars=240, rng=_R(seed))
+      toks = [t for t in lesson.split() if t in words]
+      if len(toks) < 10:
+        continue
+      head = toks[:5]
+      if set(head) == set(words) and all(toks[i] == head[i % 5] for i in range(len(toks))):
+        pure += 1
+    self.assertLess(pure, 6)
+
+  def test_focus_drill_respects_max_chars_not_half(self):
+    """Focus size is the configured max, not half of lesson max_chars."""
+    targets = [('word', 'from')]
+    short = build_focus_lesson(targets, DICT, min_chars=40, max_chars=80, rng=_R(1))
+    long = build_focus_lesson(targets, DICT, min_chars=40, max_chars=240, rng=_R(1))
+    self.assertLessEqual(len(short), 80 + 20)  # one trailing phrase may push slightly
+    self.assertGreater(len(long), len(short))
+    self.assertLessEqual(len(long), 240 + 30)
+
+  def test_normalize_focus_drill_chars(self):
+    from typing_program.WeakSpotLessons import normalize_focus_drill_chars
+    self.assertEqual(normalize_focus_drill_chars(80, 300), (80, 300))
+    self.assertEqual(normalize_focus_drill_chars(400, 100), (100, 400))  # swap inverted
+    self.assertEqual(normalize_focus_drill_chars(0, 50), (1, 50))
+
 
 
 class TestScoring(unittest.TestCase):
@@ -373,12 +404,24 @@ class TestDbIntegration(unittest.TestCase):
     conn.executemany(
       'insert into statistic (w,data,type,time,count,mistakes,viscosity) values (?,?,?,?,?,?,?)',
       [
-        (now, 'slow', 2, 1.0, 1, 0, 1.0),     # painful but typed once
+        (now, 'slow', 2, 1.0, 2, 0, 1.0),     # painful but rare (at analysis floor)
         (now, 'fast', 2, 0.3, 500, 0, 1.0),   # constant typing cost
       ])
     targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
     words = [t[1] for t in targets if t[0] == 'word']
     self.assertEqual(words[0], 'fast')
+
+  def test_one_shot_words_never_enter_weak_targets(self):
+    conn = _test_db(); now = 1e9
+    conn.executemany(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity) values (?,?,?,?,?,?,?)',
+      [
+        (now, 'once', 2, 2.0, 1, 1, 1.0),
+        (now, 'twice', 2, 0.4, 2, 0, 1.0),
+      ])
+    targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
+    words = [t[1] for t in targets if t[0] == 'word']
+    self.assertEqual(words, ['twice'])
 
   def test_discounted_source_stats_excluded_from_analysis_aggregate(self):
     conn = _test_db(); now = 1e9

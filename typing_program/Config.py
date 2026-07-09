@@ -41,6 +41,8 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     
     "min_chars": 220,
     "max_chars": 600,
+    "focus_min_chars": 80,
+    "focus_max_chars": 300,
     "break_sentences": False,
     "lesson_stats": 0, # show text/lesson in perf -- not used anymore
     "perf_group_by": 0,
@@ -98,14 +100,17 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     'require_space': False,
     'overwrite_mode': True,
     'limit_backspace': False,
+    'word_delete_enabled': True,  # Block ⌫: plain Backspace off; Opt/Alt/Ctrl/Cmd+Backspace only
 
     'show_progress': True,
     'read_ahead_level': 0,  # 0 = normal, 1 = hard, 2 = easy (when read_ahead_enabled)
-    'improve_submode': 0,  # 0 = normal … 4 = damage (when practice mode is improve)
+    'improve_submode': 0,  # 0 = normal … 5 = damage (when practice mode is improve)
 
     'para_margin': 40,
     'para_lineheight': 1.0,
-    'background_color': QColor('white'),
+    # Lesson canvas only (rectangle matching the ESC pause overlay). Darker than
+    # outer chrome (#4a4a4a), lighter than pause dim — not near-black.
+    'background_color': QColor('#383838'),
 
     'speed_heatmap': False,
     'speed_heatmap_mode': 0,
@@ -164,9 +169,7 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     assert QApplication.instance()
     self.defaults['qt_style'] = QApplication.instance().style().objectName().lower()
 
-    typer_defs = dict(self.typer_defaults)
-    typer_defs['background_color'] = QApplication.palette().color(QPalette.Window)
-    self.typer_settings = self.makeSettings('typer', typer_defs)
+    self.typer_settings = self.makeSettings('typer', dict(self.typer_defaults))
     self.typer_colors = self.makeSettings('colors', self.typer_color_defaults)
     self._migrate_legacy_settings()
 
@@ -562,6 +565,8 @@ class GeneralOptions(QWidget):
       None,
       ["Try to limit texts and lessons to between", SettingsEdit("min_chars"),
         "and", SettingsEdit("max_chars"), "characters.", None],
+      ["Try to limit focus drills to between", SettingsEdit("focus_min_chars"),
+        "and", SettingsEdit("focus_max_chars"), "characters.", None],
       [SettingsCheckBox('break_sentences', "Break long sentences when importing external text."), None],
       ["Selection method for new lessons:",
         SettingsCombo('select_method', ['Random', 'In Order', 'Difficult', 'Easy']), None],
