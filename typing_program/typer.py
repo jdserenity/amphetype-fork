@@ -13,6 +13,7 @@ from typing_program.WeakSpotLessons import (
 from typing_program.Config import Settings
 from typing_program.book_mode import (
   BookLessonBuilder, MODE_BOOK, format_book_progress, lesson_text_id,
+  apply_cold_start_practice_mode,
   practice_mode_from_settings, practice_mode_to_settings, ensure_practice_mode_migrated,
   MODE_IMPROVE, MODE_CORPUS,
 )
@@ -30,6 +31,7 @@ from typing_program.read_ahead import (
   READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
 )
 from typing_program.block_bkspc import allows_backspace
+from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS
 
 from typing_program.Data import Statistic
 from typing_program.speed_heatmap import (
@@ -950,6 +952,38 @@ class TyperWidget(QTextEdit):
     configure_transparent_typer(self)
     settings('background_color').bind_value(lambda v: configure_transparent_typer(self))
 
+    # Blank the mouse pointer after a couple seconds still; show it on move.
+    self.setMouseTracking(True)
+    self.viewport().setMouseTracking(True)
+    self._mouse_cursor_timer = QTimer(self)
+    self._mouse_cursor_timer.setSingleShot(True)
+    self._mouse_cursor_timer.setInterval(MOUSE_CURSOR_IDLE_MS)
+    self._mouse_cursor_timer.timeout.connect(self._hide_idle_mouse_cursor)
+    self._mouse_cursor_timer.start()
+
+  def _show_mouse_cursor(self):
+    self.unsetCursor()
+    self.viewport().unsetCursor()
+    self._mouse_cursor_timer.start()
+
+  def _hide_idle_mouse_cursor(self):
+    self.setCursor(Qt.BlankCursor)
+    self.viewport().setCursor(Qt.BlankCursor)
+
+  def mouseMoveEvent(self, e):
+    self._show_mouse_cursor()
+    super().mouseMoveEvent(e)
+
+  def enterEvent(self, e):
+    self._show_mouse_cursor()
+    super().enterEvent(e)
+
+  def leaveEvent(self, e):
+    self._mouse_cursor_timer.stop()
+    self.unsetCursor()
+    self.viewport().unsetCursor()
+    super().leaveEvent(e)
+
   def _typing_region_doc_y_range(self):
     lesson = self._lesson
     region = lesson.active_region()
@@ -1315,8 +1349,10 @@ class TyperWindow(QWidget):
 
     self.S('background_color').bind_value(self._applyBackground, call=True)
     self.statsChanged.connect(self._weakspot.on_stats_changed)
-    self.S('improve_submode').bind_value(self._onImproveSubmodeSetting, call=True)
     ensure_practice_mode_migrated(self._settings)
+    # Cold start always Typer at improve · normal (ignore last session's mode).
+    apply_cold_start_practice_mode(self._settings, self.S)
+    self.S('improve_submode').bind_value(self._onImproveSubmodeSetting, call=True)
     self._apply_practice_mode_from_settings()
     self._apply_read_ahead_from_settings()
 

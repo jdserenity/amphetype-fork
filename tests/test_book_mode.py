@@ -9,6 +9,7 @@ import pytest
 from typing_program.Data import AppDatabase
 from typing_program.book_mode import (
   BookCatalog,
+  apply_cold_start_practice_mode,
   done_chunk_count,
   ensure_practice_mode_migrated,
   format_book_progress,
@@ -132,6 +133,32 @@ def test_practice_mode_migration_skips_when_v3():
   s = _FakeSettings({'practice_mode': 2, 'practice_mode_v3': True})
   ensure_practice_mode_migrated(s)
   assert s.get('practice_mode') == 2
+
+
+class _FakeTyperVar:
+  def __init__(self, data, key):
+    self._data = data; self._key = key
+  def set(self, val):
+    self._data[self._key] = val
+  def get(self):
+    return self._data[self._key]
+
+
+class _FakeTyperSettings:
+  def __init__(self, data):
+    self._data = data
+  def __call__(self, key):
+    return _FakeTyperVar(self._data, key)
+  def get(self, key):
+    return self._data[key]
+
+
+def test_cold_start_forces_improve_normal():
+  s = _FakeSettings({'practice_mode': 2, 'practice_mode_v3': True})
+  ts = _FakeTyperSettings({'improve_submode': 4})
+  apply_cold_start_practice_mode(s, ts)
+  assert s.get('practice_mode') == 0
+  assert ts.get('improve_submode') == 0
 
 
 def _mem_db():

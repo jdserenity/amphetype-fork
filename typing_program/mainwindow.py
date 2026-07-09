@@ -119,11 +119,7 @@ class MainWindow(QMainWindow):
     if self.isActiveWindow():
       self._session_timer.resume()
 
-    pm = Settings.get('practice_mode')
-    if pm == 2:
-      tm.nextText()
-    elif pm == 1:
-      tw._book.request_lesson(advance_chapter=False)
+    # Practice mode is forced to improve · normal in TyperWindow (cold start).
 
   def _apply_session_clock_visible(self):
     on = bool(Settings.get('show_session_timer'))
