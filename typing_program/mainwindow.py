@@ -44,6 +44,9 @@ from typing_program.QtUtil import center_widget_on_screen, should_clear_focus_on
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 
+# Space above the main tab strip so labels are not flush with the window edge.
+MAIN_TAB_TOP_INSET = 6
+
 
 class MainWindow(QMainWindow):
   def __init__(self, *args):
@@ -55,6 +58,7 @@ class MainWindow(QMainWindow):
     self.quitSc.activated.connect(QApplication.instance().quit)
     
     tabs = QTabWidget()
+    self._tabs = tabs
 
     tw = TyperWindow()
     tabs.addTab(tw, "Typer")
@@ -102,17 +106,29 @@ class MainWindow(QMainWindow):
       pw.setCurrentWidget(tm)
     lg.newLessons.connect(goto_sources)
 
+    # Outer shell insets the tab strip from the top window edge (stylesheet tab
+    # margins are unreliable on native macOS styles).
+    shell = QWidget()
+    shell_lay = QVBoxLayout(shell)
+    shell_lay.setContentsMargins(0, 0, 0, 0)
+    shell_lay.setSpacing(0)
+    top_pad = QWidget()
+    top_pad.setFixedHeight(MAIN_TAB_TOP_INSET)
+    top_pad.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+    shell_lay.addWidget(top_pad)
+    shell_lay.addWidget(tabs)
+
     self._session_timer = FocusedSessionTimer()
     self._session_timer.load_saved(DB)
-    self._session_clock = SessionTimerLabel(self._session_timer, tabs)
+    self._session_clock = SessionTimerLabel(self._session_timer, shell)
     self._session_clock.start()
     self._session_clock.textChanged.connect(self._reposition_session_clock)
     self._session_clock.textChanged.connect(self._maybe_refresh_practice_time)
     pa.set_session_timer(self._session_timer)
-    tabs.installEventFilter(self)
+    shell.installEventFilter(self)
     app.installEventFilter(self)
 
-    self.setCentralWidget(tabs)
+    self.setCentralWidget(shell)
     self._window_placed = False
     Settings.signal_for('show_session_timer').connect(lambda *_: self._apply_session_clock_visible())
     self._apply_session_clock_visible()
@@ -128,17 +144,23 @@ class MainWindow(QMainWindow):
       self._reposition_session_clock()
 
   def _reposition_session_clock(self):
-    tabs = self.centralWidget()
-    if tabs is None or not self._session_clock.isVisible():
+    shell = self.centralWidget()
+    if shell is None or not self._session_clock.isVisible():
       return
-    y = tabs.tabBar().height() - 5
     self._session_clock.adjustSize()
-    self._session_clock.move(tabs.width() - self._session_clock.width() - 2, y)
+    bar = self._tabs.tabBar()
+    # Vertically center on the first tab so the clock lines up with the tab labels.
+    if bar.count() > 0:
+      r = bar.tabRect(0)
+      top = bar.mapTo(shell, r.topLeft()).y()
+      y = top + max(0, (r.height() - self._session_clock.height()) // 2)
+    else:
+      y = MAIN_TAB_TOP_INSET
+    self._session_clock.move(shell.width() - self._session_clock.width() - 8, y)
     self._session_clock.raise_()
 
   def _maybe_refresh_practice_time(self):
-    tabs = self.centralWidget()
-    if tabs is None or tabs.currentIndex() != self._perf_tab_idx:
+    if self._tabs.currentIndex() != self._perf_tab_idx:
       return
     self._perf._progress._practice_lbl.setText(self._perf._progress._practice_time_text())
 
