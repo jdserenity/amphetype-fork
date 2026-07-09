@@ -216,6 +216,21 @@ def count_analysis_words(db, hist_cutoff):
   return int(row[0]) if row else 0
 
 
+def fetch_word_counted_totals(db, words, hist_cutoff=ALL_TIME_HIST):
+  """Counted sample totals per word (same floor basis as Performance Analysis)."""
+  if not words:
+    return {}
+  qs = ','.join('?' * len(words))
+  rows = db.execute(
+    '''select st.data, sum(case when %s then st.count else 0 end)
+    from statistic as st
+    left join source as src on st.source = src.rowid
+    where st.w >= ? and st.type = ? and st.data in (%s)
+    group by st.data''' % (_STAT_IS_COUNTED, qs),
+    (hist_cutoff, STAT_TYPE_WORD, *words)).fetchall()
+  return {data: int(total or 0) for data, total in rows}
+
+
 def aggregate_session_wpm(total_chars, total_seconds):
   """Session WPM across finished lessons: total chars / total typing seconds * (60/5)."""
   if not total_chars or not total_seconds:

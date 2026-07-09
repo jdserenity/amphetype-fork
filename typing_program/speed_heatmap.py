@@ -21,7 +21,7 @@ OBLIVION_WPM = 32  # first non-oblivion speed; oblivion is display_wpm < 32 (≤
 WPM_GREEN = '#00e676'
 PROGRESS_GREEN = WPM_GREEN
 PROGRESS_RED = '#d64545'
-PROGRESS_ORANGE = '#ff8c00'
+PROGRESS_ORANGE = '#ffb347'  # warm sunny orange (progress "new common words")
 WPM_BUCKETS = (
   (0, '#a855f7'),     # display < 32 (≤31.9) — oblivion
   (32, '#d64545'),    # 32–54

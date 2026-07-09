@@ -12,7 +12,7 @@ from typing_program.stats_query import (
   aggregate_session_wpm_from_results, analysis_min_count, analysis_order_clause,
   analysis_order_sql, count_analysis_words, count_unique_typed,
   fetch_analysis_baseline_wpm, fetch_analysis_search, fetch_oblivion_pool, fetch_oblivion_picks,
-  delete_stat_target,
+  fetch_word_counted_totals, delete_stat_target,
 )
 from typing_program.WeakSpotLessons import fetch_weak_targets, score_target
 
@@ -284,6 +284,21 @@ def test_count_analysis_words_excludes_one_shot():
     ])
   assert count_analysis_words(conn, 0) == 1
   assert count_unique_typed(conn, 0, STAT_TYPE_WORD) == 2
+
+
+def test_count_analysis_words_ignores_improve_mode_drill_rows():
+  """Improve (including normal) writes discounted Weakspot rows with count=0 — no new common words."""
+  conn = _test_db(); now = 1e9
+  weak = _add_source(conn, '<Weakspot>', 1)
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'onlydrill', STAT_TYPE_WORD, 0.2, 0, 0, 1.0, weak),
+      (now, 'onlydrill', STAT_TYPE_WORD, 0.2, 0, 0, 1.0, weak),
+      (now, 'onlydrill', STAT_TYPE_WORD, 0.2, 0, 0, 1.0, weak),
+    ])
+  assert count_analysis_words(conn, 0) == 0
+  assert fetch_word_counted_totals(conn, ['onlydrill']) == {'onlydrill': 0}
 
 
 def test_fetch_analysis_baseline_wpm_one_sample():

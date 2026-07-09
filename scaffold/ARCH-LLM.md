@@ -73,7 +73,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 - **Block ⌫** (`block_bkspc.py`): on default. Pref: `typer/word_delete_enabled`. Plain Backspace no-op; Opt/Alt/Ctrl/Meta+Backspace = by-word. `allows_backspace(enabled, by_word)`.
 - **Heatmap** (`speed_heatmap.py`): off default; modes words/trigrams/chars; all-time stats; prefs `typer/speed_heatmap`, `typer/speed_heatmap_mode`.
 - Sounds: `typing_sounds.py`; prefs `typer/typing_sound`, `typing_error_sound`, `typing_sound_volume`.
-- Word progress: `word_progress.py` (green/orange + badges when median improves).
+- Word progress: `word_progress.py` — green + badges when median improves; orange = **new common words** that cross the PA min-count pool this run (`analysis_min_count` / `WORD_ANALYSIS_MIN_COUNT`). Message: “You typed N new common word(s)!”. **Improve modes (all submodes including normal) never show this** and never gather counted word samples (`count=0` on discounted `<Weakspot>`).
 - Book: full chapter grey inactive; active chunk sized by min/max chars; soft newlines auto-skip; para ⏎ match invisible; vertical center when scroll needed.
 - `limit_backspace` (typer pref): separate — won’t back over correct text when set.
 

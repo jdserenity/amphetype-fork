@@ -1,10 +1,10 @@
 """Per-word progress vs historical baseline WPM."""
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from typing_program.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED, fetch_speed_stats
-from typing_program.stats_query import STAT_TYPE_WORD
+from typing_program.stats_query import WORD_ANALYSIS_MIN_COUNT, STAT_TYPE_WORD
 
 _WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
 
@@ -141,11 +141,38 @@ def lifetime_wpm_gain(current_wpm, first_wpm):
   return int(current_wpm) - int(first_wpm)
 
 
-def new_word_spans(run, baselines, match_text):
-  """Each first-time word occurrence: (start, end)."""
+def run_word_sample_counts(run, match_text=None):
+  """How many complete word samples this run would write (same as collect_run_stat_rows)."""
+  counts = Counter()
+  for start, end, word in word_spans(match_text or run.text):
+    sub = run[start:end]
+    if not sub.is_complete() or word_spc_from_slice(sub) is None:
+      continue
+    counts[word] += 1
+  return counts
+
+
+def words_crossing_min_count(prior_counts, run_counts, min_count=WORD_ANALYSIS_MIN_COUNT):
+  """Words whose counted total crosses into the analysis pool this run."""
+  floor = int(min_count or WORD_ANALYSIS_MIN_COUNT)
+  new = []
+  for word, n in run_counts.items():
+    if n <= 0:
+      continue
+    prev = int((prior_counts or {}).get(word, 0) or 0)
+    if prev < floor and prev + n >= floor:
+      new.append(word)
+  return new
+
+
+def new_word_spans(run, new_common, match_text):
+  """Perfect occurrences of words that newly entered the common-word pool: (start, end)."""
+  want = set(new_common or ())
+  if not want:
+    return []
   out = []
   for start, end, word in word_spans(match_text or ''):
-    if word in baselines:
+    if word not in want:
       continue
     sub = run[start:end]
     if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
@@ -170,10 +197,14 @@ def improved_word_spans(run, baselines, match_text):
   return out
 
 
-def analyze_run_progress(run, baselines, match_text=None):
-  """Score a finished run against baselines captured before the run wrote stats."""
-  improved = 0; known = 0; new_words = []; gain_total = 0; gain_count = 0
-  seen_new = set()
+def analyze_run_progress(run, baselines, match_text=None, prior_counts=None,
+                         min_count=WORD_ANALYSIS_MIN_COUNT, include_new_common=True):
+  """Score a finished run against baselines/counts captured before the run wrote stats.
+
+  New common words = words that reach the Performance Analysis min-count pool this run
+  (counted samples only). Improve modes pass include_new_common=False.
+  """
+  improved = 0; known = 0; gain_total = 0; gain_count = 0
   for start, end, word in word_spans(match_text or run.text):
     sub = run[start:end]
     if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
@@ -188,9 +219,10 @@ def analyze_run_progress(run, baselines, match_text=None):
       if bump is not None:
         improved += 1
         gain_total += bump; gain_count += 1
-    elif word not in seen_new:
-      seen_new.add(word)
-      new_words.append(word)
+  new_words = []
+  if include_new_common:
+    run_counts = run_word_sample_counts(run, match_text)
+    new_words = words_crossing_min_count(prior_counts, run_counts, min_count)
   return RunProgress(improved, known, new_words, gain_total, gain_count)
 
 
@@ -206,7 +238,7 @@ def format_progress_html(progress, stats_saved=True):
       imp_color, progress.improved, progress.known, imp_color, progress.avg_gain),
   ]
   if progress.new_count > 0:
-    lines.append('You typed <span style="color:%s">%d</span> unique new word%s!' % (
+    lines.append('You typed <span style="color:%s">%d</span> new common word%s!' % (
       PROGRESS_ORANGE, progress.new_count, '' if progress.new_count == 1 else 's'))
   if not stats_saved:
     lines.append('<i>Drill only — stats were not saved.</i>')

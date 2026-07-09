@@ -24,7 +24,9 @@ from typing_program.improve_mode import (
 from typing_program.lesson_placeholders import (
   BOOK_EMPTY_LABEL, CORPUS_EMPTY_LABEL, IMPROVE_EMPTY_LABEL, IMPROVE_SUBMODE_EMPTY_LABEL,
 )
-from typing_program.stats_query import ALL_TIME_HIST
+from typing_program.stats_query import (
+  ALL_TIME_HIST, STAT_TYPE_WORD, analysis_min_count, fetch_word_counted_totals,
+)
 from typing_program.speed_heatmap import book_return_role
 from typing_program.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
@@ -256,6 +258,7 @@ class LessonDocument(QTextDocument):
     self._book_chunk_index = 0
     self._pre_start_paused = False
     self._word_baselines = {}
+    self._word_prior_counts = {}
     self._word_spans = []
     self._progress_badges = []
     self.style_progress = text_style(kerning=False, color=QBrush(QColor(PROGRESS_GREEN)))
@@ -275,6 +278,7 @@ class LessonDocument(QTextDocument):
     self._pre_start_paused = False
     self._progress_badges = []
     self._word_baselines = {}
+    self._word_prior_counts = {}
     self._word_spans = []
     self._read_ahead_preview = False
     self._read_ahead_revealed = set()
@@ -796,6 +800,9 @@ class LessonDocument(QTextDocument):
 
   def set_word_baselines(self, baselines):
     self._word_baselines = dict(baselines or {})
+
+  def set_word_prior_counts(self, counts):
+    self._word_prior_counts = dict(counts or {})
     self._word_spans = word_spans(self._match_text) if self._match_text else []
 
   def progress_badges(self):
@@ -810,8 +817,8 @@ class LessonDocument(QTextDocument):
       for j in range(start, end):
         self._style_match_index(j, self.style_progress)
 
-  def apply_new_word_styles(self, run, baselines):
-    for start, end in new_word_spans(run, baselines, self._match_text):
+  def apply_new_word_styles(self, run, new_common):
+    for start, end in new_word_spans(run, new_common, self._match_text):
       for j in range(start, end):
         self._style_match_index(j, self.style_progress_new)
 
@@ -1888,7 +1895,9 @@ class TyperWindow(QWidget):
       self.updateLabel()
 
   def _load_word_baselines(self, match_text):
-    self._doc.set_word_baselines(fetch_word_baselines(self.DB, lesson_words(match_text)))
+    words = lesson_words(match_text)
+    self._doc.set_word_baselines(fetch_word_baselines(self.DB, words))
+    self._doc.set_word_prior_counts(fetch_word_counted_totals(self.DB, words))
 
   def _clear_awaiting(self):
     self._awaiting_next = False
@@ -1900,8 +1909,16 @@ class TyperWindow(QWidget):
   def _show_progress_summary(self, run, stats_saved=True):
     baselines = self._doc._word_baselines
     match_text = self._doc._match_text
-    progress = analyze_run_progress(run, baselines, match_text)
-    self._doc.apply_new_word_styles(run, baselines)
+    # Improve modes (normal + focus drills) never gather counted word samples, so they
+    # cannot mint "new common words" for the analysis pool — hide that feedback entirely.
+    show_new_common = self._mode != MODE_IMPROVE
+    min_count = analysis_min_count(STAT_TYPE_WORD, Settings.get('analysis_count'))
+    progress = analyze_run_progress(
+      run, baselines, match_text,
+      prior_counts=self._doc._word_prior_counts, min_count=min_count,
+      include_new_common=show_new_common)
+    if show_new_common:
+      self._doc.apply_new_word_styles(run, progress.new_words)
     self._doc.apply_improved_word_styles(run, baselines)
     self._doc.set_progress_badges(progress_badges_for_run(run, baselines, match_text))
     self._awaiting_next = True
