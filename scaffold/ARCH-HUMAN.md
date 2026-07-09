@@ -39,7 +39,7 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 
 | Tab | Purpose |
 |-----|---------|
-| **Typer** | Practice. Modes: **improve** (weak spots / focus drills), **book** (chapter through a novel), **corpus** (random imported text). Footer extras: read ahead, **Block ⌫**, heatmap. |
+| **Typer** | Practice. Modes: **improve** (weak spots / focus drills), **corpus** (random imported text), **book** (chapter through a novel). Footer extras: read ahead, **Block ⌫**, heatmap. |
 | **Performance Analysis** | Ranked characters / trigrams / words; progress card (WPM, practice time); drill or find a target in corpus. |
 | **Preferences** | Font, sounds, thresholds; typer options; import books from Project Gutenberg. |
 

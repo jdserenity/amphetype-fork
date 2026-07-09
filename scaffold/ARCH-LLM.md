@@ -67,7 +67,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 - Document: type on top of target; styles untyped/correct/error/blocked.
 - ESC pause: Continue / New / Restart overlay; `RunStats.pause`/`resume`.
-- Footer order (left): improve [+submode] · book · corpus · read ahead [+level] · **Block ⌫** · heatmap [+kind + legend] · source title.
+- Footer order (left): improve [+submode] · corpus · book · read ahead [+level] · **Block ⌫** · heatmap [+kind + legend] · source title.
 - **Read ahead** (`read_ahead.py`): off default; levels normal/hard/easy; hide upcoming words after first keystroke; mistype reveals current word only. Prefs: `read_ahead_enabled`, `typer/read_ahead_level`.
 - **Block ⌫** (`block_bkspc.py`): on default. Pref: `typer/word_delete_enabled`. Plain Backspace no-op; Opt/Alt/Ctrl/Meta+Backspace = by-word. `allows_backspace(enabled, by_word)`.
 - **Heatmap** (`speed_heatmap.py`): off default; modes words/trigrams/chars; all-time stats; prefs `typer/speed_heatmap`, `typer/speed_heatmap_mode`.
@@ -97,7 +97,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 ## Session timer
 
-`session_timer.py`: top-right; ticks when focused + interaction within 60s. Persist `app_meta.total_practice_seconds`. Pref `show_session_timer` default on.
+`session_timer.py`: top-right; ticks when focused + interaction within 60s. Session clock keeps elapsed time across focus loss (pause + flush must not reset display). Persist `app_meta.total_practice_seconds`. Pref `show_session_timer` default on. Main tab bar top inset (`MAIN_TAB_TOP_INSET`); session clock vertically centered on tab labels.
 
 ## License
 
