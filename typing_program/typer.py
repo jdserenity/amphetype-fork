@@ -69,8 +69,9 @@ _BADGE_FONT_PT = 13
 # Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
 TYPER_CHROME_COLOR = QColor('#4a4a4a')
 TYPER_CANVAS_DEFAULT = QColor('#383838')
-# Inactive footer modes = typer canvas grey; active is pure white.
-MODE_BTN_INACTIVE = TYPER_CANVAS_DEFAULT.name()  # #383838
+# Empty progress-bar track (also used for inactive footer mode labels).
+PROGRESS_EMPTY_COLOR = QColor('#808080')
+MODE_BTN_INACTIVE = PROGRESS_EMPTY_COLOR.name()
 MODE_BTN_ACTIVE = '#ffffff'
 MODE_BTN_HOVER = '#ffffff'
 
@@ -1241,6 +1242,12 @@ class TyperWindow(QWidget):
     self._prog = QProgressBar()
     self._prog.setTextVisible(False)
     self._prog.setValue(0)
+    # Explicit empty-track colour so footer inactive modes can match it exactly.
+    self._prog.setStyleSheet(
+      'QProgressBar { border: none; border-radius: 3px; max-height: 8px;'
+      ' background-color: %s; }'
+      'QProgressBar::chunk { border-radius: 3px; background-color: #5dade2; }' % (
+        PROGRESS_EMPTY_COLOR.name(),))
     self._progw = FStackedWidget([QLabel('Type like the wind!'), self._prog])
     self._prog_layout = FStackedWidget([self._label, self._progw])
 

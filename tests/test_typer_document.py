@@ -829,16 +829,17 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(3).widget() is tw._btn_book
 
 
-def test_inactive_mode_buttons_use_canvas_color(qapp):
-  """Unselected footer modes use the typer canvas colour (#383838)."""
+def test_inactive_mode_buttons_match_empty_progress_bar(qapp):
+  """Unselected footer modes use the same grey as the empty progress-bar track."""
   import typing_program.mainwindow  # noqa: F401
   from typing_program.typer import (
-    MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, TYPER_CANVAS_DEFAULT, TyperWindow, _footer_btn_style,
+    MODE_BTN_ACTIVE, MODE_BTN_INACTIVE, PROGRESS_EMPTY_COLOR, TyperWindow, _footer_btn_style,
   )
 
   tw = TyperWindow()
-  assert MODE_BTN_INACTIVE == TYPER_CANVAS_DEFAULT.name()
+  assert MODE_BTN_INACTIVE == PROGRESS_EMPTY_COLOR.name()
   assert MODE_BTN_INACTIVE in tw._mode_btn_style
+  assert PROGRESS_EMPTY_COLOR.name() in tw._prog.styleSheet()
   assert MODE_BTN_ACTIVE in tw._mode_btn_style
   assert MODE_BTN_INACTIVE in _footer_btn_style(False)
   assert MODE_BTN_ACTIVE in _footer_btn_style(True)
