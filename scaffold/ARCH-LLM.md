@@ -55,7 +55,11 @@ scaffold/         # agent docs (this file)
 | book | 1 | `book_mode.py` — chapters/chunks, progress in `book_progress` / `book_lesson_done` |
 | corpus | 2 | `TextManager.nextText`; re-click corpus → another text |
 
-Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on three weak **words**. Focus drill from Performance Analysis: `build_focus_lesson`, half length; finish replays until user exits improve focus.
+Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on three weak **words**. Focus drill size: prefs `focus_min_chars` / `focus_max_chars` (default 80–300; General Options under lesson min/max); `build_focus_lesson` uses those directly. Focus drill from Performance Analysis: same builder; finish replays until user exits improve focus.
+
+**Cold start:** every app launch forces practice mode improve + submode normal (`apply_cold_start_practice_mode` in `book_mode.py`, called from `TyperWindow` init). Last session’s book/corpus/submode is not restored.
+
+**Idle mouse cursor:** on the typer canvas (`TyperWidget` + `idle_cursor.py`), the pointer blanks after `MOUSE_CURSOR_IDLE_MS` (2000) with no movement; reappears on move/enter.
 
 Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 

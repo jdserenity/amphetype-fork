@@ -43,7 +43,11 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 | **Performance Analysis** | Ranked characters / trigrams / words; progress card (WPM, practice time); drill or find a target in corpus. |
 | **Preferences** | Font, sounds, thresholds; typer options; import books from Project Gutenberg. |
 
-**Improve** builds practice from your worst items. Submodes: **normal** (readable weakspot mix), **trigrams** (raw 3-character chunks only — looks like alien gibberish), then **oblivion / slowest / hesitant / damage** (focus drills on three weak words). Finishing a focus drill repeats it until you leave.
+**Improve** builds practice from your worst items. Submodes: **normal** (readable weakspot mix), **trigrams** (raw 3-character chunks only — looks like alien gibberish), then **oblivion / slowest / hesitant / damage** (focus drills on three weak words). Finishing a focus drill repeats it until you leave. Focus-drill length is set in Preferences → General (under the normal lesson size fields).
+
+**Cold start:** opening the app always lands on Typer in **improve · normal**, not whatever mode you left last time.
+
+**Mouse pointer:** on the practice canvas it hides after about two seconds still, then comes back when you move the mouse.
 
 **Block ⌫** (on by default): plain Backspace does nothing; only Option/Ctrl/Alt/Cmd+Backspace deletes (whole word). Habit training for faster correction.
 
