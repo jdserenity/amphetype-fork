@@ -47,7 +47,7 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 
 **Cold start:** opening the app always lands on Typer in **improve · normal**, not whatever mode you left last time.
 
-**Keyboard (macOS):** **Tab** cycles the active *submode* — improve level (in improve), read-ahead level (when read ahead is on), or heatmap kind (when heatmap is on). Whichever you last used (or just turned on) is what Tab steps. **⌘← / ⌘→** cycle practice mode (improve · corpus · book). **⌥⌘[ / ⌥⌘]** cycle the top tabs (Typer / Performance Analysis / Preferences).
+**Keyboard (macOS):** **Tab** cycles improve submode (when you’re in improve). **⌘← / ⌘→** cycle practice mode (improve · corpus · book). **⌥⌘[ / ⌥⌘]** cycle the top tabs (Typer / Performance Analysis / Preferences).
 
 **Book place:** finishing a chunk always saves where you are (chapter + chunk). Reopening the book mode resumes from that place — not only after you finish a whole chapter.
 

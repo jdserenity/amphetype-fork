@@ -67,7 +67,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 | Shortcut | Action | Where |
 |----------|--------|--------|
-| **Tab** | Next value of the sticky submode family among active ones: improve (when mode=improve), read-ahead level (when on), heatmap kind (when on). Focus sticks to last used control; enabling a feature or clicking its level focuses it. `cycle_active_submode` | Typer canvas (`TyperWidget.keyPressEvent` → `_on_tab_nav`) |
+| **Tab** | Next improve submode (`cycle_improve_submode`; no-op outside improve) | Typer canvas (`TyperWidget.keyPressEvent` → `_on_tab_nav`) |
 | **Cmd/Ctrl+← / →** | Previous / next practice mode (improve · corpus · book) | `TyperWindow` QShortcut; helpers in `keyboard_nav.py` |
 | **Opt/Alt+Cmd/Ctrl+[ / ]** | Previous / next main toolbar tab (Typer / PA / Preferences) | `MainWindow` QShortcut |
 

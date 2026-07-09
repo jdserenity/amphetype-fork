@@ -1,7 +1,7 @@
 """Keyboard navigation helpers for practice modes and main tabs.
 
 Shortcuts (wired in UI):
-  Tab — cycle the focused submode family (improve / read-ahead / heatmap)
+  Tab — next improve submode (Typer, improve mode only)
   Cmd/Ctrl+← / → — previous / next practice mode (improve · corpus · book)
   Opt/Alt+Cmd/Ctrl+[ / ] — previous / next main toolbar tab
 """
@@ -10,12 +10,6 @@ from typing_program.book_mode import MODE_BOOK, MODE_CORPUS, MODE_IMPROVE
 
 # Same order as the Typer footer mode buttons.
 PRACTICE_MODE_ORDER = (MODE_IMPROVE, MODE_CORPUS, MODE_BOOK)
-
-# Submode families Tab can advance (footer order when several are active).
-SUBMODE_IMPROVE = 'improve'
-SUBMODE_READ_AHEAD = 'read_ahead'
-SUBMODE_HEATMAP = 'heatmap'
-SUBMODE_ORDER = (SUBMODE_IMPROVE, SUBMODE_READ_AHEAD, SUBMODE_HEATMAP)
 
 
 def cycle_practice_mode(current, delta=1):
@@ -34,24 +28,3 @@ def cycle_index(current, count, delta=1):
   if n <= 0:
     return 0
   return (int(current) + int(delta)) % n
-
-
-def active_submode_keys(practice_mode, read_ahead_on, heatmap_on):
-  """Submode families currently available (visible level/kind controls)."""
-  keys = []
-  if practice_mode == MODE_IMPROVE:
-    keys.append(SUBMODE_IMPROVE)
-  if read_ahead_on:
-    keys.append(SUBMODE_READ_AHEAD)
-  if heatmap_on:
-    keys.append(SUBMODE_HEATMAP)
-  return keys
-
-
-def resolve_tab_submode_key(preferred, active_keys):
-  """Which family Tab should step. Keep sticky preferred if still active."""
-  if not active_keys:
-    return None
-  if preferred in active_keys:
-    return preferred
-  return active_keys[0]
