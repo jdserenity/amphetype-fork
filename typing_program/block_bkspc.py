@@ -2,6 +2,7 @@
 
 Trains deleting whole words (Opt/Alt/Ctrl+Backspace) instead of mashing
 character backspace after fast typos. Footer label: "Block ⌫".
+Code name: block_bkspc. Pref key: word_delete_enabled (kept for saved settings).
 """
 
 

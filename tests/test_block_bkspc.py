@@ -1,8 +1,8 @@
-"""Tests for word-delete mode (block char backspace; preserve word stats)."""
+"""Tests for Block ⌫ mode (block_bkspc): plain Backspace blocked; stats preserved."""
 
 import pytest
 
-from typing_program.word_delete import allows_backspace
+from typing_program.block_bkspc import allows_backspace
 from typing_program.typer import LessonDocument
 from typing_program.timingtuple import collect_run_stat_rows
 from PyQt5.QtGui import QFont, QColor
@@ -99,8 +99,8 @@ def test_widget_char_backspace_works_when_mode_off(qapp):
   assert doc._run.index == 1
 
 
-def test_word_backspace_then_retype_counts_word_once_with_mistakes(qapp):
-  """Word deleted via word-backspace and retyped: one stat row, mistakes kept."""
+def test_by_word_backspace_then_retype_counts_occurrence_once_with_mistakes(qapp):
+  """Occurrence retyped after by-word backspace: one sample; mistakes kept."""
   doc = LessonDocument(QFont('Arial', 12))
   doc.set_text('cat dog')
   # First attempt at "cat": mistype then correct via char backspace (document API, free)
@@ -114,7 +114,7 @@ def test_word_backspace_then_retype_counts_word_once_with_mistakes(qapp):
   idx_after_cat = doc._run.index
   assert idx_after_cat == 4
 
-  # Word-delete "cat " (PreviousWord from after the space)
+  # By-word backspace of "cat " (PreviousWord from after the space)
   doc.backspace(by_word=True)
   assert doc._run.index < idx_after_cat
 
@@ -130,6 +130,6 @@ def test_word_backspace_then_retype_counts_word_once_with_mistakes(qapp):
   rows = collect_run_stat_rows(run, run.median_timing, 1.0, 1)
   word_rows = [r for r in rows if r[5] == 2 and r[6] == 'cat']
   assert len(word_rows) == 1
-  assert word_rows[0][3] == 1  # one completion of this word in the run
+  assert word_rows[0][3] == 1  # one completion of this occurrence in the run
   assert run[1].mistakes >= 1  # mistake from first attempt still on the char
   assert word_rows[0][4] >= 1  # flawed sample (mistakes field)
