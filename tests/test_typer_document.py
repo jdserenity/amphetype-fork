@@ -282,6 +282,7 @@ class _FakeTyperSettings:
         self._vals.setdefault('lenient_mode', False)
         self._vals.setdefault('overwrite_mode', True)
         self._vals.setdefault('limit_backspace', False)
+        self._vals.setdefault('word_delete_enabled', False)
         self._vals.setdefault('show_progress', False)
         self._vals.setdefault('background_color', QColor('white'))
         self._vals.setdefault('typing_sound', '')

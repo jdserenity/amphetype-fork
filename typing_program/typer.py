@@ -24,6 +24,7 @@ from typing_program.read_ahead import (
   hidden_char_indices, hidden_word_indices, word_index_at,
   READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
 )
+from typing_program.word_delete import allows_backspace
 
 from typing_program.Data import Statistic
 from typing_program.speed_heatmap import (
@@ -1117,6 +1118,9 @@ class TyperWidget(QTextEdit):
 
     if evt.key() == Qt.Key_Backspace or evt.key() == Qt.Key_Back:
       by_word = bool(evt.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier))
+      if not allows_backspace(self._settings['word_delete_enabled'], by_word):
+        evt.accept()
+        return
       self.backspace(word=by_word)
     elif evt.key() == Qt.Key_Enter or evt.key() == Qt.Key_Return:
       self.insert(RETURN_CHAR)
@@ -1141,6 +1145,8 @@ class TyperWidget(QTextEdit):
 
   def backspace(self, word=False):
     if self._lesson is None or not self._lesson.is_running() or self._lesson.is_paused():
+      return
+    if not allows_backspace(self._settings['word_delete_enabled'], word):
       return
     self._lesson.backspace(by_word=word, protected=self._settings['limit_backspace'])
 
@@ -1246,13 +1252,14 @@ class TyperWindow(QWidget):
     self._btn_corpus = QPushButton(_CORPUS_BTN_LABEL, flat=True)
     self._btn_read_ahead = QPushButton('read ahead', flat=True)
     self._btn_read_ahead_level = QPushButton('normal', flat=True)
+    self._btn_word_delete = QPushButton('word delete', flat=True)
     self._btn_improve_level = QPushButton('normal', flat=True)
     self._btn_heatmap = QPushButton('heatmap', flat=True)
     self._btn_heatmap.clicked.connect(self._toggleHeatmap)
     self._btn_heatmap_kind = QPushButton(flat=True)
     self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
     for b in (self._btn_improve, self._btn_book, self._btn_corpus, self._btn_read_ahead,
-              self._btn_read_ahead_level, self._btn_improve_level):
+              self._btn_read_ahead_level, self._btn_word_delete, self._btn_improve_level):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setStyleSheet(self._mode_btn_style)
@@ -1268,6 +1275,7 @@ class TyperWindow(QWidget):
     self._btn_book.clicked.connect(lambda: self.set_practice_mode(MODE_BOOK))
     self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
     self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
+    self._btn_word_delete.clicked.connect(self.toggle_word_delete)
     self._btn_improve_level.clicked.connect(self.cycle_improve_submode)
     self._weakspot_generating = False
 
@@ -1285,13 +1293,14 @@ class TyperWindow(QWidget):
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
     self._heatmap_panel.setVisible(False)
     for w in (self._btn_improve, self._btn_improve_level, self._btn_book, self._btn_corpus,
-              self._btn_read_ahead, self._btn_read_ahead_level, self._btn_heatmap,
-              self._heatmap_panel):
+              self._btn_read_ahead, self._btn_read_ahead_level, self._btn_word_delete,
+              self._btn_heatmap, self._heatmap_panel):
       mode_lay.addWidget(w)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
     self.S('speed_heatmap').bind_value(self._onHeatmapSetting, call=True)
     self.S('speed_heatmap_mode').bind_value(self._onHeatmapSetting, call=True)
+    self.S('word_delete_enabled').bind_value(self._onWordDeleteSetting, call=True)
 
     self.setLayout(FBoxLayout([
       (self._prog_layout, 0),
@@ -1383,6 +1392,15 @@ class TyperWindow(QWidget):
       self._polish_mode_btn(self._btn_read_ahead_level)
     if refresh_doc:
       self._doc.set_read_ahead_mode(document_read_ahead_mode(enabled, level))
+
+  def toggle_word_delete(self):
+    self.S('word_delete_enabled').set(not self.S('word_delete_enabled').get())
+
+  def _onWordDeleteSetting(self, *_):
+    on = bool(self.S('word_delete_enabled').get())
+    self._btn_word_delete.setStyleSheet(self._mode_btn_style)
+    self._btn_word_delete.setProperty('activeMode', on)
+    self._polish_mode_btn(self._btn_word_delete)
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))

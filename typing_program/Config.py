@@ -98,6 +98,7 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     'require_space': False,
     'overwrite_mode': True,
     'limit_backspace': False,
+    'word_delete_enabled': True,  # block plain Backspace; Opt/Alt/Ctrl/Cmd+Backspace only
 
     'show_progress': True,
     'read_ahead_level': 0,  # 0 = normal, 1 = hard, 2 = easy (when read_ahead_enabled)
