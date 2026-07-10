@@ -33,3 +33,11 @@ Lesson runs often cold-start with `RunStats.started is None` until the run is fi
 ## Footer title height needs Minimum size policy
 
 Reserving space for the book/corpus source title in improve mode: `QLabel.setMinimumHeight(2 * fontMetrics().height())` alone does **not** expand the footer `QHBoxLayout` row when the label is empty — the canvas stays tall. Also set `QSizePolicy.Expanding, QSizePolicy.Minimum` (or `setFixedHeight`) so the row actually grows and the canvas matches book/corpus.
+
+## Trigram gibberish: collapse boundary spaces
+
+Weak trigrams often start or end with a space (`"he "`, `" th"`). Naively joining them with another separator space produces `  ` runs that feel broken to type. `build_trigram_gibberish_lesson` must merge boundary spaces so the lesson never has two spaces in a row (middle spaces inside a trigram like `"e h"` stay as a single space).
+
+## Focus-drill interleave: bag draw, not shuffle-then-nudge
+
+A shuffle followed by “swap adjacent duplicates with the next different item” collapses into long `A B A B A B` stretches and feels repetitive even when all five words have equal weight. `_interleave` should draw from remaining bags (weight ∝ leftover count), skipping the previous pick and the pick-before-that when other targets remain.
