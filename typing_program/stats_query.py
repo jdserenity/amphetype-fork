@@ -1,20 +1,26 @@
 """Shared statistic aggregation for Analysis and weakspot selection.
 
-Drill rows (<Weakspot>, count=0) update median time/hesitation but not count,
-mistakes, or damage frequency. Drill mistakes are tracked separately.
+Corpus rows (non-discounted sources) grow the known-word floor and damage.
+Drill rows (<Weakspot>, discounted) keep real sample counts/mistakes so they
+raise perfect rate, but never unlock new known words on their own.
+Legacy drill rows with count=0 still count as one drill sample each.
 """
 
 # Legacy: omit discounted sources entirely (heatmap, etc.).
 STAT_OMIT_DISCOUNTED = "(st.source is null or src.discount is null)"
 
 _STAT_IS_COUNTED = "(coalesce(src.discount, 0) = 0)"
+# Discounted samples: prefer real count; legacy count=0 rows count as one sample.
+_DRILL_SAMPLES = f"(case when not {_STAT_IS_COUNTED} then (case when st.count > 0 then st.count else 1 end) else 0 end)"
+_DRILL_MISTAKES = f"(case when not {_STAT_IS_COUNTED} then st.mistakes else 0 end)"
 
 STATS_AGG_SUBQUERY = f"""select data,
   agg_median(time) as time,
   agg_median(viscosity) as viscosity,
-  sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) as total,
-  sum(case when {_STAT_IS_COUNTED} then st.mistakes else 0 end) as mistakes,
-  sum(case when not {_STAT_IS_COUNTED} and st.count = 0 then 1 else 0 end) as drilled
+  sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) as corpus,
+  sum(case when {_STAT_IS_COUNTED} then st.mistakes else 0 end) as corpus_mistakes,
+  sum({_DRILL_SAMPLES}) as drilled,
+  sum({_DRILL_MISTAKES}) as drill_mistakes
   from statistic as st
   left join source as src on st.source = src.rowid
   where st.w >= ? and st.type = ?
@@ -29,18 +35,21 @@ RAW_TARGETS_SQL = f"""select data,
   where st.w >= ? and st.type = ?
   group by data having sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) >= ?"""
 
+# Row: data, wpm, viscosity, corpus, drilled, perfect, damage. Known floor = corpus only.
 ANALYSIS_OUTER_SQL = """select data, 12.0/time as wpm,
-  viscosity, total, total - mistakes as perfect, drilled,
-  total*time*time*(1.0+mistakes/total) as damage
+  viscosity, corpus, drilled,
+  (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
+  corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where total >= ?
+  where corpus >= ?
   order by %s limit %d"""
 
 ANALYSIS_SEARCH_OUTER_SQL = """select data, 12.0/time as wpm,
-  viscosity, total, total - mistakes as perfect, drilled,
-  total*time*time*(1.0+mistakes/total) as damage
+  viscosity, corpus, drilled,
+  (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
+  corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where total >= ? and %s
+  where corpus >= ? and %s
   order by %s"""
 
 # Heatmap WPM uses the same median-time pool as Analysis; damage uses counted rows only.
@@ -101,10 +110,11 @@ WPM_GATE_FIRST_LESSON_SQL = """select r.char_count, r.duration from result r
 
 # round(..., 1) matches Performance Analysis "%.1f wpm" so a displayed 32.0 is never oblivion.
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
-  viscosity, total, total - mistakes as perfect, drilled,
-  total*time*time*(1.0+mistakes/total) as damage
+  viscosity, corpus, drilled,
+  (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
+  corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where total >= ? and round(12.0/time, 1) < ?
+  where corpus >= ? and round(12.0/time, 1) < ?
   order by wpm asc"""
 
 SPEED_STATS_ALL_TIME_SQL = f"""select data,
@@ -136,8 +146,9 @@ _LEGACY_ANALYSIS_ORDER = {
   'perfect desc': 'perfect_pct desc',
 }
 _ANALYSIS_ORDER_SQL = {
-  'perfect_pct asc': 'cast(total - mistakes as real) / total asc, total asc',
-  'perfect_pct desc': 'cast(total - mistakes as real) / total desc, total desc',
+  'perfect_pct asc': 'cast(perfect as real) / nullif(corpus + drilled, 0) asc, corpus asc',
+  'perfect_pct desc': 'cast(perfect as real) / nullif(corpus + drilled, 0) desc, corpus desc',
+  'total desc': 'corpus desc',
 }
 
 
@@ -232,26 +243,30 @@ def fetch_word_counted_totals(db, words, hist_cutoff=ALL_TIME_HIST):
 
 
 def fetch_word_perfect_baselines(db, words, hist_cutoff=ALL_TIME_HIST):
-  """Prior counted perfect/count per word for lesson-end perfect-rate progress."""
+  """Prior perfect/(corpus+drill) per word for lesson-end perfect-rate progress."""
   if not words:
     return {}
   qs = ','.join('?' * len(words))
   rows = db.execute(
     '''select st.data,
       sum(case when %s then st.count else 0 end),
-      sum(case when %s then st.mistakes else 0 end)
+      sum(case when %s then st.mistakes else 0 end),
+      sum(%s),
+      sum(%s)
     from statistic as st
     left join source as src on st.source = src.rowid
     where st.w >= ? and st.type = ? and st.data in (%s)
-    group by st.data''' % (_STAT_IS_COUNTED, _STAT_IS_COUNTED, qs),
+    group by st.data''' % (_STAT_IS_COUNTED, _STAT_IS_COUNTED, _DRILL_SAMPLES, _DRILL_MISTAKES, qs),
     (hist_cutoff, STAT_TYPE_WORD, *words)).fetchall()
   out = {}
-  for data, total, mistakes in rows:
-    count = int(total or 0)
-    if count <= 0:
+  for data, corpus, c_miss, drilled, d_miss in rows:
+    corpus = int(corpus or 0)
+    drilled = int(drilled or 0)
+    total = corpus + drilled
+    if total <= 0:
       continue
-    misses = int(mistakes or 0)
-    out[data] = {'count': count, 'perfect': max(0, count - misses)}
+    perfect = (corpus - int(c_miss or 0)) + max(0, drilled - int(d_miss or 0))
+    out[data] = {'count': total, 'perfect': max(0, perfect), 'corpus': corpus}
   return out
 
 
@@ -299,13 +314,15 @@ def format_wpm_gate_label(db):
   return format_progress_gate_label(db)
 
 
-OVERALL_WORD_PERFECT_SQL = """select sum(total - mistakes), sum(total)
+OVERALL_WORD_PERFECT_SQL = """select
+  sum((corpus - corpus_mistakes) + max(0, drilled - drill_mistakes)),
+  sum(corpus + drilled)
   from (%s)
-  where total >= ?"""
+  where corpus >= ?"""
 
 
 def overall_word_perfect_rate(db, hist_cutoff=ALL_TIME_HIST, min_count=WORD_ANALYSIS_MIN_COUNT):
-  """Sample-weighted perfect%% across known words: sum(perfect) / sum(total) * 100."""
+  """Sample-weighted perfect%% on known words: perfect / (corpus + drill) * 100."""
   floor = analysis_min_count(STAT_TYPE_WORD, min_count)
   row = db.execute(
     OVERALL_WORD_PERFECT_SQL % STATS_AGG_SUBQUERY,

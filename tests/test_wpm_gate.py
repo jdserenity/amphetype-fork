@@ -107,6 +107,33 @@ def test_overall_word_perfect_rate_sample_weighted():
   assert overall_word_perfect_rate(conn) == pytest.approx(80.0)
 
 
+def test_overall_word_perfect_rate_includes_drill_samples():
+  conn = _gate_db()
+  novel = conn._gate_ids[0]
+  weak = conn._gate_ids[1]
+  # corpus 8/10 = 80%; plus 2 perfect drill samples → 10/12 ≈ 83.333%
+  conn.execute(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    (time.time(), 'hi', STAT_TYPE_WORD, 0.2, 10, 2, 1.0, novel))
+  conn.execute(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    (time.time(), 'hi', STAT_TYPE_WORD, 0.2, 2, 0, 1.0, weak))
+  assert overall_word_perfect_rate(conn) == pytest.approx(100.0 * 10 / 12)
+
+
+def test_drill_only_word_not_in_analysis_list():
+  """Discounted samples alone must not unlock a known word."""
+  from typing_program.stats_query import ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY
+  conn = _gate_db()
+  weak = conn._gate_ids[1]
+  conn.execute(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    (time.time(), 'onlydrill', STAT_TYPE_WORD, 0.2, 50, 0, 1.0, weak))
+  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'corpus desc', 10)
+  rows = conn.execute(sql, (0, STAT_TYPE_WORD, 2)).fetchall()
+  assert rows == []
+
+
 def test_perfect_rate_since_start_gain_hidden_until_gate():
   conn = _gate_db()
   novel = conn._gate_ids[0]

@@ -25,7 +25,7 @@ class WordModel(AppModel):
     super(WordModel, self).__init__()
 
   def signature(self):
-    hdr = ["Type target", "Speed", "Hesitation", "Count", "Perfect", "Drilled", "Impact"]
+    hdr = ["Type target", "Speed", "Hesitation", "Corpus", "Drill", "Perfect", "Impact"]
     fmt = [None, "%.1f wpm", "%.1f", None, None, None, "%.1f"]
     if self._words_mode:
       hdr = hdr[:2] + ["Improved"] + hdr[2:]

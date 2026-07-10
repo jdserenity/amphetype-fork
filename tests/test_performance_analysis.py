@@ -136,15 +136,17 @@ def test_word_model_init(qapp):
   m = WordModel()
   assert m._words_mode is False
   assert 'Improved' not in m.head
+  assert m.head == ["Type target", "Speed", "Hesitation", "Corpus", "Drill", "Perfect", "Impact"]
   m.set_words_mode(True)
   assert 'Improved' in m.head
+  assert m.head[4:7] == ["Corpus", "Drill", "Perfect"]
 
 
 def test_string_stats_most_improved_sort(qapp, monkeypatch):
   st = StringStats()
   pool_rows = [
-    ('slow', 50.0, 90.0, 100.0, 90, 0, 500.0),
-    ('fast', 80.0, 95.0, 100.0, 100, 0, 500.0),
+    ('slow', 50.0, 90.0, 100.0, 0, 90, 500.0),
+    ('fast', 80.0, 95.0, 100.0, 0, 100, 500.0),
   ]
 
   def fake_get(key):
@@ -169,7 +171,7 @@ def test_string_stats_most_improved_sort(qapp, monkeypatch):
 def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
   st = StringStats()
   pool_rows = [
-    ('once', 50.0, 80.0, 1.0, 1, 0, 50.0),
+    ('once', 50.0, 80.0, 1.0, 0, 1, 50.0),
   ]
 
   def fake_get(key):

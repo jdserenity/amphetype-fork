@@ -2037,7 +2037,7 @@ class TyperWindow(QWidget):
         insert into statistic
         (time,viscosity,w,count,mistakes,type,data,source)
         values (?,?,?,?,?,?,?,?)
-        ''', [(t, vis, w, 0, m, tp, data, ws_src) for t, vis, w, m, tp, data in drill_rows])
+        ''', [(t, vis, w, c, m, tp, data, ws_src) for t, vis, w, c, m, tp, data in drill_rows])
         self.DB.commit()
         self.statsChanged.emit()
         self._refreshHeatmap()
@@ -2068,7 +2068,9 @@ class TyperWindow(QWidget):
 
     if self._mode == MODE_IMPROVE:
       ws_src = self.DB.getSource('<Weakspot>', lesson=1)
-      drill_vals = [(t, vis, w, 0, m, tp, data, ws_src) for t, vis, w, _c, m, tp, data, _s in vals]
+      # Keep real count/mistakes so drills raise perfect rate; discounted source
+      # still blocks inventing new known words (corpus floor only).
+      drill_vals = [(t, vis, w, c, m, tp, data, ws_src) for t, vis, w, c, m, tp, data, _s in vals]
       self.DB.executemany_('''
       insert into statistic
       (time,viscosity,w,count,mistakes,type,data,source)

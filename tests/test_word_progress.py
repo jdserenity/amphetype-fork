@@ -210,8 +210,8 @@ def test_fetch_word_perfect_baselines():
       (now, 'lady', 2, 12.0 / 40.0, 4, 0, 1.0, None),
     ])
   baselines = fetch_word_perfect_baselines(conn, lesson_words('Lady lady'))
-  assert baselines['Lady'] == {'count': 5, 'perfect': 4}
-  assert baselines['lady'] == {'count': 4, 'perfect': 4}
+  assert baselines['Lady'] == {'count': 5, 'perfect': 4, 'corpus': 5}
+  assert baselines['lady'] == {'count': 4, 'perfect': 4, 'corpus': 4}
 
 
 def test_fetch_word_baselines_case_sensitive():
