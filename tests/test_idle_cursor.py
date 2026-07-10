@@ -29,10 +29,12 @@ def test_should_not_blank_when_pointer_left_canvas():
 
 
 def test_footer_mode_buttons_use_pointing_hand(qapp):
-  """Hand cursor on the whole controls strip so gaps between modes don't flicker."""
+  """Hand on each mode button; spacing is padding (no arrow gaps between labels)."""
   import typing_program.mainwindow  # noqa: F401
   from PyQt5.QtCore import Qt, qInstallMessageHandler
-  from typing_program.typer import TyperWindow, _footer_btn_style
+  from typing_program.typer import (
+    TyperWindow, _FOOTER_BTN_PAD_X, _footer_btn_style,
+  )
 
   msgs = []
   qInstallMessageHandler(lambda mode, ctx, msg: msgs.append(msg))
@@ -40,8 +42,8 @@ def test_footer_mode_buttons_use_pointing_hand(qapp):
   tw = TyperWindow()
   assert 'cursor:' not in tw._mode_btn_style
   assert 'cursor:' not in _footer_btn_style(False)
-  # Strip covers layout gaps between buttons — not only the labels themselves.
-  assert tw._footer_controls.cursor().shape() == Qt.PointingHandCursor
+  assert f'padding: 0px {_FOOTER_BTN_PAD_X}px' in tw._mode_btn_style
+  assert tw._footer_controls.layout().spacing() == 0
   assert tw._btn_improve.cursor().shape() == Qt.PointingHandCursor
   assert tw._btn_corpus.cursor().shape() == Qt.PointingHandCursor
   assert tw._btn_book.cursor().shape() == Qt.PointingHandCursor

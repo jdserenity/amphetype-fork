@@ -46,9 +46,9 @@ Focus-drill ordering should be a true shuffle of the equal-weight copies — do 
 
 `TyperWidget.mouseMoveEvent` does not see most moves — they go to the viewport. Without `viewport().installEventFilter(...)`, the idle-hide timer never resets while the user is moving, so the pointer blanks mid-motion. Also only apply `BlankCursor` when the pointer is still over the canvas (`should_apply_idle_blank`).
 
-## Footer hand cursor: setCursor on the controls strip
+## Footer hand cursor: setCursor on buttons, spacing via padding
 
-Qt stylesheets here do not support `cursor:` — it does nothing and spams `Unknown property cursor`. Use `setCursor(PointingHandCursor)` on `_footer_controls` (the widget that wraps all mode buttons) so the hand stays up in the gaps between labels. Per-button `setCursor` alone flickers to arrow in the layout spacing. Greyed follow still sets `ArrowCursor` on that button only.
+Qt stylesheets here do not support `cursor:` (spam only). Use `setCursor(PointingHandCursor)` on each mode button. Do **not** put space between buttons in the layout — that dead gap shows the arrow. Put horizontal padding on the buttons instead (`_FOOTER_BTN_PAD_X`) with layout spacing 0 so the hand stays continuous between labels.
 
 ## Typer focus: only follow WPM may steal the keyboard
 
