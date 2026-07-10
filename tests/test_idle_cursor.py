@@ -49,10 +49,24 @@ def test_viewport_mouse_move_restores_cursor(qapp):
   w.resize(400, 200)
   w.show()
   qapp.processEvents()
-  w._hide_idle_mouse_cursor()
+  # Simulate an already-blanked canvas (underMouse is false in headless tests).
+  w.setCursor(Qt.BlankCursor)
+  w.viewport().setCursor(Qt.BlankCursor)
   assert w.viewport().cursor().shape() == Qt.BlankCursor
 
   move = QMouseEvent(
     QEvent.MouseMove, QPoint(10, 10), Qt.NoButton, Qt.NoButton, Qt.NoModifier)
   w.eventFilter(w.viewport(), move)
+  assert w.viewport().cursor().shape() != Qt.BlankCursor
+
+
+def test_hide_skipped_when_pointer_not_over_canvas(qapp):
+  from tests.test_typer_document import _FakeTyperSettings
+  from typing_program.typer import TyperWidget
+
+  w = TyperWidget(_FakeTyperSettings())
+  w.show()
+  qapp.processEvents()
+  # Headless: pointer is not over the widget, so idle hide must no-op.
+  w._hide_idle_mouse_cursor()
   assert w.viewport().cursor().shape() != Qt.BlankCursor
