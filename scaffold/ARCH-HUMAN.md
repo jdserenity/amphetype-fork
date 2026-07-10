@@ -40,10 +40,10 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 | Tab | Purpose |
 |-----|---------|
 | **Typer** | Practice. Modes: **improve** (weak spots / focus drills), **corpus** (random imported text), **book** (chapter through a novel). Footer extras: read ahead, **Block ⌫**, heatmap. |
-| **Performance Analysis** | Ranked characters / trigrams / words; progress card (perfect rate, practice time); columns include corpus / drill / perfect; drill or find a target in corpus. |
+| **Performance Analysis** | Ranked characters / trigrams / words / biword pairs; progress card (perfect rate, practice time); columns include corpus / drill / perfect; drill or find a target in corpus. |
 | **Preferences** | Font, sounds, thresholds; typer options; import books from Project Gutenberg. |
 
-**Improve** builds practice from your worst items. Submodes: **normal** (readable weakspot mix), **trigrams** (raw 3-character chunks only — looks like alien gibberish), then **oblivion / slowest / hesitant / damage** (focus drills). Each focus drill pulls from your 20 worst words in that category and randomly picks 5 (or fewer if you have not typed 20 yet). **Oblivion** only appears in the cycle when you actually have words that slow — under the oblivion speed line. Words only count after you’ve typed them enough times to show up in Performance Analysis (default: at least twice). Finishing an auto focus drill loads a **new** random set; drills started from Performance Analysis keep your chosen targets. Focus-drill length is set in Preferences → General (under the normal lesson size fields).
+**Improve** builds practice from your worst items. Submodes: **normal** (readable weakspot mix), **trigrams** (raw 3-character chunks only — looks like alien gibberish), then **oblivion / slowest / hesitant / accuracy / damage** (focus drills). Each focus drill pulls from your 20 worst words in that category and randomly picks 5 (or fewer if you have not typed 20 yet). **Accuracy** drills the words you mistype most often (lowest perfect %). **Oblivion** only appears in the cycle when you actually have words that slow — under the oblivion speed line. Words only count after you’ve typed them enough times to show up in Performance Analysis (default: at least twice). Finishing an auto focus drill loads a **new** random set; drills started from Performance Analysis keep your chosen targets. Focus-drill length is set in Preferences → General (under the normal lesson size fields).
 
 **Cold start:** opening the app always lands on Typer in **improve · normal**, not whatever mode you left last time.
 
@@ -60,7 +60,7 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 ## Data the app cares about
 
 - **Per keystroke** timing and mistakes while you type a lesson.
-- **At lesson end:** characters, 3-character trigrams, and words are saved into SQLite (`statistic`), plus a lesson summary row (`result`) for normal practice (not pure focus drills).
+- **At lesson end:** characters, 3-character trigrams, words, and biword pairs (two words typed next to each other) are saved into SQLite (`statistic`), plus a lesson summary row (`result`) for normal practice (not pure focus drills).
 - **Weakspot/focus drills** update timing medians but do not inflate “how many times you typed this for real” counts the same way counted practice does.
 - **Database location:** OS app-data folder for “Typing Program” by default; local dev can use a DB under the package. Old Amphetype DBs can be copied once on first launch.
 

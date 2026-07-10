@@ -55,7 +55,7 @@ scaffold/         # agent docs (this file)
 | book | 1 | `book_mode.py` — chapters/chunks, progress in `book_progress` / `book_lesson_done`. **Every finished chunk** calls `BookLessonBuilder.on_chunk_completed` (marks done + advances `book_progress` to next chunk/chapter) — not only chapter ends. Mid-chapter advances used to skip the save and reopened the same place. |
 | corpus | 2 | `TextManager.nextText`; re-click corpus → another text |
 
-Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on **words**: take worst `FOCUS_DRILL_POOL_SIZE` (20) in category, random-sample `FOCUS_DRILL_PICK_COUNT` (5) — or fewer if the user has not typed that many eligible words yet; single-word pool ⇒ that word only. All word picks gated by `analysis_min_count`. **Oblivion** = display WPM (1 decimal, same as PA) **&lt; 32** (`OBLIVION_WPM`; 32 is red, ≤31.9 purple); omitted from the submode cycle when its pool is empty (`oblivion_submode_available` / `next_improve_submode`). Auto focus drills **re-sample targets every finish/new** (`_load_improve_lesson`); PA-started drills keep the chosen targets and only re-shuffle the lesson. Focus text: `build_focus_lesson` uses allocate_repeats + interleave (not strict round-robin). Focus size prefs: `focus_min_chars` / `focus_max_chars` (default 80–300).
+Improve submodes: normal | trigrams | oblivion | slowest | hesitant | accuracy | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on **words**: take worst `FOCUS_DRILL_POOL_SIZE` (20) in category, random-sample `FOCUS_DRILL_PICK_COUNT` (5) — or fewer if the user has not typed that many eligible words yet; single-word pool ⇒ that word only. All word picks gated by `analysis_min_count`. **accuracy** = lowest perfect % (`perfect_pct asc` / `fetch_accuracy_picks`). **Oblivion** = display WPM (1 decimal, same as PA) **&lt; 32** (`OBLIVION_WPM`; 32 is red, ≤31.9 purple); omitted from the submode cycle when its pool is empty (`oblivion_submode_available` / `next_improve_submode`). Auto focus drills **re-sample targets every finish/new** (`_load_improve_lesson`); PA-started drills keep the chosen targets and only re-shuffle the lesson. Focus text: `build_focus_lesson` uses allocate_repeats + interleave (not strict round-robin). Focus size prefs: `focus_min_chars` / `focus_max_chars` (default 80–300).
 
 **Cold start:** every app launch forces practice mode improve + submode normal (`apply_cold_start_practice_mode` in `book_mode.py`, called from `TyperWindow` init). Last session’s book/corpus/submode is not restored.
 
@@ -89,13 +89,13 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 ## Stats model
 
-- `statistic.type`: 0 char, 1 trigram (any 3-char window), 2 word.
-- End of lesson: `collect_run_stat_rows` — each completed **occurrence** is one sample; same spelling in one lesson → one row with `count` = samples (e.g. two “the” → count 2).
+- `statistic.type`: 0 char, 1 trigram (any 3-char window), 2 word, 3 biword (consecutive word pair; data key `"w1 w2"`, intervening punctuation ignored in the key).
+- End of lesson: `collect_run_stat_rows` — each completed **occurrence** is one sample; same spelling in one lesson → one row with `count` = samples (e.g. two “the” → count 2). Biwords via `timed_biwords`.
 - `RunStats.pop_char` on backspace: moves index; does **not** clear mistakes/first timings → retype of same slot still one sample, mistakes accumulate.
 - Idle: `IDLE_THRESHOLD = 3.0` s in `timingtuple.py` — gaps capped for WPM/`active_duration`.
 - Focus/weakspot drills: `<Weakspot>` discounted rows keep real `count`/`mistakes` so they raise perfect rate (perfect / (corpus+drill)); they do **not** raise the corpus floor that unlocks known words (`count_analysis_words` / `analysis_min_count` still corpus-only). Legacy `count=0` drill rows still count as one drill sample.
 - Counted practice writes `result` with `char_count`/`duration` (corpus, book, improve-normal). Focus drills skip `result` rows.
-- Analysis: all-time (`ALL_TIME_HIST = 0`); words need ≥ `WORD_ANALYSIS_MIN_COUNT` (2) **corpus** samples via `analysis_min_count` — **holy floor for all word pulls** (Performance Analysis, focus drills oblivion/slowest/hesitant/damage, weakspot `fetch_weak_targets`, Lesson Generator “from typed”). Chars/trigrams may use a lower configured min. Progress-card perfect-rate hero gated on `WPM_GATE_MIN_LESSONS` (10) qualifying results; baseline snapshot in `app_meta.perfect_rate_baseline_pct`.
+- Analysis: all-time (`ALL_TIME_HIST = 0`); Show kinds keys/trigrams/words/biwords (`analysis_what` 0–3 ↔ `ANALYSIS_WHAT_KINDS`). Words **and biwords** need ≥ `WORD_ANALYSIS_MIN_COUNT` (2) **corpus** samples via `analysis_min_count` — **holy floor for all word/biword pulls** (Performance Analysis, focus drills oblivion/slowest/hesitant/accuracy/damage, weakspot `fetch_weak_targets`, Lesson Generator “from typed”). Chars/trigrams may use a lower configured min. Progress-card perfect-rate hero gated on `WPM_GATE_MIN_LESSONS` (10) qualifying results; baseline snapshot in `app_meta.perfect_rate_baseline_pct`. Biwords are Analysis (+ drill/find) only — not pulled into improve-normal weakspot mix (`TYPE_TAGS` stays char/trigram/word).
 - Damage/importance: time² · frequency-style factors (see weakspot / heatmap). Heatmap WPM uses median-time pool (`SPEED_STATS_SQL`).
 
 ## Weakspot rules (composer)
@@ -104,7 +104,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 ## Performance Analysis
 
-`PerformanceAnalysis.py` + `progress_card.py`. Columns: speed, hesitation, corpus, drill, perfect, impact; words: Improved. Perfect % = perfect / (corpus + drill). Sort includes lowest perfect %, most improved. Actions: drill, find in corpus (`corpus_find.py` + FTS5 `text_index.py`), delete stats. Progress: perfect rate since start (sample-weighted word perfect% vs gated `app_meta` snapshot), current perfect rate, unique common words, total practice time.
+`PerformanceAnalysis.py` + `progress_card.py`. Columns: speed, hesitation, corpus, drill, perfect, impact; words: Improved. Perfect % = perfect / (corpus + drill). Sort includes lowest perfect %, most improved. Show: keys / trigrams / words / biwords. Actions: drill, find in corpus (`corpus_find.py` + FTS5 `text_index.py` for words), delete stats. Progress: perfect rate since start (sample-weighted word perfect% vs gated `app_meta` snapshot), current perfect rate, unique common words, total practice time.
 
 ## Session timer
 
