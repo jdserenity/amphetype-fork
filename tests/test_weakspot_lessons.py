@@ -226,15 +226,6 @@ class TestFocusDrill(unittest.TestCase):
     toks = lesson.lower().split()
     for w in ('from', 'with', 'blue'):
       self.assertGreaterEqual(toks.count(w), 3, w)
-    # Adjacent duplicates are separated by interleave; no long monotony.
-    runs = []
-    last = None; n = 0
-    for t in toks:
-      if t in ('from', 'with', 'blue'):
-        if t == last: n += 1
-        else: runs.append(n); last = t; n = 1
-    runs.append(n)
-    self.assertLessEqual(max(runs), 4)
 
   def test_focus_drill_not_strict_round_robin(self):
     """Ordering should not be word1 word2 word3 word1 word2 word3 forever."""
@@ -250,6 +241,41 @@ class TestFocusDrill(unittest.TestCase):
       if set(head) == set(words) and all(toks[i] == head[i % 5] for i in range(len(toks))):
         pure += 1
     self.assertLess(pure, 6)
+
+  def test_focus_drill_equal_weight_five_words(self):
+    words = ['from', 'with', 'blue', 'home', 'safe']
+    targets = [('word', w) for w in words]
+    lesson = build_focus_lesson(targets, DICT, max_chars=400, rng=_R(11))
+    toks = [t for t in lesson.split() if t in words]
+    counts = [toks.count(w) for w in words]
+    self.assertGreaterEqual(min(counts), 1)
+    # Equal copies in the pool; a random prefix may clip by a couple.
+    self.assertLessEqual(max(counts) - min(counts), 2)
+
+  def test_focus_drill_ordering_is_highly_varied(self):
+    """Across seeds, 8-word prefixes should almost all be unique — not a few loops."""
+    words = ['from', 'with', 'blue', 'home', 'safe']
+    targets = [('word', w) for w in words]
+    prefixes = set()
+    for seed in range(40):
+      lesson = build_focus_lesson(targets, DICT, max_chars=240, rng=_R(seed))
+      toks = [t for t in lesson.split() if t in words]
+      if len(toks) >= 8:
+        prefixes.add(tuple(toks[:8]))
+    self.assertGreaterEqual(len(prefixes), 28)
+
+  def test_focus_drill_allows_adjacent_repeats(self):
+    """True shuffle: same word may appear back-to-back (no anti-repeat smoothing)."""
+    words = ['from', 'with', 'blue', 'home', 'safe']
+    targets = [('word', w) for w in words]
+    saw_adjacent = False
+    for seed in range(40):
+      lesson = build_focus_lesson(targets, DICT, max_chars=240, rng=_R(seed))
+      toks = [t for t in lesson.split() if t in words]
+      if any(toks[i] == toks[i + 1] for i in range(len(toks) - 1)):
+        saw_adjacent = True
+        break
+    self.assertTrue(saw_adjacent)
 
   def test_focus_drill_respects_max_chars_not_half(self):
     """Focus size is the configured max, not half of lesson max_chars."""

@@ -793,14 +793,18 @@ def test_show_idle_placeholder_uses_canvas_not_label(qapp):
   w._typer = MagicMock()
   w._prog_layout = MagicMock()
   w._prog = MagicMock()
+  w._progw = MagicMock()
   w._label = QLabel()
   w._awaiting_next = False
   w._current_lesson = ('x', 1, 'text')
   w._book_meta = {}
+  w._stop_follow_race = MagicMock()
+  w.S = {'show_progress': True}
+  w.updateLabel = MagicMock()
 
   w._show_idle_placeholder(BOOK_EMPTY_LABEL)
   assert w._doc.toPlainText() == BOOK_EMPTY_LABEL
-  assert w._label.text() == ''
+  w.updateLabel.assert_called_once_with()
 
 
 def test_corpus_click_while_active_fetches_new_text(qapp):
@@ -832,12 +836,19 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
 
   tw = TyperWindow()
   mode_row = tw.layout().itemAt(2).widget()
-  lay = mode_row.layout()
-  # improve, improve_level, corpus, book — then extras
+  row_lay = mode_row.layout()
+  assert row_lay.itemAt(0).widget() is tw._footer_controls
+  lay = tw._footer_controls.layout()
+  # improve, improve_level, corpus, book — then extras — heatmap panel — follow + wpm
   assert lay.itemAt(0).widget() is tw._btn_improve
   assert lay.itemAt(1).widget() is tw._btn_improve_level
   assert lay.itemAt(2).widget() is tw._btn_corpus
   assert lay.itemAt(3).widget() is tw._btn_book
+  # … read ahead, level, Block ⌫, heatmap, heatmap_panel, follow, follow_wpm
+  assert lay.itemAt(7).widget() is tw._btn_heatmap
+  assert lay.itemAt(8).widget() is tw._heatmap_panel
+  assert lay.itemAt(9).widget() is tw._btn_follow
+  assert lay.itemAt(10).widget() is tw._follow_wpm_panel
 
 
 def test_inactive_mode_buttons_use_rgb_140(qapp):
@@ -899,6 +910,39 @@ def test_typer_canvas_page_differs_from_window_chrome(qapp):
   # Outer chrome is the fixed lighter band (footer / margins).
   assert tw.palette().color(QPalette.Window) == TYPER_CHROME_COLOR
   assert 'background-color: #4a4a4a' in tw.styleSheet().replace('"', '')
+
+
+def test_improve_canvas_height_matches_book_corpus_title_row(qapp):
+  """Improve reserves the same footer title space book/corpus use for source names."""
+  import typing_program.mainwindow as A
+  from typing_program.book_mode import MODE_BOOK, MODE_CORPUS, MODE_IMPROVE
+
+  w = A.MainWindow()
+  w.resize(1100, 800)
+  w.show()
+  qapp.processEvents()
+  tw = w._tabs.widget(0)
+  assert tw._mode == MODE_IMPROVE
+  h_improve = tw._canvas.height()
+
+  tw.set_practice_mode(MODE_CORPUS)
+  for _ in range(15):
+    qapp.processEvents()
+  assert tw._source_lbl.text().startswith('—')
+  # Real corpus titles wrap to ~2 footer lines; improve must not be taller.
+  assert tw._canvas.height() == h_improve
+
+  tw.set_practice_mode(MODE_BOOK)
+  for _ in range(25):
+    qapp.processEvents()
+  assert tw._source_lbl.text().startswith('—')
+  assert tw._canvas.height() == h_improve
+
+  tw.set_practice_mode(MODE_IMPROVE)
+  for _ in range(15):
+    qapp.processEvents()
+  assert tw._canvas.height() == h_improve
+  assert tw._source_lbl.minimumHeight() >= 2 * tw._source_lbl.fontMetrics().height()
 
 
 def test_typer_page_background_survives_main_tab_reparent(qapp):

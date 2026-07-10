@@ -259,7 +259,7 @@ def format_progress_html(progress, stats_saved=True):
       imp_color, progress.improved, progress.known),
   ]
   if progress.new_count > 0:
-    lines.append('You typed <span style="color:%s">%d</span> new common word%s!' % (
+    lines.append('You found <span style="color:%s">%d</span> new common word%s!' % (
       PROGRESS_ORANGE, progress.new_count, '' if progress.new_count == 1 else 's'))
   if not stats_saved:
     lines.append('<i>Drill only — stats were not saved.</i>')

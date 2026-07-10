@@ -285,5 +285,23 @@ def test_build_trigram_gibberish_lesson_is_raw_trigram_soup():
     assert word not in lesson.split()
 
 
+def test_build_trigram_gibberish_lesson_no_double_spaces():
+  """Leading/trailing spaces inside trigrams must not create '  ' runs."""
+  targets = [
+    ('trigram', 'he ', 8.0),
+    ('trigram', ' th', 7.0),
+    ('trigram', 'e h', 5.0),
+    ('trigram', 'ab ', 4.0),
+    ('trigram', 'xqz', 3.0),
+  ]
+  for seed in range(20):
+    lesson = build_trigram_gibberish_lesson(
+      targets, min_chars=40, max_chars=120, rng=random.Random(seed))
+    assert lesson
+    assert '  ' not in lesson, repr(lesson)
+    assert not lesson.startswith(' ')
+    assert not lesson.endswith(' ')
+
+
 def test_build_trigram_gibberish_lesson_empty_without_targets():
   assert build_trigram_gibberish_lesson([], min_chars=40, max_chars=120) == ''

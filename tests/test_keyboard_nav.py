@@ -93,11 +93,15 @@ def test_cycle_practice_mode_on_typer_window(qapp):
 
 def test_main_window_has_tab_cycle_shortcuts(qapp):
   import typing_program.mainwindow as A
+  from PyQt5.QtGui import QKeySequence
 
   w = A.MainWindow()
   assert w._tabs.count() >= 3
   assert w._sc_tab_next is not None
   assert w._sc_tab_prev is not None
+  # Cmd/Ctrl+Shift+[ ] (Ctrl = Cmd on macOS in QKeySequence).
+  assert w._sc_tab_prev.key() == QKeySequence('Ctrl+Shift+[')
+  assert w._sc_tab_next.key() == QKeySequence('Ctrl+Shift+]')
   start = w._tabs.currentIndex()
   w._cycle_main_tab(1)
   assert w._tabs.currentIndex() == (start + 1) % w._tabs.count()

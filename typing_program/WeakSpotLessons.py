@@ -615,14 +615,37 @@ def allocate_repeats(targets, budget, cap=6):
 
 
 def _interleave(instances, rng):
-  """Shuffle, then nudge apart adjacent instances of the same target."""
-  rng.shuffle(instances)
-  for i in range(1, len(instances)):
-    if instances[i][1] == instances[i-1][1]:
-      for j in range(i+1, len(instances)):
-        if instances[j][1] != instances[i-1][1]:
-          instances[i], instances[j] = instances[j], instances[i]
-          break
+  """Random mix of remaining targets; avoid immediate repeats and A B A B loops.
+
+  Bag draw weighted by remaining count: at each step prefer targets that still
+  have more copies left (keeps equal-weight drills balanced under truncation).
+  Skip the previous pick when another choice remains, and also skip the
+  pick-before-that when possible so two-word oscillation does not dominate.
+  """
+  if len(instances) <= 1:
+    return instances
+  bags = defaultdict(list)
+  for inst in instances:
+    bags[target_key(inst)].append(inst)
+  keys = list(bags.keys())
+  out = []
+  last = None
+  prev = None
+  for _ in range(len(instances)):
+    choices = [k for k in keys if bags[k]]
+    if len(choices) > 1 and last is not None:
+      preferred = [k for k in choices if k != last]
+      if prev is not None and len(preferred) > 1:
+        no_osc = [k for k in preferred if k != prev]
+        if no_osc:
+          preferred = no_osc
+      if preferred:
+        choices = preferred
+    weights = [len(bags[k]) for k in choices]
+    pick = rng.choices(choices, weights=weights, k=1)[0]
+    out.append(bags[pick].pop())
+    prev, last = last, pick
+  instances[:] = out
   return instances
 
 
@@ -703,8 +726,8 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=8
   """Repeat only the given type targets (Performance Analysis / improve focus drill).
 
   targets: [(kind, data), ...]. min/max chars are focus-drill size prefs.
-  Ordering: allocate weighted repeats, shuffle, then separate adjacent duplicates —
-  not a strict round-robin (word1 word2 word3 word1 …). One target ⇒ that surface only.
+  Ordering: equal-weight repeats, then a plain shuffle — adjacent repeats allowed.
+  One target ⇒ that surface only.
   """
   if not targets:
     return ''
@@ -724,7 +747,7 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=8
   instances = []
   for t in weighted:
     instances.extend([t] * counts[target_key(t)])
-  _interleave(instances, rng)
+  rng.shuffle(instances)
 
   text = ''
   covered = set()
@@ -797,7 +820,9 @@ def fetch_weak_trigram_targets(conn, hist=ALL_TIME_HIST, min_count=1, limit=30):
 def build_trigram_gibberish_lesson(targets, min_chars=220, max_chars=600, rng=None, repeat_cap=8):
   """Join raw weak trigrams into alien soup — no dictionary words, no coherent phrases.
 
-  Each token is exactly one 3-char trigram surface form; tokens are space-separated.
+  Each token is exactly one 3-char trigram surface form. Trigrams may themselves
+  contain spaces (leading/trailing/middle); the lesson never emits two spaces in
+  a row — boundary spaces merge to a single separator.
   """
   rng = rng or random.Random()
   items = [t for t in targets if t[0] == 'trigram' and t[1]]
@@ -813,11 +838,17 @@ def build_trigram_gibberish_lesson(targets, min_chars=220, max_chars=600, rng=No
   text = ''
   for t in instances:
     piece = t[1]
-    cand = (text + ' ' + piece).strip() if text else piece
+    if not text:
+      cand = piece
+    elif text.endswith(' ') or piece.startswith(' '):
+      cand = text + piece
+    else:
+      cand = text + ' ' + piece
+    cand = re.sub(r' {2,}', ' ', cand)
     if text and len(cand) > max_chars:
       break
     text = cand
-  return text
+  return text.strip()
 
 
 def fetch_db_marker(conn):

@@ -39,7 +39,8 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 
 | Tab | Purpose |
 |-----|---------|
-| **Typer** | Practice. Modes: **improve** (weak spots / focus drills), **corpus** (random imported text), **book** (chapter through a novel). Footer extras: read ahead, **Block ⌫**, heatmap. |
+
+| **Typer** | Practice. Modes: **improve** (weak spots / focus drills), **corpus** (random imported text), **book** (chapter through a novel). Footer extras: read ahead, **Block ⌫**, heatmap, **follow** (corpus/book only — race a moving caret at a set WPM). You can always type without clicking back into the lesson; the only exception is editing the follow WPM number. |
 | **Performance Analysis** | Ranked characters / trigrams / words / biword pairs; progress card (perfect rate, practice time); columns include corpus / drill / perfect; drill or find a target in corpus. |
 | **Preferences** | Font, sounds, thresholds; typer options; import books from Project Gutenberg. |
 
@@ -47,7 +48,7 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 
 **Cold start:** opening the app always lands on Typer in **improve · normal**, not whatever mode you left last time.
 
-**Keyboard (macOS):** **Tab** cycles improve submode (when you’re in improve). **⌘⌥← / ⌘⌥→** cycle practice mode (improve · corpus · book). **⌥⌘[ / ⌥⌘]** cycle the top tabs (Typer / Performance Analysis / Preferences).
+**Keyboard (macOS):** **Tab** cycles improve submode (when you’re in improve). **⌘⌥← / ⌘⌥→** cycle practice mode (improve · corpus · book). **⌘⇧[ / ⌘⇧]** cycle the top tabs (Typer / Performance Analysis / Preferences).
 
 **Book place:** finishing a chunk always saves where you are (chapter + chunk). Reopening the book mode resumes from that place — not only after you finish a whole chapter.
 
