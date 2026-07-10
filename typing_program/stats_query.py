@@ -341,7 +341,7 @@ def format_perfect_rate_label(db, hist_cutoff=ALL_TIME_HIST):
   rate = overall_word_perfect_rate(db, hist_cutoff)
   if rate is None:
     return 'Perfect rate: —'
-  return 'Perfect rate: %d%%' % int(round(rate))
+  return 'Perfect rate: %.1f%%' % rate
 
 
 def format_avg_wpm_label(db, hist_cutoff=ALL_TIME_HIST):
@@ -376,7 +376,18 @@ def perfect_rate_since_start_gain(db, hist_cutoff=ALL_TIME_HIST):
   current = overall_word_perfect_rate(db, hist_cutoff)
   if baseline is None or current is None:
     return None
-  return int(round(current - baseline))
+  return round(current - baseline, 1)
+
+
+def format_perfect_rate_gain(gain):
+  """Hero text for perfect-rate since-start delta (one decimal)."""
+  if gain is None:
+    return '—'
+  if gain > 0:
+    return '+%.1f%%' % gain
+  if gain < 0:
+    return '%.1f%%' % gain
+  return '+0.0%'
 
 
 def lesson_qualifies_for_wpm_gate(mode, improve_submode=0, focus_drill=False):

@@ -2,8 +2,8 @@
 
 from typing_program.speed_heatmap import PROGRESS_GREEN
 from typing_program.stats_query import (
-  ALL_TIME_HIST, count_analysis_words, format_perfect_rate_label, format_progress_gate_label,
-  perfect_rate_since_start_gain,
+  ALL_TIME_HIST, count_analysis_words, format_perfect_rate_gain, format_perfect_rate_label,
+  format_progress_gate_label, perfect_rate_since_start_gain,
 )
 from typing_program.QtUtil import *
 
@@ -95,11 +95,11 @@ class ProgressCard(QWidget):
       self._gain_num.setText('—')
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #888;')
     elif gain > 0:
-      self._gain_num.setText('+%d%%' % gain)
+      self._gain_num.setText(format_perfect_rate_gain(gain))
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: %s;' % PROGRESS_GREEN)
     elif gain < 0:
-      self._gain_num.setText('%d%%' % gain)
+      self._gain_num.setText(format_perfect_rate_gain(gain))
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #c44;')
     else:
-      self._gain_num.setText('+0%')
+      self._gain_num.setText(format_perfect_rate_gain(gain))
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #888;')

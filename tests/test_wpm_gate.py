@@ -13,6 +13,7 @@ from typing_program.stats_query import (
   count_wpm_gate_lessons,
   ensure_perfect_rate_baseline,
   first_qualifying_session_wpm,
+  format_perfect_rate_gain,
   format_perfect_rate_label,
   format_progress_gate_label,
   lesson_qualifies_for_wpm_gate,
@@ -46,6 +47,14 @@ def _insert_word(conn, data, count, mistakes, wpm=60.0):
   conn.execute(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     (time.time(), data, STAT_TYPE_WORD, 12.0 / wpm, count, mistakes, 1.0, None))
+
+
+def test_format_perfect_rate_gain_one_decimal():
+  assert format_perfect_rate_gain(None) == '—'
+  assert format_perfect_rate_gain(0.0) == '+0.0%'
+  assert format_perfect_rate_gain(6.0) == '+6.0%'
+  assert format_perfect_rate_gain(12.5) == '+12.5%'
+  assert format_perfect_rate_gain(-1.5) == '-1.5%'
 
 
 def test_lesson_qualifies_for_wpm_gate():
@@ -86,7 +95,7 @@ def test_format_perfect_rate_label_after_gate():
   assert format_perfect_rate_label(conn) == 'Perfect rate: —'
   _insert_word(conn, 'hi', 8, 2)  # 6/8 = 75%
   _insert_word(conn, 'yo', 2, 0)  # 2/2 = 100%; overall 8/10 = 80%
-  assert format_perfect_rate_label(conn) == 'Perfect rate: 80%'
+  assert format_perfect_rate_label(conn) == 'Perfect rate: 80.0%'
 
 
 def test_overall_word_perfect_rate_sample_weighted():
@@ -113,11 +122,11 @@ def test_perfect_rate_since_start_snapshots_baseline():
     _insert_qualifying(conn, novel)
   _insert_word(conn, 'hi', 8, 2)  # 75%
   gain0 = perfect_rate_since_start_gain(conn)
-  assert gain0 == 0
+  assert gain0 == pytest.approx(0.0)
   assert get_app_meta_float(conn, PERFECT_RATE_BASELINE_KEY) == pytest.approx(75.0)
   _insert_word(conn, 'hi', 8, 0)  # now 14/16 = 87.5%
   gain = perfect_rate_since_start_gain(conn)
-  assert gain == 12  # round(87.5 - 75)
+  assert gain == pytest.approx(12.5)
   assert get_app_meta_float(conn, PERFECT_RATE_BASELINE_KEY) == pytest.approx(75.0)
 
 

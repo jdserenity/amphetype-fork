@@ -35,13 +35,13 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
     lambda db, hist: 42)
   monkeypatch.setattr(
     'typing_program.progress_card.format_perfect_rate_label',
-    lambda db, hist: 'Perfect rate: 91%')
+    lambda db, hist: 'Perfect rate: 91.0%')
   monkeypatch.setattr(
     'typing_program.progress_card.format_progress_gate_label',
     lambda db: None)
   monkeypatch.setattr(
     'typing_program.progress_card.perfect_rate_since_start_gain',
-    lambda db, hist: 6)
+    lambda db, hist: 6.0)
   pa = PerformanceAnalysis()
   class _FakeTimer:
     def total_seconds(self):
@@ -49,9 +49,9 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   pa.set_session_timer(_FakeTimer())
   pa.updateAll()
   assert pa._progress._words_lbl.text() == 'Unique common words typed: 42'
-  assert pa._progress._rate_lbl.text() == 'Perfect rate: 91%'
+  assert pa._progress._rate_lbl.text() == 'Perfect rate: 91.0%'
   assert pa._progress._practice_lbl.text() == 'Total practice time: 1h 1m'
-  assert pa._progress._gain_num.text() == '+6%'
+  assert pa._progress._gain_num.text() == '+6.0%'
 
 
 def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
