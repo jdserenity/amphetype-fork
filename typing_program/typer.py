@@ -26,6 +26,7 @@ from typing_program.lesson_placeholders import (
 )
 from typing_program.stats_query import (
   ALL_TIME_HIST, STAT_TYPE_WORD, analysis_min_count, fetch_word_counted_totals,
+  fetch_word_perfect_baselines,
 )
 from typing_program.speed_heatmap import book_return_role
 from typing_program.read_ahead import (
@@ -42,8 +43,8 @@ from typing_program.speed_heatmap import (
   PROGRESS_GREEN, PROGRESS_ORANGE,
 )
 from typing_program.word_progress import (
-  analyze_run_progress, fetch_word_baselines, format_progress_html,
-  improved_word_spans, lesson_words, median_wpm_bump, new_word_spans, progress_badges_for_run,
+  analyze_run_progress, format_progress_html, improved_word_spans, lesson_words,
+  new_word_spans, progress_badges_for_run, word_perfect_rate_improves,
   word_spans, word_wpm_from_slice,
 )
 from typing_program.typing_sounds import TypingSoundPlayer
@@ -814,7 +815,7 @@ class LessonDocument(QTextDocument):
     self.progress_badges_changed.emit()
 
   def apply_improved_word_styles(self, run, baselines):
-    for start, end, _wpm, _bump in improved_word_spans(run, baselines, self._match_text):
+    for start, end in improved_word_spans(run, baselines, self._match_text):
       for j in range(start, end):
         self._style_match_index(j, self.style_progress)
 
@@ -844,8 +845,7 @@ class LessonDocument(QTextDocument):
       base = self._word_baselines.get(word)
       if base is None:
         return
-      bump = median_wpm_bump(sub, base)
-      if bump is not None and bump >= 1:
+      if word_perfect_rate_improves(base):
         for j in range(start, end):
           self._style_match_index(j, self.style_progress)
       return
@@ -1925,7 +1925,7 @@ class TyperWindow(QWidget):
 
   def _load_word_baselines(self, match_text):
     words = lesson_words(match_text)
-    self._doc.set_word_baselines(fetch_word_baselines(self.DB, words))
+    self._doc.set_word_baselines(fetch_word_perfect_baselines(self.DB, words))
     self._doc.set_word_prior_counts(fetch_word_counted_totals(self.DB, words))
 
   def _clear_awaiting(self):
