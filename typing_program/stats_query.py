@@ -465,6 +465,13 @@ def fetch_hesitant_picks(db, hist_cutoff, stat_type, n=FOCUS_DRILL_PICK_COUNT, m
   return sample_stat_rows(rows, n, rng)
 
 
+def fetch_accuracy_picks(db, hist_cutoff, stat_type, n=FOCUS_DRILL_PICK_COUNT, min_count=1,
+                         pool_size=FOCUS_DRILL_POOL_SIZE, rng=None):
+  """Sample n from the lowest perfect-% pool_size items (or fewer if the pool is small)."""
+  rows = fetch_analysis_top(db, hist_cutoff, stat_type, 'perfect_pct asc', pool_size, min_count)
+  return sample_stat_rows(rows, n, rng)
+
+
 def fetch_damage_picks(db, hist_cutoff, stat_type, n=FOCUS_DRILL_PICK_COUNT, min_count=1,
                        pool_size=FOCUS_DRILL_POOL_SIZE, rng=None):
   rows = fetch_analysis_top(db, hist_cutoff, stat_type, 'damage desc', pool_size, min_count)

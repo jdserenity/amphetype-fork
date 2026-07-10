@@ -5,14 +5,15 @@ import re
 import sqlite3
 
 from typing_program.improve_mode import (
-  IMPROVE_SUBMODE_DAMAGE, IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_LABELS,
-  IMPROVE_SUBMODE_NORMAL, IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST,
-  IMPROVE_SUBMODE_TRIGRAMS, clamp_improve_submode, fetch_improve_submode_targets,
-  is_improve_submode_available, next_improve_submode, oblivion_submode_available,
+  IMPROVE_SUBMODE_ACCURACY, IMPROVE_SUBMODE_DAMAGE, IMPROVE_SUBMODE_HESITANT,
+  IMPROVE_SUBMODE_LABELS, IMPROVE_SUBMODE_NORMAL, IMPROVE_SUBMODE_OBLIVION,
+  IMPROVE_SUBMODE_SLOWEST, IMPROVE_SUBMODE_TRIGRAMS, clamp_improve_submode,
+  fetch_improve_submode_targets, is_improve_submode_available, next_improve_submode,
+  oblivion_submode_available,
 )
 from typing_program.stats_query import (
   FOCUS_DRILL_PICK_COUNT, FOCUS_DRILL_POOL_SIZE, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD,
-  WORD_ANALYSIS_MIN_COUNT, fetch_slowest_picks,
+  WORD_ANALYSIS_MIN_COUNT, fetch_accuracy_picks, fetch_slowest_picks,
 )
 from typing_program.WeakSpotLessons import (
   build_trigram_gibberish_lesson, fetch_weak_targets, fetch_weak_trigram_targets,
@@ -58,11 +59,12 @@ def test_improve_submode_labels_trigrams_second_after_normal():
   assert IMPROVE_SUBMODE_LABELS[1] == 'trigrams'
   assert IMPROVE_SUBMODE_TRIGRAMS == 1
   assert IMPROVE_SUBMODE_LABELS == (
-    'normal', 'trigrams', 'oblivion', 'slowest', 'hesitant', 'damage')
+    'normal', 'trigrams', 'oblivion', 'slowest', 'hesitant', 'accuracy', 'damage')
   assert IMPROVE_SUBMODE_OBLIVION == 2
   assert IMPROVE_SUBMODE_SLOWEST == 3
   assert IMPROVE_SUBMODE_HESITANT == 4
-  assert IMPROVE_SUBMODE_DAMAGE == 5
+  assert IMPROVE_SUBMODE_ACCURACY == 5
+  assert IMPROVE_SUBMODE_DAMAGE == 6
 
 
 def test_improve_submode_normal_returns_empty():
@@ -135,6 +137,43 @@ def test_improve_submode_damage_includes_highest_damage_in_pool():
   assert 'risky' in {t[1] for t in picks}
 
 
+def test_improve_submode_accuracy_samples_lowest_perfect_pct_pool():
+  """Accuracy focus drill picks from the worst perfect-rate words."""
+  conn = _test_db(); now = 1e9
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    [
+      (now, 'typoish', STAT_TYPE_WORD, 12.0 / 80.0, 10, 8, 1.0, None),  # 20% perfect
+      (now, 'shaky', STAT_TYPE_WORD, 12.0 / 80.0, 10, 5, 1.0, None),    # 50%
+      (now, 'solid', STAT_TYPE_WORD, 12.0 / 80.0, 10, 0, 1.0, None),    # 100%
+      (now, 'ok', STAT_TYPE_WORD, 12.0 / 80.0, 10, 2, 1.0, None),       # 80%
+    ])
+  # Pool of worst 3 by perfect % → typoish, shaky, ok; sample all 3.
+  picks = fetch_improve_submode_targets(
+    conn, IMPROVE_SUBMODE_ACCURACY, 0, 1, n=3, pool_size=3, rng=random.Random(0))
+  assert {t[1] for t in picks} == {'typoish', 'shaky', 'ok'}
+  assert 'solid' not in {t[1] for t in picks}
+  assert all(t[0] == 'word' for t in picks)
+
+
+def test_fetch_accuracy_picks_samples_from_lowest_perfect_pool():
+  conn = _test_db(); now = 1e9
+  rows = []
+  for i in range(30):
+    # Lower i → more mistakes → lower perfect %.
+    mistakes = 9 - (i // 4)  # w0..w3 have 9 mistakes, …
+    rows.append((now, 'w%02d' % i, STAT_TYPE_WORD, 12.0 / 80.0, 10, max(0, mistakes), 1.0, None))
+  conn.executemany(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    rows)
+  picks = fetch_accuracy_picks(conn, 0, STAT_TYPE_WORD, n=5, min_count=1, pool_size=20, rng=random.Random(1))
+  assert len(picks) == 5
+  names = {r[0] for r in picks}
+  # Worst 20 by perfect % are the ones with most mistakes (lowest i).
+  assert names <= {'w%02d' % i for i in range(20)}
+  assert names.isdisjoint({'w%02d' % i for i in range(20, 30)})
+
+
 def test_improve_submode_oblivion_under_threshold():
   conn = _test_db(); now = 1e9
   _seed_words(conn, now)
@@ -174,7 +213,7 @@ def test_focus_drill_submodes_exclude_words_below_analysis_min_count():
   # Even if caller passes min_count=1, words still floor at WORD_ANALYSIS_MIN_COUNT.
   for submode in (
       IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST,
-      IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_DAMAGE):
+      IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_ACCURACY, IMPROVE_SUBMODE_DAMAGE):
     picks = fetch_improve_submode_targets(conn, submode, 0, 1, n=3)
     names = {t[1] for t in picks}
     assert 'typo' not in names, f'{submode} pulled one-shot word'
