@@ -238,6 +238,43 @@ class TestFocusDrill(unittest.TestCase):
         pure += 1
     self.assertLess(pure, 6)
 
+  def test_focus_drill_equal_weight_five_words(self):
+    words = ['from', 'with', 'blue', 'home', 'safe']
+    targets = [('word', w) for w in words]
+    lesson = build_focus_lesson(targets, DICT, max_chars=400, rng=_R(11))
+    toks = [t for t in lesson.split() if t in words]
+    counts = [toks.count(w) for w in words]
+    self.assertGreaterEqual(min(counts), 1)
+    # Equal weight: counts stay within one of each other (truncation may clip one).
+    self.assertLessEqual(max(counts) - min(counts), 1)
+
+  def test_focus_drill_ordering_is_highly_varied(self):
+    """Across seeds, 8-word prefixes should almost all be unique — not a few loops."""
+    words = ['from', 'with', 'blue', 'home', 'safe']
+    targets = [('word', w) for w in words]
+    prefixes = set()
+    for seed in range(40):
+      lesson = build_focus_lesson(targets, DICT, max_chars=240, rng=_R(seed))
+      toks = [t for t in lesson.split() if t in words]
+      if len(toks) >= 8:
+        prefixes.add(tuple(toks[:8]))
+    self.assertGreaterEqual(len(prefixes), 28)
+
+  def test_focus_drill_avoids_two_word_oscillation(self):
+    """A B A B A B stretches feel robotic — random mix should rarely produce them."""
+    words = ['from', 'with', 'blue', 'home', 'safe']
+    targets = [('word', w) for w in words]
+    bad = 0
+    for seed in range(30):
+      lesson = build_focus_lesson(targets, DICT, max_chars=240, rng=_R(seed))
+      toks = [t for t in lesson.split() if t in words]
+      for i in range(len(toks) - 5):
+        a, b = toks[i], toks[i + 1]
+        if a != b and toks[i:i + 6] == [a, b, a, b, a, b]:
+          bad += 1
+          break
+    self.assertLess(bad, 5)
+
   def test_focus_drill_respects_max_chars_not_half(self):
     """Focus size is the configured max, not half of lesson max_chars."""
     targets = [('word', 'from')]
