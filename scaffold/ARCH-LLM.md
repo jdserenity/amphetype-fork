@@ -59,7 +59,7 @@ Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`i
 
 **Cold start:** every app launch forces practice mode improve + submode normal (`apply_cold_start_practice_mode` in `book_mode.py`, called from `TyperWindow` init). Last session’s book/corpus/submode is not restored.
 
-**Idle mouse cursor:** on the typer canvas (`TyperWidget` + `idle_cursor.py`), the pointer blanks after `MOUSE_CURSOR_IDLE_MS` (2000) with no movement; reappears on move/enter. Mouse moves are watched via a **viewport** event filter (QTextEdit delivers moves there, not to `mouseMoveEvent` on the widget). Hide is skipped if the pointer has already left the canvas (`should_apply_idle_blank`). Footer mode buttons: `_apply_footer_btn_style` / `_polish_mode_btn` call `setCursor(PointingHandCursor)` **after** stylesheet/polish (stylesheet clears cursors). Never put `cursor:` in Qt stylesheets here — unsupported, spams `Unknown property cursor`.
+**Idle mouse cursor:** on the typer canvas (`TyperWidget` + `idle_cursor.py`), the pointer blanks after `MOUSE_CURSOR_IDLE_MS` (2000) with no movement; reappears on move/enter. Mouse moves are watched via a **viewport** event filter (QTextEdit delivers moves there, not to `mouseMoveEvent` on the widget). Hide is skipped if the pointer has already left the canvas (`should_apply_idle_blank`). Footer mode buttons use `setCursor(PointingHandCursor)` only — never stylesheet `cursor:` (unsupported here: no effect + `Unknown property cursor` spam). `setStyleSheet` / polish do **not** clear widget cursors on this Qt.
 
 Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 

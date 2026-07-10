@@ -29,10 +29,13 @@ def test_should_not_blank_when_pointer_left_canvas():
 
 
 def test_footer_mode_buttons_use_pointing_hand(qapp):
-  """Hand cursor via setCursor after stylesheet — not CSS cursor: (Qt warns on that)."""
+  """Hand cursor via setCursor — never CSS cursor: (unsupported, log spam only)."""
   import typing_program.mainwindow  # noqa: F401
-  from PyQt5.QtCore import Qt
-  from typing_program.typer import TyperWindow, _apply_footer_btn_style, _footer_btn_style
+  from PyQt5.QtCore import Qt, qInstallMessageHandler
+  from typing_program.typer import TyperWindow, _footer_btn_style
+
+  msgs = []
+  qInstallMessageHandler(lambda mode, ctx, msg: msgs.append(msg))
 
   tw = TyperWindow()
   assert 'cursor:' not in tw._mode_btn_style
@@ -42,12 +45,11 @@ def test_footer_mode_buttons_use_pointing_hand(qapp):
   assert tw._btn_book.cursor().shape() == Qt.PointingHandCursor
   # Follow is greyed in improve (cold start) — arrow until corpus/book.
   assert tw._btn_follow.cursor().shape() == Qt.ArrowCursor
-  # setStyleSheet alone would clear the hand; helper must restore it.
-  tw._btn_improve.setCursor(Qt.ArrowCursor)
-  _apply_footer_btn_style(tw._btn_improve, tw._mode_btn_style)
-  assert tw._btn_improve.cursor().shape() == Qt.PointingHandCursor
+  # Stylesheet/polish must not clear the hand.
+  tw._btn_improve.setStyleSheet(tw._mode_btn_style)
   tw._polish_mode_btn(tw._btn_improve)
   assert tw._btn_improve.cursor().shape() == Qt.PointingHandCursor
+  assert not any('Unknown property cursor' in m for m in msgs)
 
 
 def test_viewport_mouse_move_restores_cursor(qapp):
