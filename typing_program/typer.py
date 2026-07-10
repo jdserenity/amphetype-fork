@@ -37,8 +37,8 @@ from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS
 from typing_program.keyboard_nav import cycle_practice_mode
 from typing_program.follow_mode import (
   FOLLOW_CURSOR_COLOR, MAX_FOLLOW_WPM, MIN_FOLLOW_WPM,
-  follow_active, follow_footer_state, follow_index, follow_race_result,
-  follow_reached_end,
+  clamp_follow_wpm, follow_active, follow_footer_state, follow_index,
+  follow_outcome_html, follow_race_result, follow_reached_end, parse_follow_wpm,
 )
 
 from typing_program.Data import Statistic
@@ -1379,15 +1379,7 @@ class TyperWindow(QWidget):
     self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
     self._btn_follow = QPushButton('follow', flat=True)
     self._btn_follow.clicked.connect(self._toggleFollow)
-    self._follow_wpm = self.S('follow_wpm').spin_box(MIN_FOLLOW_WPM, MAX_FOLLOW_WPM)
-    self._follow_wpm.setFocusPolicy(Qt.ClickFocus)
-    self._follow_wpm.setButtonSymbols(QSpinBox.UpDownArrows)
-    self._follow_wpm.setKeyboardTracking(True)  # apply typed digits without Enter
-    self._follow_wpm.setToolTip('Follow caret speed (WPM)')
-    self._follow_wpm.setStyleSheet(
-      'QSpinBox { color: #ffffff; background: #2a2a2a; border: 1px solid #666;'
-      ' font-size: 11px; padding: 0 2px; min-height: 0; max-height: 18px;'
-      ' max-width: 64px; }')
+    self._follow_wpm_panel = self._make_follow_wpm_panel()
     for b in (self._btn_improve, self._btn_corpus, self._btn_book, self._btn_read_ahead,
               self._btn_read_ahead_level, self._btn_block_bkspc, self._btn_improve_level):
       b.setCursor(Qt.PointingHandCursor)
@@ -1422,11 +1414,11 @@ class TyperWindow(QWidget):
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
     self._heatmap_panel.setVisible(False)
-    self._follow_wpm.setVisible(False)
+    self._follow_wpm_panel.setVisible(False)
     # Footer: improve · corpus · book · read ahead · Block ⌫ · heatmap · follow
     for w in (self._btn_improve, self._btn_improve_level, self._btn_corpus, self._btn_book,
               self._btn_read_ahead, self._btn_read_ahead_level, self._btn_block_bkspc,
-              self._btn_heatmap, self._heatmap_panel, self._btn_follow, self._follow_wpm):
+              self._btn_heatmap, self._heatmap_panel, self._btn_follow, self._follow_wpm_panel):
       mode_lay.addWidget(w)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
@@ -1618,10 +1610,76 @@ class TyperWindow(QWidget):
       return
     self.S('follow_mode').set(not self.S('follow_mode').get())
 
+  def _make_follow_wpm_panel(self):
+    """Minimal − N + stepper matching the footer (no chrome box)."""
+    panel = QWidget()
+    lay = QHBoxLayout(panel)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(2)
+    btn_style = _footer_btn_style(active=True)
+    self._follow_wpm_down = QPushButton('−', flat=True)
+    self._follow_wpm_up = QPushButton('+', flat=True)
+    for b in (self._follow_wpm_down, self._follow_wpm_up):
+      b.setCursor(Qt.PointingHandCursor)
+      b.setFocusPolicy(Qt.NoFocus)
+      b.setStyleSheet(btn_style)
+      b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+      b.setFixedWidth(14)
+      _footer_zero_margins(b)
+    self._follow_wpm_edit = QLineEdit()
+    self._follow_wpm_edit.setAlignment(Qt.AlignCenter)
+    self._follow_wpm_edit.setFixedWidth(28)
+    self._follow_wpm_edit.setMaxLength(3)
+    self._follow_wpm_edit.setFocusPolicy(Qt.ClickFocus)
+    self._follow_wpm_edit.setToolTip('Follow caret speed (WPM)')
+    self._follow_wpm_edit.setStyleSheet(
+      'QLineEdit { color: %s; background: transparent; border: none;'
+      ' font-size: 11px; padding: 0; margin: 0; selection-background-color: #555; }'
+      % MODE_BTN_ACTIVE)
+    self._follow_wpm_edit.setText(str(clamp_follow_wpm(self.S('follow_wpm').get())))
+    self._follow_wpm_edit.setValidator(QIntValidator(MIN_FOLLOW_WPM, MAX_FOLLOW_WPM, self))
+    self._follow_wpm_down.clicked.connect(lambda: self._nudge_follow_wpm(-1))
+    self._follow_wpm_up.clicked.connect(lambda: self._nudge_follow_wpm(1))
+    self._follow_wpm_edit.textChanged.connect(self._on_follow_wpm_text)
+    self._follow_wpm_edit.installEventFilter(self)
+    lay.addWidget(self._follow_wpm_down, 0)
+    lay.addWidget(self._follow_wpm_edit, 0)
+    lay.addWidget(self._follow_wpm_up, 0)
+    return panel
+
+  def _nudge_follow_wpm(self, delta):
+    wpm = clamp_follow_wpm(int(self.S('follow_wpm').get()) + delta)
+    self.S('follow_wpm').set(wpm)
+    self._sync_follow_wpm_edit(wpm)
+
+  def _sync_follow_wpm_edit(self, wpm):
+    text = str(clamp_follow_wpm(wpm))
+    if self._follow_wpm_edit.text() != text:
+      self._follow_wpm_edit.blockSignals(True)
+      self._follow_wpm_edit.setText(text)
+      self._follow_wpm_edit.blockSignals(False)
+
+  def _on_follow_wpm_text(self, text):
+    # Live: whatever number is in the box is the speed (empty → keep last until valid).
+    s = (text or '').strip()
+    if not s:
+      return
+    wpm = parse_follow_wpm(s, default=int(self.S('follow_wpm').get()))
+    if wpm != int(self.S('follow_wpm').get()):
+      self.S('follow_wpm').set(wpm)
+
+  def _blur_follow_wpm(self):
+    """Commit the box and return focus to the lesson canvas."""
+    wpm = parse_follow_wpm(self._follow_wpm_edit.text(), default=int(self.S('follow_wpm').get()))
+    self.S('follow_wpm').set(wpm)
+    self._sync_follow_wpm_edit(wpm)
+    self._typer.setFocus()
+
   def _onFollowSetting(self, *_):
     self._refresh_follow_footer()
 
   def _onFollowWpmSetting(self, *_):
+    self._sync_follow_wpm_edit(self.S('follow_wpm').get())
     # Live WPM: next tick uses the new value; no Enter required.
     if self._follow_racing:
       self._on_follow_tick()
@@ -1633,7 +1691,7 @@ class TyperWindow(QWidget):
     self._btn_follow.setCursor(Qt.PointingHandCursor if st['btn_enabled'] else Qt.ArrowCursor)
     self._btn_follow.setStyleSheet(
       _footer_btn_style(active=st['btn_active_style'], greyed=st['btn_greyed']))
-    self._follow_wpm.setVisible(st['wpm_visible'])
+    self._follow_wpm_panel.setVisible(st['wpm_visible'])
     if st['active']:
       self._arm_follow_race()
     else:
@@ -1774,6 +1832,10 @@ class TyperWindow(QWidget):
   def eventFilter(self, obj, evt):
     if obj is self._canvas and evt.type() == QEvent.Resize:
       self._pause_overlay.setGeometry(self._canvas.rect())
+    if getattr(self, '_follow_wpm_edit', None) is obj and evt.type() == QEvent.KeyPress:
+      if evt.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Escape):
+        self._blur_follow_wpm()
+        return True
     if obj is self._source_lbl and self._mode == MODE_BOOK:
       if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton:
         self._show_book_menu()
@@ -2154,8 +2216,9 @@ class TyperWindow(QWidget):
     self._awaiting_next = True
     self._typer.set_awaiting_enter(self._continue_lesson)
     msg = format_progress_html(progress, stats_saved=stats_saved)
-    if self._follow_race_outcome == 'success':
-      msg = 'Follow mode: success!<br />' + msg
+    banner = follow_outcome_html(self._follow_race_outcome)
+    if banner:
+      msg = banner + '<br />' + msg
     self.updateLabel(msg)
 
   def _continue_lesson(self):
@@ -2191,9 +2254,6 @@ class TyperWindow(QWidget):
         self._refreshHeatmap()
       return
     if action == 'book_next':
-      self._book.request_lesson(advance_chapter=False)
-    elif action == 'book_retry':
-      # Follow failure: stay on the same chunk (place was not advanced).
       self._book.request_lesson(advance_chapter=False)
     elif action == 'improve_next':
       self._weakspot.invalidate_cache()
@@ -2231,11 +2291,11 @@ class TyperWindow(QWidget):
       log.error("follow lost with no lesson started?")
       return
 
+    now = time()
     med_char = run.median_timing
     stats_saved = False
+    textid, srcid, _ = self._current_lesson
     if med_char:
-      now = time()
-      textid, srcid, _ = self._current_lesson
       vals = collect_run_stat_rows(run, med_char, now, srcid)
       is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
       write_stats = self._mode not in (MODE_IMPROVE,) and (not is_lesson or self._settings.get('use_lesson_stats'))
@@ -2250,19 +2310,19 @@ class TyperWindow(QWidget):
         self._refreshHeatmap()
         stats_saved = True
 
-    # Do not advance book place on failure — retry the same chunk.
-    if self._mode == MODE_BOOK:
-      self._pending_action = 'book_retry'
+    # Book place still advances on follow failure (same as a finished chunk).
+    if self._mode == MODE_BOOK and self._book_meta is not None:
+      m = self._book_meta
+      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
+      if self._doc.has_next_book_chunk():
+        self._pending_action = 'book_chunk'
+      else:
+        self._pending_action = 'book_next'
     else:
       self._pending_action = 'normal_next'
-    self._pending_now = None
+    self._pending_now = now
     self._pending_review_words = None
-    self._awaiting_next = True
-    self._typer.set_awaiting_enter(self._continue_lesson)
-    note = 'Follow mode: failed — the cursor reached the end first.'
-    if stats_saved:
-      note += '<br />Stats from what you typed were saved.'
-    self.updateLabel(note)
+    self._show_progress_summary(run, stats_saved=stats_saved)
 
   def typingDone(self, run):
     self._stop_follow_race(clear_caret=False)

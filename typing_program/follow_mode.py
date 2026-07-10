@@ -4,13 +4,18 @@ Standard typing measure: 1 word = 5 characters, so chars/sec = wpm / 12.
 """
 
 from typing_program.book_mode import MODE_BOOK, MODE_CORPUS
+from typing_program.speed_heatmap import PROGRESS_RED
 
-DEFAULT_FOLLOW_WPM = 40
+DEFAULT_FOLLOW_WPM = 70
 MIN_FOLLOW_WPM = 1
 MAX_FOLLOW_WPM = 300
 
 # Bright caret color on the dark lesson canvas (distinct from the typing cursor).
 FOLLOW_CURSOR_COLOR = '#5ec8ff'
+FOLLOW_FAIL_COLOR = PROGRESS_RED  # same red as heatmap / progress
+
+FOLLOW_SUCCESS_MSG = 'You beat the cursor!'
+FOLLOW_FAILURE_MSG = 'The cursor beat you... 👎'
 
 
 def follow_eligible(practice_mode):
@@ -75,6 +80,15 @@ def follow_race_result(user_complete, cursor_at_end):
   if cursor_at_end:
     return 'failure'
   return None
+
+
+def follow_outcome_html(outcome):
+  """Colored banner for success/failure; empty string if no outcome."""
+  if outcome == 'success':
+    return '<span style="color:%s">%s</span>' % (FOLLOW_CURSOR_COLOR, FOLLOW_SUCCESS_MSG)
+  if outcome == 'failure':
+    return '<span style="color:%s">%s</span>' % (FOLLOW_FAIL_COLOR, FOLLOW_FAILURE_MSG)
+  return ''
 
 
 def follow_footer_state(enabled, practice_mode):

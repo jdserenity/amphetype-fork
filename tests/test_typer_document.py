@@ -846,7 +846,7 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   assert lay.itemAt(7).widget() is tw._btn_heatmap
   assert lay.itemAt(8).widget() is tw._heatmap_panel
   assert lay.itemAt(9).widget() is tw._btn_follow
-  assert lay.itemAt(10).widget() is tw._follow_wpm
+  assert lay.itemAt(10).widget() is tw._follow_wpm_panel
 
 
 def test_inactive_mode_buttons_use_rgb_140(qapp):

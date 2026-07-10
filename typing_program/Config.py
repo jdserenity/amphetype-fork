@@ -115,7 +115,7 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     'speed_heatmap': False,
     'speed_heatmap_mode': 0,
     'follow_mode': False,  # race a moving caret; corpus/book only
-    'follow_wpm': 40,  # follow caret speed (5 chars = 1 word)
+    'follow_wpm': 70,  # follow caret speed (5 chars = 1 word); persists across sessions
     'typing_sound': 'type-1',  # '' = off; type-* under data/sounds
     'typing_error_sound': 'error-1',  # error-*
     'typing_sound_volume': 50,  # 0..100

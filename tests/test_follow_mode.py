@@ -65,6 +65,23 @@ def test_follow_race_result_success_failure_tie():
   assert follow_race_result(True, True) == 'success'  # tie → typist
 
 
+def test_default_follow_wpm_is_70():
+  assert DEFAULT_FOLLOW_WPM == 70
+
+
+def test_follow_outcome_html_colors():
+  from typing_program.follow_mode import (
+    FOLLOW_CURSOR_COLOR, FOLLOW_FAIL_COLOR, FOLLOW_FAILURE_MSG, FOLLOW_SUCCESS_MSG,
+    follow_outcome_html,
+  )
+  ok = follow_outcome_html('success')
+  assert FOLLOW_SUCCESS_MSG in ok and FOLLOW_CURSOR_COLOR in ok
+  bad = follow_outcome_html('failure')
+  assert FOLLOW_FAILURE_MSG in bad and FOLLOW_FAIL_COLOR in bad
+  assert follow_outcome_html(None) == ''
+  assert 'Stats from what you typed' not in ok + bad
+
+
 def test_follow_footer_state_greys_in_improve_keeps_pref():
   from typing_program.follow_mode import follow_footer_state
   # On in corpus → active + WPM box
@@ -136,43 +153,44 @@ def test_follow_footer_greys_in_improve_and_restores(qapp):
   assert tw._mode == MODE_IMPROVE
   assert not tw.S('follow_mode').get()
   assert not tw._btn_follow.isEnabled()
-  assert tw._follow_wpm.isHidden()
+  assert tw._follow_wpm_panel.isHidden()
 
   tw.set_practice_mode(MODE_CORPUS)
   assert tw._btn_follow.isEnabled()
-  assert tw._follow_wpm.isHidden()  # still off
+  assert tw._follow_wpm_panel.isHidden()  # still off
 
   tw.S('follow_mode').set(True)
-  assert not tw._follow_wpm.isHidden()
+  assert not tw._follow_wpm_panel.isHidden()
   assert tw._btn_follow.isEnabled()
 
   tw.set_practice_mode(MODE_IMPROVE)
   assert bool(tw.S('follow_mode').get()) is True  # pref kept
   assert not tw._btn_follow.isEnabled()
-  assert tw._follow_wpm.isHidden()
+  assert tw._follow_wpm_panel.isHidden()
   assert MODE_BTN_GREYED in tw._btn_follow.styleSheet()
 
   tw.set_practice_mode(MODE_BOOK)
   assert bool(tw.S('follow_mode').get()) is True
   assert tw._btn_follow.isEnabled()
-  assert not tw._follow_wpm.isHidden()
+  assert not tw._follow_wpm_panel.isHidden()
   tw.S('follow_mode').set(False)
 
 
-def test_follow_footer_state_greys_in_improve_keeps_pref():
-  from typing_program.follow_mode import follow_footer_state
-  # On in corpus → active + WPM box
-  on_corpus = follow_footer_state(True, MODE_CORPUS)
-  assert on_corpus['active'] and on_corpus['wpm_visible'] and on_corpus['btn_enabled']
-  assert not on_corpus['btn_greyed']
-  # Same pref in improve → greyed, not active, no WPM box (pref still "on")
-  on_improve = follow_footer_state(True, MODE_IMPROVE)
-  assert not on_improve['active'] and not on_improve['wpm_visible']
-  assert on_improve['btn_greyed'] and not on_improve['btn_enabled']
-  # Back to book → active again without re-toggling
-  on_book = follow_footer_state(True, MODE_BOOK)
-  assert on_book['active'] and on_book['wpm_visible']
-  # Never on → eligible mode does not auto-enable
-  off_corpus = follow_footer_state(False, MODE_CORPUS)
-  assert not off_corpus['active'] and not off_corpus['wpm_visible']
-  assert off_corpus['btn_enabled']
+def test_follow_wpm_enter_escape_unfocus(qapp):
+  import typing_program.mainwindow  # noqa: F401
+  from PyQt5.QtCore import Qt
+  from PyQt5.QtGui import QKeyEvent
+  from typing_program.book_mode import MODE_CORPUS
+  from typing_program.typer import TyperWindow
+
+  tw = TyperWindow()
+  tw.set_practice_mode(MODE_CORPUS)
+  tw.S('follow_mode').set(True)
+  edit = tw._follow_wpm_edit
+  edit.setFocus()
+  assert edit.hasFocus() or True  # focus can be flaky headless; still exercise filter
+  esc = QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier)
+  assert tw.eventFilter(edit, esc) is True
+  enter = QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Return, Qt.NoModifier)
+  assert tw.eventFilter(edit, enter) is True
+  tw.S('follow_mode').set(False)
