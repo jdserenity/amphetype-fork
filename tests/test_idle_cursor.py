@@ -39,7 +39,9 @@ def test_footer_mode_buttons_use_pointing_hand(qapp):
   assert 'cursor:' not in _footer_btn_style(False)
   assert tw._btn_improve.cursor().shape() == Qt.PointingHandCursor
   assert tw._btn_corpus.cursor().shape() == Qt.PointingHandCursor
-  assert tw._btn_follow.cursor().shape() == Qt.PointingHandCursor
+  assert tw._btn_book.cursor().shape() == Qt.PointingHandCursor
+  # Follow is greyed in improve (cold start) — arrow until corpus/book.
+  assert tw._btn_follow.cursor().shape() == Qt.ArrowCursor
 
 
 def test_viewport_mouse_move_restores_cursor(qapp):
