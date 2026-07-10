@@ -25,3 +25,7 @@ Rules:
 - **`Qt.WA_StyledBackground` must stay True** on the canvas (and chrome widget if styled). Without it, Qt ignores stylesheet fills after tab reparent.
 - Main tab `QTabWidget::pane` must stay **`background: transparent`** so the layers show through.
 - Regression tests: `test_typer_canvas_page_differs_from_window_chrome`, `test_typer_page_background_survives_main_tab_reparent`.
+
+## Follow mode uses its own race clock
+
+Lesson runs often cold-start with `RunStats.started is None` until the run is fixed up at the end. Follow mode therefore keeps a separate pause-aware clock on `TyperWindow` (`_follow_clock_*`) instead of reading `run.active_elapsed()` for caret position.
