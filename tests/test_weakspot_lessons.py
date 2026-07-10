@@ -201,6 +201,19 @@ class TestFocusDrill(unittest.TestCase):
       focus_covered_targets('However however with', targets),
       {('word', 'However'), ('word', 'however'), ('word', 'with')})
 
+  def test_focus_drill_includes_biword_pairs(self):
+    targets = [('biword', 'of the'), ('biword', 'the people')]
+    lesson = build_focus_lesson(targets, DICT, max_chars=400, rng=_R(11))
+    cov = focus_covered_targets(lesson, targets)
+    self.assertEqual(cov, {('biword', 'of the'), ('biword', 'the people')})
+    self.assertRegex(lesson, r'(?<![A-Za-z])of the(?![A-Za-z])')
+    self.assertRegex(lesson, r'(?<![A-Za-z])the people(?![A-Za-z])')
+
+  def test_focus_covered_biwords_need_consecutive_words(self):
+    targets = [('biword', 'of the')]
+    self.assertEqual(focus_covered_targets('of the land', targets), {('biword', 'of the')})
+    self.assertEqual(focus_covered_targets('of all the', targets), set())
+
   def test_focus_drill_includes_all_three_oblivion_words(self):
     targets = [('word', 'However'), ('word', 'however'), ('word', 'with')]
     lesson = build_focus_lesson(targets, DICT, max_chars=600, rng=_R(7))

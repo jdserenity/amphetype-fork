@@ -142,6 +142,16 @@ def test_word_model_init(qapp):
   assert m.head[4:7] == ["Corpus", "Drill", "Perfect"]
 
 
+def test_analysis_what_combo_includes_biwords(qapp):
+  from typing_program.StatWidgets import AnalysisWhatCombo
+  from typing_program.WeakSpotLessons import ANALYSIS_WHAT_KINDS, analysis_what_kind
+  assert ANALYSIS_WHAT_KINDS == ('char', 'trigram', 'word', 'biword')
+  assert analysis_what_kind(3) == 'biword'
+  wc = AnalysisWhatCombo()
+  labels = [wc.itemText(i) for i in range(wc.count())]
+  assert labels == ['keys', 'trigrams', 'words', 'biwords']
+
+
 def test_string_stats_most_improved_sort(qapp, monkeypatch):
   st = StringStats()
   pool_rows = [

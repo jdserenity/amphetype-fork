@@ -12,9 +12,9 @@ from collections import defaultdict
 
 from typing_program.stats_query import ALL_TIME_HIST, RAW_TARGETS_SQL, analysis_min_count
 
-# A target is (kind, data, weight); kind in {'char','trigram','word'}.
-TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}
-ANALYSIS_WHAT_KINDS = ('char', 'trigram', 'word')
+# A target is (kind, data, weight); kind in {'char','trigram','word','biword'}.
+TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}  # weakspot fetch; biwords are Analysis-only
+ANALYSIS_WHAT_KINDS = ('char', 'trigram', 'word', 'biword')
 
 def analysis_what_kind(cat_index):
   return ANALYSIS_WHAT_KINDS[cat_index]
@@ -23,6 +23,7 @@ _dict_cache = {}
 _TRAIL_PUNCT = '.,!?;:'   # punctuation that naturally trails a word
 _OPEN_PUNCT = '"(\''       # punctuation that naturally leads a word
 CAND_CAP = 150             # cap dictionary candidates considered per slot
+_WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
 
 # Raw aggregates per item; scoring done in Python (sqlite lacks log()).
 RAW_SQL = RAW_TARGETS_SQL
@@ -46,6 +47,23 @@ def _focus_word_in_text(word, text):
   return bool(re.search(r'(?<![A-Za-z])' + re.escape(word) + r'(?![A-Za-z])', text))
 
 
+def _biword_parts(data):
+  parts = (data or '').split(' ', 1)
+  if len(parts) != 2 or not parts[0] or not parts[1]:
+    return None
+  return parts[0], parts[1]
+
+
+def _biword_in_text(pair, text):
+  """True when the two words appear as consecutive word tokens (case-sensitive)."""
+  parts = _biword_parts(pair)
+  if not parts:
+    return pair in (text or '')
+  w1, w2 = parts
+  words = [m.group(0) for m in _WORD_RE.finditer(text or '')]
+  return any(words[i] == w1 and words[i + 1] == w2 for i in range(len(words) - 1))
+
+
 def covered_targets(text, targets):
   """Return the set of target keys whose surface form literally appears in text."""
   res = set()
@@ -60,11 +78,13 @@ def covered_targets(text, targets):
       if data in text: res.add((kind, data))
     elif kind == 'trigram':
       if data in text: res.add((kind, data))
+    elif kind == 'biword':
+      if _biword_in_text(data, text): res.add((kind, data))
   return res
 
 
 def focus_covered_targets(text, targets):
-  """Focus drills: word targets match exact surface (Lady ≠ lady)."""
+  """Focus drills: word/biword targets match exact surface (Lady ≠ lady)."""
   res = set()
   if not text:
     return res
@@ -76,6 +96,8 @@ def focus_covered_targets(text, targets):
       if data in text: res.add((kind, data))
     elif kind == 'trigram':
       if data in text: res.add((kind, data))
+    elif kind == 'biword':
+      if _biword_in_text(data, text): res.add((kind, data))
   return res
 
 
@@ -557,6 +579,9 @@ def _tokens_for_target(t, index, remaining, targets, rng, exact_surface=False):
       return [t[1]] if t[1] else []
     w = _word_token(t[1], remaining, targets)
     return [w] if w else []
+  if t[0] == 'biword':
+    parts = _biword_parts(t[1])
+    return list(parts) if parts else []
   w = index.word_for_char(t[1], rng, remaining, targets)
   return [w] if w else []
 

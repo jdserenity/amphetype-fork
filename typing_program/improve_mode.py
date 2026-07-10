@@ -2,19 +2,21 @@
 
 from typing_program.stats_query import (
   FOCUS_DRILL_PICK_COUNT, FOCUS_DRILL_POOL_SIZE, STAT_TYPE_WORD,
-  fetch_damage_picks, fetch_hesitant_picks, fetch_oblivion_picks, fetch_oblivion_pool,
-  fetch_slowest_picks,
+  fetch_accuracy_picks, fetch_damage_picks, fetch_hesitant_picks, fetch_oblivion_picks,
+  fetch_oblivion_pool, fetch_slowest_picks,
 )
 from typing_program.speed_heatmap import OBLIVION_WPM
 
 # Order is UI cycle order on the improve submode button.
-IMPROVE_SUBMODE_LABELS = ('normal', 'trigrams', 'oblivion', 'slowest', 'hesitant', 'damage')
+IMPROVE_SUBMODE_LABELS = (
+  'normal', 'trigrams', 'oblivion', 'slowest', 'hesitant', 'accuracy', 'damage')
 IMPROVE_SUBMODE_NORMAL = 0
 IMPROVE_SUBMODE_TRIGRAMS = 1
 IMPROVE_SUBMODE_OBLIVION = 2
 IMPROVE_SUBMODE_SLOWEST = 3
 IMPROVE_SUBMODE_HESITANT = 4
-IMPROVE_SUBMODE_DAMAGE = 5
+IMPROVE_SUBMODE_ACCURACY = 5
+IMPROVE_SUBMODE_DAMAGE = 6
 
 
 def rows_to_targets(rows, kind):
@@ -69,6 +71,8 @@ def fetch_improve_submode_targets(db, submode, hist_cutoff, min_count,
     rows = fetch_slowest_picks(db, hist_cutoff, stat_type, n, min_count, pool_size, rng)
   elif submode == IMPROVE_SUBMODE_HESITANT:
     rows = fetch_hesitant_picks(db, hist_cutoff, stat_type, n, min_count, pool_size, rng)
+  elif submode == IMPROVE_SUBMODE_ACCURACY:
+    rows = fetch_accuracy_picks(db, hist_cutoff, stat_type, n, min_count, pool_size, rng)
   elif submode == IMPROVE_SUBMODE_DAMAGE:
     rows = fetch_damage_picks(db, hist_cutoff, stat_type, n, min_count, pool_size, rng)
   else:
