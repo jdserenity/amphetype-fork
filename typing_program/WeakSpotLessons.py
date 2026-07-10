@@ -701,8 +701,7 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=8
   """Repeat only the given type targets (Performance Analysis / improve focus drill).
 
   targets: [(kind, data), ...]. min/max chars are focus-drill size prefs.
-  Ordering: equal-weight repeats, then bag-random interleave (avoid immediate
-  repeats when possible) — not round-robin and not A B A B oscillation.
+  Ordering: equal-weight repeats, then a plain shuffle — adjacent repeats allowed.
   One target ⇒ that surface only.
   """
   if not targets:
@@ -723,7 +722,7 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=8
   instances = []
   for t in weighted:
     instances.extend([t] * counts[target_key(t)])
-  _interleave(instances, rng)
+  rng.shuffle(instances)
 
   text = ''
   covered = set()

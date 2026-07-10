@@ -38,6 +38,6 @@ Reserving space for the book/corpus source title in improve mode: `QLabel.setMin
 
 Weak trigrams often start or end with a space (`"he "`, `" th"`). Naively joining them with another separator space produces `  ` runs that feel broken to type. `build_trigram_gibberish_lesson` must merge boundary spaces so the lesson never has two spaces in a row (middle spaces inside a trigram like `"e h"` stay as a single space).
 
-## Focus-drill interleave: bag draw, not shuffle-then-nudge
+## Focus drills: plain shuffle, repeats OK
 
-A shuffle followed by “swap adjacent duplicates with the next different item” collapses into long `A B A B A B` stretches and feels repetitive even when all five words have equal weight. `_interleave` should draw from remaining bags (weight ∝ leftover count), skipping the previous pick and the pick-before-that when other targets remain.
+Focus-drill ordering should be a true shuffle of the equal-weight copies — do not smooth away adjacent repeats or A B A B patterns. Anti-repeat interleave made drills feel less random, which is the opposite of what we want here. (`_interleave` may still smooth normal/trigram lessons.)
