@@ -84,7 +84,7 @@ SESSION_WPM_TOTALS_SQL = """select sum(char_count), sum(duration)
 # w >= 0 includes every statistic/result row (all-time).
 ALL_TIME_HIST = 0
 
-# Session WPM stays hidden until this many corpus/book/improve-normal lessons finish.
+# Session progress stays hidden until this many corpus/book/improve-normal lessons finish.
 WPM_GATE_MIN_LESSONS = 10
 
 WPM_GATE_LESSONS_SQL = """select count(*) from result r
@@ -231,6 +231,30 @@ def fetch_word_counted_totals(db, words, hist_cutoff=ALL_TIME_HIST):
   return {data: int(total or 0) for data, total in rows}
 
 
+def fetch_word_perfect_baselines(db, words, hist_cutoff=ALL_TIME_HIST):
+  """Prior counted perfect/count per word for lesson-end perfect-rate progress."""
+  if not words:
+    return {}
+  qs = ','.join('?' * len(words))
+  rows = db.execute(
+    '''select st.data,
+      sum(case when %s then st.count else 0 end),
+      sum(case when %s then st.mistakes else 0 end)
+    from statistic as st
+    left join source as src on st.source = src.rowid
+    where st.w >= ? and st.type = ? and st.data in (%s)
+    group by st.data''' % (_STAT_IS_COUNTED, _STAT_IS_COUNTED, qs),
+    (hist_cutoff, STAT_TYPE_WORD, *words)).fetchall()
+  out = {}
+  for data, total, mistakes in rows:
+    count = int(total or 0)
+    if count <= 0:
+      continue
+    misses = int(mistakes or 0)
+    out[data] = {'count': count, 'perfect': max(0, count - misses)}
+  return out
+
+
 def aggregate_session_wpm(total_chars, total_seconds):
   """Session WPM across finished lessons: total chars / total typing seconds * (60/5)."""
   if not total_chars or not total_seconds:
@@ -260,26 +284,69 @@ def wpm_gate_remaining(db):
   return max(0, WPM_GATE_MIN_LESSONS - count_wpm_gate_lessons(db))
 
 
-def format_wpm_gate_label(db):
+def format_progress_gate_label(db):
+  """Placeholder until enough qualifying lessons to show perfect-rate since start."""
   if wpm_gate_complete(db):
     return None
   left = wpm_gate_remaining(db)
   if left == WPM_GATE_MIN_LESSONS:
-    return 'Complete %d lessons to calculate WPM' % WPM_GATE_MIN_LESSONS
-  return 'Complete %d more lesson%s to calculate WPM' % (left, '' if left == 1 else 's')
+    return 'Complete %d lessons to calculate perfect rate' % WPM_GATE_MIN_LESSONS
+  return 'Complete %d more lesson%s to calculate perfect rate' % (left, '' if left == 1 else 's')
+
+
+def format_wpm_gate_label(db):
+  """Alias for format_progress_gate_label (legacy name)."""
+  return format_progress_gate_label(db)
+
+
+OVERALL_WORD_PERFECT_SQL = """select sum(total - mistakes), sum(total)
+  from (%s)
+  where total >= ?"""
+
+
+def overall_word_perfect_rate(db, hist_cutoff=ALL_TIME_HIST, min_count=WORD_ANALYSIS_MIN_COUNT):
+  """Sample-weighted perfect%% across known words: sum(perfect) / sum(total) * 100."""
+  floor = analysis_min_count(STAT_TYPE_WORD, min_count)
+  row = db.execute(
+    OVERALL_WORD_PERFECT_SQL % STATS_AGG_SUBQUERY,
+    (hist_cutoff, STAT_TYPE_WORD, floor)).fetchone()
+  if not row or not row[1]:
+    return None
+  perfect, total = row[0] or 0, row[1]
+  return 100.0 * float(perfect) / float(total)
+
+
+def ensure_perfect_rate_baseline(db, hist_cutoff=ALL_TIME_HIST):
+  """Snapshot overall perfect rate into app_meta the first time the lesson gate opens."""
+  from typing_program.app_meta import (
+    PERFECT_RATE_BASELINE_KEY, ensure_app_meta, get_app_meta_float, set_app_meta_float)
+  if not wpm_gate_complete(db):
+    return None
+  ensure_app_meta(db)
+  existing = get_app_meta_float(db, PERFECT_RATE_BASELINE_KEY, None)
+  if existing is not None:
+    return existing
+  rate = overall_word_perfect_rate(db, hist_cutoff)
+  if rate is None:
+    return None
+  set_app_meta_float(db, PERFECT_RATE_BASELINE_KEY, rate)
+  return rate
+
+
+def format_perfect_rate_label(db, hist_cutoff=ALL_TIME_HIST):
+  """Performance Analysis secondary: current sample-weighted word perfect rate."""
+  gate = format_progress_gate_label(db)
+  if gate:
+    return gate
+  rate = overall_word_perfect_rate(db, hist_cutoff)
+  if rate is None:
+    return 'Perfect rate: —'
+  return 'Perfect rate: %d%%' % int(round(rate))
 
 
 def format_avg_wpm_label(db, hist_cutoff=ALL_TIME_HIST):
-  """Performance Analysis header: hide Avg WPM until enough lessons; then use all saved runs."""
-  gate = format_wpm_gate_label(db)
-  if gate:
-    return gate
-  avg = aggregate_session_wpm_from_results(db, hist_cutoff)
-  if avg is None:
-    return 'Avg WPM: —'
-  from typing_program.wpm_percentile import format_adult_top_percent_label
-  rank_lbl = format_adult_top_percent_label(avg)
-  return 'Avg WPM: %.1f · %s' % (avg, rank_lbl) if rank_lbl else 'Avg WPM: %.1f' % avg
+  """Legacy alias — progress card now uses format_perfect_rate_label."""
+  return format_perfect_rate_label(db, hist_cutoff)
 
 
 def first_qualifying_session_wpm(db):
@@ -299,6 +366,17 @@ def session_wpm_since_start_gain(db, hist_cutoff=ALL_TIME_HIST):
   if current is None or first is None:
     return None
   return int(round(current - first))
+
+
+def perfect_rate_since_start_gain(db, hist_cutoff=ALL_TIME_HIST):
+  """Current overall word perfect rate minus gated snapshot. None until gate opens."""
+  if not wpm_gate_complete(db):
+    return None
+  baseline = ensure_perfect_rate_baseline(db, hist_cutoff)
+  current = overall_word_perfect_rate(db, hist_cutoff)
+  if baseline is None or current is None:
+    return None
+  return int(round(current - baseline))
 
 
 def lesson_qualifies_for_wpm_gate(mode, improve_submode=0, focus_drill=False):
