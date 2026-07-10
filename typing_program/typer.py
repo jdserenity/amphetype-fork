@@ -104,6 +104,16 @@ def _footer_btn_style(active=False, greyed=False):
     'QPushButton:hover { color: %s; }' % (color, hover))
 
 
+def _apply_footer_btn_style(btn, stylesheet, hand=True):
+  """Apply footer stylesheet then restore cursor.
+
+  Qt's setStyleSheet clears any prior setCursor; do not use stylesheet
+  `cursor:` (unsupported here — spams "Unknown property cursor").
+  """
+  btn.setStyleSheet(stylesheet)
+  btn.setCursor(Qt.PointingHandCursor if hand else Qt.ArrowCursor)
+
+
 def lesson_completion_action(mode, is_lesson, auto_review, has_review_words, focus_drill=False):
   """What to do after a typing session ends."""
   if focus_drill:
@@ -940,7 +950,8 @@ class _LessonPauseOverlay(QWidget):
 
   def _update_selection(self):
     for i, b in enumerate(self._buttons):
-      b.setStyleSheet(self._BTN_STYLE_SELECTED if i == self._selected else self._BTN_STYLE)
+      _apply_footer_btn_style(
+        b, self._BTN_STYLE_SELECTED if i == self._selected else self._BTN_STYLE)
 
   def _move_selection(self, delta):
     self._selected = (self._selected + delta) % len(self._buttons)
@@ -1407,14 +1418,13 @@ class TyperWindow(QWidget):
     self._follow_wpm_panel = self._make_follow_wpm_panel()
     for b in (self._btn_improve, self._btn_corpus, self._btn_book, self._btn_read_ahead,
               self._btn_read_ahead_level, self._btn_block_bkspc, self._btn_improve_level):
-      b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
-      b.setStyleSheet(self._mode_btn_style)
+      _apply_footer_btn_style(b, self._mode_btn_style)
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       _footer_zero_margins(b)
     for b in (self._btn_heatmap, self._btn_heatmap_kind, self._btn_follow):
-      b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
+      b.setCursor(Qt.PointingHandCursor)
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       _footer_zero_margins(b)
     self._btn_improve.clicked.connect(self._on_improve_click)
@@ -1548,9 +1558,11 @@ class TyperWindow(QWidget):
   def _cycle_practice_mode(self, delta):
     self.set_practice_mode(cycle_practice_mode(self._mode, delta))
 
-  def _polish_mode_btn(self, btn):
+  def _polish_mode_btn(self, btn, hand=True):
     btn.style().unpolish(btn)
     btn.style().polish(btn)
+    # polish/setStyleSheet clear widget cursors — put the hand back.
+    btn.setCursor(Qt.PointingHandCursor if hand else Qt.ArrowCursor)
 
   def _refresh_book_btn(self):
     if self._mode == MODE_BOOK and self._book_prog_text:
@@ -1581,7 +1593,7 @@ class TyperWindow(QWidget):
     self._btn_improve_level.setText(IMPROVE_SUBMODE_LABELS[level])
     self._btn_improve_level.setVisible(visible)
     if visible:
-      self._btn_improve_level.setStyleSheet(self._mode_btn_style)
+      _apply_footer_btn_style(self._btn_improve_level, self._mode_btn_style)
       self._btn_improve_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_improve_level)
 
@@ -1638,13 +1650,13 @@ class TyperWindow(QWidget):
   def _set_read_ahead_ui(self, enabled, level, refresh_doc=False):
     self._read_ahead_on = enabled
     self._read_ahead_level = level
-    self._btn_read_ahead.setStyleSheet(self._mode_btn_style)
+    _apply_footer_btn_style(self._btn_read_ahead, self._mode_btn_style)
     self._btn_read_ahead.setProperty('activeMode', enabled)
     self._polish_mode_btn(self._btn_read_ahead)
     self._btn_read_ahead_level.setText(READ_AHEAD_LEVEL_LABELS[level])
     self._btn_read_ahead_level.setVisible(enabled)
     if enabled:
-      self._btn_read_ahead_level.setStyleSheet(self._mode_btn_style)
+      _apply_footer_btn_style(self._btn_read_ahead_level, self._mode_btn_style)
       self._btn_read_ahead_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_read_ahead_level)
     if refresh_doc:
@@ -1655,7 +1667,7 @@ class TyperWindow(QWidget):
 
   def _onBlockBkspcSetting(self, *_):
     on = bool(self.S('word_delete_enabled').get())
-    self._btn_block_bkspc.setStyleSheet(self._mode_btn_style)
+    _apply_footer_btn_style(self._btn_block_bkspc, self._mode_btn_style)
     self._btn_block_bkspc.setProperty('activeMode', on)
     self._polish_mode_btn(self._btn_block_bkspc)
 
@@ -1670,7 +1682,7 @@ class TyperWindow(QWidget):
     self.S('speed_heatmap_mode').set(mode)
 
   def _style_heatmap_footer_btn(self, btn, on):
-    btn.setStyleSheet(_footer_btn_style(on))
+    _apply_footer_btn_style(btn, _footer_btn_style(on))
 
   def _onHeatmapSetting(self, *_):
     on = bool(self.S('speed_heatmap').get())
@@ -1696,9 +1708,8 @@ class TyperWindow(QWidget):
     self._follow_wpm_down = QPushButton('−', flat=True)
     self._follow_wpm_up = QPushButton('+', flat=True)
     for b in (self._follow_wpm_down, self._follow_wpm_up):
-      b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
-      b.setStyleSheet(btn_style)
+      _apply_footer_btn_style(b, btn_style)
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       b.setFixedWidth(14)
       _footer_zero_margins(b)
@@ -1764,9 +1775,10 @@ class TyperWindow(QWidget):
     enabled = bool(self.S('follow_mode').get())
     st = follow_footer_state(enabled, self._mode)
     self._btn_follow.setEnabled(st['btn_enabled'])
-    self._btn_follow.setCursor(Qt.PointingHandCursor if st['btn_enabled'] else Qt.ArrowCursor)
-    self._btn_follow.setStyleSheet(
-      _footer_btn_style(active=st['btn_active_style'], greyed=st['btn_greyed']))
+    _apply_footer_btn_style(
+      self._btn_follow,
+      _footer_btn_style(active=st['btn_active_style'], greyed=st['btn_greyed']),
+      hand=st['btn_enabled'])
     self._follow_wpm_panel.setVisible(st['wpm_visible'])
     if st['active']:
       self._arm_follow_race()
@@ -2212,7 +2224,7 @@ class TyperWindow(QWidget):
   def _set_mode_ui(self, mode, load):
     self._mode = mode
     for btn, m in ((self._btn_improve, MODE_IMPROVE), (self._btn_corpus, MODE_CORPUS), (self._btn_book, MODE_BOOK)):
-      btn.setStyleSheet(self._mode_btn_style)
+      _apply_footer_btn_style(btn, self._mode_btn_style)
       btn.setProperty('activeMode', mode == m)
       self._polish_mode_btn(btn)
     self._set_improve_submode_ui(self._improve_submode)
