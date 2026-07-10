@@ -78,10 +78,11 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 - **Backgrounds (two layers):** `TyperWindow` chrome `#4a4a4a` (`TYPER_CHROME_COLOR`); `#TyperCanvas` = `typer/background_color` (default `#383838`) — same rect as ESC pause overlay, darker than chrome, not near-black. Do not paint page color on the whole window. Lesson `QTextEdit` transparent on canvas. `_applyBackground` + `WA_StyledBackground`. Main tab `::pane` transparent.
 - Document: type on top of target; styles untyped/correct/error/blocked.
 - ESC pause: Continue / New / Restart overlay; `RunStats.pause`/`resume`.
-- Footer order (left): improve [+submode] · corpus · book · read ahead [+level] · **Block ⌫** · heatmap [+kind + legend] · source title.
+- Footer order (left): improve [+submode] · corpus · book · read ahead [+level] · **Block ⌫** · heatmap [+kind + legend] · **follow** [+WPM] · source title.
 - **Read ahead** (`read_ahead.py`): off default; levels normal/hard/easy; hide upcoming words after first keystroke; mistype reveals current word only. Prefs: `read_ahead_enabled`, `typer/read_ahead_level`.
 - **Block ⌫** (`block_bkspc.py`): on default. Pref: `typer/word_delete_enabled`. Plain Backspace no-op; Opt/Alt/Ctrl/Meta+Backspace = by-word. `allows_backspace(enabled, by_word)`.
 - **Heatmap** (`speed_heatmap.py`): off default; modes words/trigrams/chars; all-time stats; prefs `typer/speed_heatmap`, `typer/speed_heatmap_mode`.
+- **Follow** (`follow_mode.py`): off default; **corpus/book only** (not improve). Footer toggle after heatmap; when on, WPM spinbox beside it (arrows ±1 or type; live, no Enter). Prefs: `typer/follow_mode`, `typer/follow_wpm` (default 40). Preference stays on across mode switches; in improve the control is greyed/disabled immediately; returning to corpus/book restores active follow if it was on; if never on, eligible modes do not auto-enable. Race: a second caret advances through the lesson at the set WPM (5 chars = 1 word); starts with the run (first keystroke); pauses with ESC. Finish before the caret reaches the end → success (normal lesson end). Caret reaches end first → failure (lesson aborts; book place does not advance; stats still saved for completed items typed so far).
 - Sounds: `typing_sounds.py`; prefs `typer/typing_sound`, `typing_error_sound`, `typing_sound_volume`.
 - Word progress: `word_progress.py` — green + badges when median improves; orange = **new common words** that cross the PA min-count pool this run (`analysis_min_count` / `WORD_ANALYSIS_MIN_COUNT`). Message: “You typed N new common word(s)!”. **Improve modes (all submodes including normal) never show this** and never gather counted word samples (`count=0` on discounted `<Weakspot>`).
 - Book: full chapter grey inactive; active chunk sized by min/max chars; soft newlines auto-skip; para ⏎ match invisible; vertical center when scroll needed.
@@ -165,6 +166,7 @@ Tests: `python -m pytest tests/ -q` (pytest-qt for GUI).
 | Block ⌫ | `block_bkspc.py` |
 | Read ahead | `read_ahead.py` |
 | Heatmap | `speed_heatmap.py` |
+| Follow | `follow_mode.py` |
 | Book | `book_mode.py` |
 | Keyboard nav | `keyboard_nav.py` |
 | Weakspot | `WeakSpot.py`, `WeakSpotLessons.py`, `improve_mode.py` |
