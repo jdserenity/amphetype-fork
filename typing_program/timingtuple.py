@@ -134,6 +134,12 @@ class RunStats(datatuple):
       self._pause_total += timer() - self._paused_at
       self._paused_at = None
 
+  def active_elapsed(self):
+    """Seconds of non-paused time since the run started (0 before start)."""
+    if self.started is None:
+      return 0.0
+    return max(0.0, self._tnow() - self.started)
+
   @property
   def current(self):
     if self.index >= len(self):

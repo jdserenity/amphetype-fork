@@ -35,6 +35,11 @@ from typing_program.read_ahead import (
 from typing_program.block_bkspc import allows_backspace
 from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS
 from typing_program.keyboard_nav import cycle_practice_mode
+from typing_program.follow_mode import (
+  FOLLOW_CURSOR_COLOR, MAX_FOLLOW_WPM, MIN_FOLLOW_WPM,
+  follow_active, follow_footer_state, follow_index, follow_race_result,
+  follow_reached_end,
+)
 
 from typing_program.Data import Statistic
 from typing_program.speed_heatmap import (
@@ -76,6 +81,7 @@ TYPER_CANVAS_DEFAULT = QColor('#383838')
 MODE_BTN_INACTIVE = '#8c8c8c'
 MODE_BTN_ACTIVE = '#ffffff'
 MODE_BTN_HOVER = '#ffffff'
+MODE_BTN_GREYED = '#5a5a5a'
 
 
 def _footer_zero_margins(w):
@@ -84,9 +90,13 @@ def _footer_zero_margins(w):
     w.setMargin(0)
 
 
-def _footer_btn_style(active=False):
-  color = MODE_BTN_ACTIVE if active else MODE_BTN_INACTIVE
-  hover = MODE_BTN_HOVER
+def _footer_btn_style(active=False, greyed=False):
+  if greyed:
+    color = MODE_BTN_GREYED
+    hover = MODE_BTN_GREYED
+  else:
+    color = MODE_BTN_ACTIVE if active else MODE_BTN_INACTIVE
+    hover = MODE_BTN_HOVER
   return (
     'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
     ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
@@ -232,6 +242,7 @@ class LessonDocument(QTextDocument):
   resumed = pyqtSignal()
   ready = pyqtSignal(str)
   completed = pyqtSignal('PyQt_PyObject')
+  follow_lost = pyqtSignal('PyQt_PyObject')  # run when follow caret wins the race
   error = pyqtSignal(str)
   progress = pyqtSignal(int)
   progress_badges_changed = pyqtSignal()
@@ -258,6 +269,7 @@ class LessonDocument(QTextDocument):
     self._book_chunks = None
     self._book_chunk_index = 0
     self._pre_start_paused = False
+    self._follow_lost = False
     self._word_baselines = {}
     self._word_prior_counts = {}
     self._word_spans = []
@@ -277,6 +289,7 @@ class LessonDocument(QTextDocument):
     self._run = None
     self._first_error = None
     self._pre_start_paused = False
+    self._follow_lost = False
     self._progress_badges = []
     self._word_baselines = {}
     self._word_prior_counts = {}
@@ -359,6 +372,7 @@ class LessonDocument(QTextDocument):
     self._run = None
     self._first_error = None
     self._pre_start_paused = False
+    self._follow_lost = False
     self._progress_badges = []
     self._read_ahead_preview = bool(self._read_ahead_mode)
     self._read_ahead_revealed = set()
@@ -635,7 +649,7 @@ class LessonDocument(QTextDocument):
 
   def is_running(self):
     """True if a lesson has started but not yet completed."""
-    return self._run is not None and not self._run.is_complete()
+    return self._run is not None and not self._run.is_complete() and not self._follow_lost
 
   def is_paused(self):
     return self._pre_start_paused or (self._run is not None and self._run.is_paused())
@@ -663,12 +677,23 @@ class LessonDocument(QTextDocument):
     return True
 
   def is_finished(self):
-    """True if a lesson has started and then completed."""
-    return self._run is not None and self._run.is_complete()
+    """True if a lesson has started and then completed (or follow race lost)."""
+    return self._follow_lost or (self._run is not None and self._run.is_complete())
+
+  def lose_follow_race(self):
+    """Abort the lesson because the follow caret reached the end first."""
+    if self._follow_lost or not self._run or self._run.is_complete():
+      return None
+    if self.is_paused() and not self._pre_start_paused:
+      self._run.resume()
+    self._pre_start_paused = False
+    self._follow_lost = True
+    self.follow_lost.emit(self._run)
+    return self._run
 
   def is_ready(self):
     """True if a lesson has not yet started."""
-    return self._run is None and self._match_text is not None
+    return self._run is None and self._match_text is not None and not self._follow_lost
 
   def start(self):
     """Switches to running state (warm start)."""
@@ -677,7 +702,7 @@ class LessonDocument(QTextDocument):
     self.started.emit()
 
   def insert(self, char, overwrite=True, lenient=False):
-    if self._match_text is None:
+    if self._match_text is None or self._follow_lost:
       return
     if self.is_paused():
       return
@@ -957,6 +982,7 @@ class TyperWidget(QTextEdit):
     self._pin_typing_center = False
     self._on_awaiting_enter = None
     self._on_tab_nav = None  # optional callback: Tab → cycle improve submode
+    self._follow_match_index = None  # None = hide follow caret
     self._sounds = TypingSoundPlayer()
     # settings('lenient_mode').bind_value(self.setLenientMode)
     # settings('require_space').bind_value(self.setRequireSpace)
@@ -1046,31 +1072,53 @@ class TyperWidget(QTextEdit):
     r = r.united(self.cursorRect(Cursor(lesson, max(lo, hi - 1))))
     return r
 
+  def set_follow_cursor_index(self, match_index):
+    """Draw the follow-mode race caret at match_index, or hide when None."""
+    if self._follow_match_index == match_index:
+      return
+    self._follow_match_index = match_index
+    self.viewport().update()
+
   def paintEvent(self, evt):
     super().paintEvent(evt)
     if not self._lesson:
       return
-    badges = self._lesson.progress_badges()
-    if not badges:
-      return
     p = QPainter(self.viewport())
     p.setRenderHint(QPainter.Antialiasing)
-    f = QFont()
-    f.setPointSize(_BADGE_FONT_PT)
-    p.setFont(f)
-    fm = QFontMetrics(f)
-    for start, end, gain in badges:
-      r = self._badge_rect(start, end)
-      pad = 2
-      box_h = max(r.height() + pad * 2, fm.height() + 4)
-      box = QRect(r.left() - pad, r.top() - pad, r.width() + pad * 2, box_h)
-      p.fillRect(box, QColor(80, 80, 80, 120))
-      p.setPen(QColor('#f0f0f0'))
-      full_lbl = '+%dwpm' % gain
-      short_lbl = '+%d' % gain
-      lbl = full_lbl if fm.horizontalAdvance(full_lbl) + 4 <= box.width() else short_lbl
-      p.drawText(box, Qt.AlignCenter, lbl)
+    if self._follow_match_index is not None and self._lesson._match_text is not None:
+      self._paint_follow_caret(p, self._follow_match_index)
+    badges = self._lesson.progress_badges()
+    if badges:
+      f = QFont()
+      f.setPointSize(_BADGE_FONT_PT)
+      p.setFont(f)
+      fm = QFontMetrics(f)
+      for start, end, gain in badges:
+        r = self._badge_rect(start, end)
+        pad = 2
+        box_h = max(r.height() + pad * 2, fm.height() + 4)
+        box = QRect(r.left() - pad, r.top() - pad, r.width() + pad * 2, box_h)
+        p.fillRect(box, QColor(80, 80, 80, 120))
+        p.setPen(QColor('#f0f0f0'))
+        full_lbl = '+%dwpm' % gain
+        short_lbl = '+%d' % gain
+        lbl = full_lbl if fm.horizontalAdvance(full_lbl) + 4 <= box.width() else short_lbl
+        p.drawText(box, Qt.AlignCenter, lbl)
     p.end()
+
+  def _paint_follow_caret(self, painter, match_index):
+    lesson = self._lesson
+    n = len(lesson._match_text or '')
+    if n <= 0:
+      return
+    if match_index >= n:
+      di, w = lesson._display_span(n - 1)
+      pos = di + w
+    else:
+      pos = lesson._display_span(match_index)[0]
+    r = self.cursorRect(Cursor(lesson, position=pos))
+    w = max(2, self.cursorWidth())
+    painter.fillRect(QRect(r.left(), r.top(), w, r.height()), QColor(FOLLOW_CURSOR_COLOR))
 
   def resizeEvent(self, evt):
     super().resizeEvent(evt)
@@ -1285,6 +1333,7 @@ class TyperWindow(QWidget):
     doc.ready.connect(self.typingReady)
     doc.ready.connect(self._on_lesson_ready)
     doc.completed.connect(self.typingDone)
+    doc.follow_lost.connect(self.typingFollowLost)
     doc.paused.connect(self._on_lesson_paused)
     doc.resumed.connect(self._on_lesson_resumed)
 
@@ -1328,6 +1377,17 @@ class TyperWindow(QWidget):
     self._btn_heatmap.clicked.connect(self._toggleHeatmap)
     self._btn_heatmap_kind = QPushButton(flat=True)
     self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
+    self._btn_follow = QPushButton('follow', flat=True)
+    self._btn_follow.clicked.connect(self._toggleFollow)
+    self._follow_wpm = self.S('follow_wpm').spin_box(MIN_FOLLOW_WPM, MAX_FOLLOW_WPM)
+    self._follow_wpm.setFocusPolicy(Qt.ClickFocus)
+    self._follow_wpm.setButtonSymbols(QSpinBox.UpDownArrows)
+    self._follow_wpm.setKeyboardTracking(True)  # apply typed digits without Enter
+    self._follow_wpm.setToolTip('Follow caret speed (WPM)')
+    self._follow_wpm.setStyleSheet(
+      'QSpinBox { color: #ffffff; background: #2a2a2a; border: 1px solid #666;'
+      ' font-size: 11px; padding: 0 2px; min-height: 0; max-height: 18px;'
+      ' max-width: 64px; }')
     for b in (self._btn_improve, self._btn_corpus, self._btn_book, self._btn_read_ahead,
               self._btn_read_ahead_level, self._btn_block_bkspc, self._btn_improve_level):
       b.setCursor(Qt.PointingHandCursor)
@@ -1335,7 +1395,7 @@ class TyperWindow(QWidget):
       b.setStyleSheet(self._mode_btn_style)
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       _footer_zero_margins(b)
-    for b in (self._btn_heatmap, self._btn_heatmap_kind):
+    for b in (self._btn_heatmap, self._btn_heatmap_kind, self._btn_follow):
       b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
@@ -1362,16 +1422,29 @@ class TyperWindow(QWidget):
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
     self._heatmap_panel.setVisible(False)
-    # Footer mode order: improve · corpus · book · read ahead · Block ⌫ · heatmap
+    self._follow_wpm.setVisible(False)
+    # Footer: improve · corpus · book · read ahead · Block ⌫ · heatmap · follow
     for w in (self._btn_improve, self._btn_improve_level, self._btn_corpus, self._btn_book,
               self._btn_read_ahead, self._btn_read_ahead_level, self._btn_block_bkspc,
-              self._btn_heatmap, self._heatmap_panel):
+              self._btn_heatmap, self._heatmap_panel, self._btn_follow, self._follow_wpm):
       mode_lay.addWidget(w)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
+
+    self._follow_timer = QTimer(self)
+    self._follow_timer.setInterval(50)
+    self._follow_timer.timeout.connect(self._on_follow_tick)
+    self._follow_racing = False
+    self._follow_race_outcome = None
+    self._follow_clock_started = None
+    self._follow_clock_pause_total = 0.0
+    self._follow_clock_paused_at = None
+
     self.S('speed_heatmap').bind_value(self._onHeatmapSetting, call=True)
     self.S('speed_heatmap_mode').bind_value(self._onHeatmapSetting, call=True)
     self.S('word_delete_enabled').bind_value(self._onBlockBkspcSetting, call=True)
+    self.S('follow_mode').bind_value(self._onFollowSetting, call=True)
+    self.S('follow_wpm').bind_value(self._onFollowWpmSetting, call=True)
 
     self.setLayout(FBoxLayout([
       (self._prog_layout, 0),
@@ -1387,6 +1460,7 @@ class TyperWindow(QWidget):
     self.S('improve_submode').bind_value(self._onImproveSubmodeSetting, call=True)
     self._apply_practice_mode_from_settings()
     self._apply_read_ahead_from_settings()
+    self._refresh_follow_footer()
     self._install_keyboard_nav()
 
   def _install_keyboard_nav(self):
@@ -1539,6 +1613,111 @@ class TyperWindow(QWidget):
     self._style_heatmap_footer_btn(self._btn_heatmap_kind, on)
     self._refreshHeatmap()
 
+  def _toggleFollow(self):
+    if not follow_footer_state(True, self._mode)['eligible']:
+      return
+    self.S('follow_mode').set(not self.S('follow_mode').get())
+
+  def _onFollowSetting(self, *_):
+    self._refresh_follow_footer()
+
+  def _onFollowWpmSetting(self, *_):
+    # Live WPM: next tick uses the new value; no Enter required.
+    if self._follow_racing:
+      self._on_follow_tick()
+
+  def _refresh_follow_footer(self):
+    enabled = bool(self.S('follow_mode').get())
+    st = follow_footer_state(enabled, self._mode)
+    self._btn_follow.setEnabled(st['btn_enabled'])
+    self._btn_follow.setCursor(Qt.PointingHandCursor if st['btn_enabled'] else Qt.ArrowCursor)
+    self._btn_follow.setStyleSheet(
+      _footer_btn_style(active=st['btn_active_style'], greyed=st['btn_greyed']))
+    self._follow_wpm.setVisible(st['wpm_visible'])
+    if st['active']:
+      self._arm_follow_race()
+    else:
+      self._stop_follow_race(clear_caret=True)
+
+  def _follow_is_active(self):
+    return follow_active(self.S('follow_mode').get(), self._mode)
+
+  def _arm_follow_race(self):
+    """Show the follow caret at the start; timer runs once the lesson starts."""
+    if not self._follow_is_active() or not self._doc._match_text:
+      self._typer.set_follow_cursor_index(None)
+      return
+    self._follow_race_outcome = None
+    self._typer.set_follow_cursor_index(0)
+    if self._doc.is_running() and not self._doc.is_paused():
+      self._start_follow_clock()
+      self._follow_racing = True
+      if not self._follow_timer.isActive():
+        self._follow_timer.start()
+      self._on_follow_tick()
+    else:
+      self._follow_racing = False
+      self._follow_timer.stop()
+      self._reset_follow_clock()
+
+  def _reset_follow_clock(self):
+    self._follow_clock_started = None
+    self._follow_clock_pause_total = 0.0
+    self._follow_clock_paused_at = None
+
+  def _start_follow_clock(self):
+    """Own clock — RunStats.started is often unset on cold start until the end."""
+    if self._follow_clock_started is None:
+      self._follow_clock_started = timer()
+      self._follow_clock_pause_total = 0.0
+      self._follow_clock_paused_at = None
+
+  def _pause_follow_clock(self):
+    if self._follow_clock_started is not None and self._follow_clock_paused_at is None:
+      self._follow_clock_paused_at = timer()
+
+  def _resume_follow_clock(self):
+    if self._follow_clock_paused_at is not None:
+      self._follow_clock_pause_total += timer() - self._follow_clock_paused_at
+      self._follow_clock_paused_at = None
+
+  def _follow_elapsed(self):
+    if self._follow_clock_started is None:
+      return 0.0
+    t = self._follow_clock_paused_at if self._follow_clock_paused_at is not None else timer()
+    return max(0.0, t - self._follow_clock_started - self._follow_clock_pause_total)
+
+  def _stop_follow_race(self, clear_caret=False):
+    self._follow_racing = False
+    self._follow_timer.stop()
+    self._reset_follow_clock()
+    if clear_caret:
+      self._typer.set_follow_cursor_index(None)
+
+  def _on_follow_tick(self):
+    if not self._follow_racing or not self._follow_is_active():
+      self._stop_follow_race(clear_caret=not self._follow_is_active())
+      return
+    text = self._doc._match_text or ''
+    if not self._doc._run or not text:
+      return
+    if self._doc.is_paused():
+      return
+    wpm = int(self.S('follow_wpm').get())
+    elapsed = self._follow_elapsed()
+    idx = follow_index(elapsed, wpm, len(text))
+    self._typer.set_follow_cursor_index(idx)
+    user_done = bool(self._doc._run.is_complete())
+    cursor_done = follow_reached_end(elapsed, wpm, len(text))
+    outcome = follow_race_result(user_done, cursor_done)
+    if outcome == 'failure':
+      self._follow_race_outcome = 'failure'
+      self._stop_follow_race(clear_caret=False)
+      self._doc.lose_follow_race()
+    elif outcome == 'success':
+      self._follow_race_outcome = 'success'
+      self._stop_follow_race(clear_caret=False)
+
   def _heatmapStats(self):
     mode = self.S('speed_heatmap_mode').get()
     stats = fetch_speed_stats(self.DB, hist_cutoff=0, stat_type=mode_stat_type(mode))
@@ -1611,21 +1790,37 @@ class TyperWindow(QWidget):
 
   def _on_lesson_started(self):
     self._typer._pin_typing_center = False
+    if self._follow_is_active():
+      self._start_follow_clock()
+      self._follow_racing = True
+      self._follow_race_outcome = None
+      if not self._follow_timer.isActive():
+        self._follow_timer.start()
+      self._on_follow_tick()
 
   def _on_lesson_paused(self):
+    self._pause_follow_clock()
     self._pause_overlay.setGeometry(self._canvas.rect())
     self._pause_overlay.show()
     self._pause_overlay.raise_()
     self._typer.updateStatus()
 
   def _on_lesson_resumed(self):
+    self._resume_follow_clock()
     self._pause_overlay.hide()
     self._typer.updateStatus()
     self._typer.setFocus()
+    if self._follow_is_active() and self._doc.is_running():
+      self._follow_racing = True
+      if not self._follow_timer.isActive():
+        self._follow_timer.start()
 
   def _restart_lesson(self):
     self._pause_overlay.hide()
+    self._stop_follow_race(clear_caret=False)
     self._doc.reset()
+    if self._follow_is_active():
+      self._arm_follow_race()
     self._typer.setFocus()
 
   def _new_lesson(self):
@@ -1679,6 +1874,10 @@ class TyperWindow(QWidget):
     self._prog.setMaximum(max(1, len(text)))
     self._prog.setValue(0)
     self._show_progress_strip()
+    if self._follow_is_active():
+      self._arm_follow_race()
+    else:
+      self._typer.set_follow_cursor_index(None)
 
   def setDefaultText(self):
     log.error("setDefaultText() NOT IMPLEMENTED")
@@ -1748,6 +1947,7 @@ class TyperWindow(QWidget):
 
   def _show_idle_placeholder(self, msg):
     self._pause_overlay.hide()
+    self._stop_follow_race(clear_caret=True)
     self._current_lesson = None
     self._book_meta = None
     self._doc.set_idle_message(msg)
@@ -1877,6 +2077,7 @@ class TyperWindow(QWidget):
       self._polish_mode_btn(btn)
     self._set_improve_submode_ui(self._improve_submode)
     self._refresh_book_btn()
+    self._refresh_follow_footer()
     if self._current_lesson and mode == MODE_CORPUS:
       self._source_lbl.setCursor(Qt.ArrowCursor)
       self._update_source_label(self._current_lesson[1])
@@ -1952,7 +2153,10 @@ class TyperWindow(QWidget):
     self._doc.set_progress_badges(progress_badges_for_run(run, baselines, match_text))
     self._awaiting_next = True
     self._typer.set_awaiting_enter(self._continue_lesson)
-    self.updateLabel(format_progress_html(progress, stats_saved=stats_saved))
+    msg = format_progress_html(progress, stats_saved=stats_saved)
+    if self._follow_race_outcome == 'success':
+      msg = 'Follow mode: success!<br />' + msg
+    self.updateLabel(msg)
 
   def _continue_lesson(self):
     action = self._pending_action
@@ -1988,6 +2192,9 @@ class TyperWindow(QWidget):
       return
     if action == 'book_next':
       self._book.request_lesson(advance_chapter=False)
+    elif action == 'book_retry':
+      # Follow failure: stay on the same chunk (place was not advanced).
+      self._book.request_lesson(advance_chapter=False)
     elif action == 'improve_next':
       self._weakspot.invalidate_cache()
       self._load_improve_lesson()
@@ -2012,7 +2219,55 @@ class TyperWindow(QWidget):
   def typingFailed(self, txt):
     self.updateLabel(txt)
 
+  def typingFollowLost(self, run):
+    """Follow caret reached the end before the typist finished."""
+    self._pause_overlay.hide()
+    self._stop_follow_race(clear_caret=False)
+    self._follow_race_outcome = 'failure'
+    self._show_result_label()
+    self._typer.updateStatus()
+
+    if self._current_lesson is None:
+      log.error("follow lost with no lesson started?")
+      return
+
+    med_char = run.median_timing
+    stats_saved = False
+    if med_char:
+      now = time()
+      textid, srcid, _ = self._current_lesson
+      vals = collect_run_stat_rows(run, med_char, now, srcid)
+      is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
+      write_stats = self._mode not in (MODE_IMPROVE,) and (not is_lesson or self._settings.get('use_lesson_stats'))
+      if write_stats and vals:
+        self.DB.executemany_('''
+        insert into statistic
+        (time,viscosity,w,count,mistakes,type,data,source)
+        values (?,?,?,?,?,?,?,?)
+        ''', vals)
+        self.DB.commit()
+        self.statsChanged.emit()
+        self._refreshHeatmap()
+        stats_saved = True
+
+    # Do not advance book place on failure — retry the same chunk.
+    if self._mode == MODE_BOOK:
+      self._pending_action = 'book_retry'
+    else:
+      self._pending_action = 'normal_next'
+    self._pending_now = None
+    self._pending_review_words = None
+    self._awaiting_next = True
+    self._typer.set_awaiting_enter(self._continue_lesson)
+    note = 'Follow mode: failed — the cursor reached the end first.'
+    if stats_saved:
+      note += '<br />Stats from what you typed were saved.'
+    self.updateLabel(note)
+
   def typingDone(self, run):
+    self._stop_follow_race(clear_caret=False)
+    if self._follow_is_active() and self._follow_race_outcome is None:
+      self._follow_race_outcome = 'success'
     self._show_result_label()
 
     # Various sanity tests.

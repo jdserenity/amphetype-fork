@@ -75,3 +75,21 @@ def follow_race_result(user_complete, cursor_at_end):
   if cursor_at_end:
     return 'failure'
   return None
+
+
+def follow_footer_state(enabled, practice_mode):
+  """UI flags for the follow footer control.
+
+  Preference can stay on while improve greys the control out; returning to
+  corpus/book makes it active again without the user re-clicking.
+  """
+  eligible = follow_eligible(practice_mode)
+  active = follow_active(enabled, practice_mode)
+  return {
+    'eligible': eligible,
+    'active': active,
+    'btn_enabled': eligible,
+    'wpm_visible': active,
+    'btn_active_style': active,
+    'btn_greyed': (not eligible),
+  }
