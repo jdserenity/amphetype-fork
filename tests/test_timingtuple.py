@@ -61,10 +61,12 @@ def test_collect_focus_drill_stat_rows_one_row_per_word():
   rows = collect_focus_drill_stat_rows(
     run, run.median_timing, 99.0, [('word', 'slow'), ('word', 'fast')])
   assert len(rows) == 2
-  by_word = {data: (t, m, tp) for t, _vis, _w, m, tp, data in rows}
+  by_word = {data: (t, c, m, tp) for t, _vis, _w, c, m, tp, data in rows}
   assert set(by_word) == {'slow', 'fast'}
-  assert by_word['slow'][2] == 2
-  assert by_word['fast'][2] == 2
+  assert by_word['slow'][1] == 3  # count
+  assert by_word['fast'][1] == 2
+  assert by_word['slow'][3] == 2  # type word
+  assert by_word['fast'][3] == 2
 
 
 def test_collect_focus_drill_stat_rows_median_across_reps():

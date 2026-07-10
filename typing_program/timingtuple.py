@@ -346,13 +346,13 @@ def collect_run_stat_rows(run, med_char, when, source_id):
 _STAT_KIND = {0: 'char', 1: 'trigram', 2: 'word'}
 
 def collect_focus_drill_stat_rows(run, med_char, when, focus_targets):
-  """One weakspot drill row per focus target in this run; median timing across reps."""
+  """One weakspot drill row per focus target in this run; keep real count/mistakes."""
   want = set(focus_targets)
   rows = []
-  for t, vis, w, _c, m, tp, data, _sid in collect_run_stat_rows(run, med_char, when, 0):
+  for t, vis, w, c, m, tp, data, _sid in collect_run_stat_rows(run, med_char, when, 0):
     kind = _STAT_KIND.get(tp)
     if kind and (kind, data) in want:
-      rows.append((t, vis, w, m, tp, data))
+      rows.append((t, vis, w, c, m, tp, data))
   return rows
 
 # Speedbumps:
