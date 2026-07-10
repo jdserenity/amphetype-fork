@@ -1356,6 +1356,8 @@ class TyperWindow(QWidget):
 
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+    # Always reserve one line of title height so improve canvas matches book/corpus.
+    self._source_lbl.setMinimumHeight(self._source_lbl.fontMetrics().height())
     self._source_lbl.installEventFilter(self)
     self._book_prog_text = ''
 
@@ -1974,7 +1976,8 @@ class TyperWindow(QWidget):
     row = self.DB.fetchone('select name from source where rowid=?', (None,), (srcid,))
     text = format_source_attribution(row[0] if row else '')
     self._source_lbl.setText(text)
-    self._source_lbl.setVisible(bool(text) and self._mode == MODE_CORPUS)
+    # Keep visible even when empty so improve/corpus canvas height stays aligned.
+    self._source_lbl.setVisible(True)
 
   def _update_book_footer(self, meta=None):
     if meta is None:
@@ -1985,7 +1988,7 @@ class TyperWindow(QWidget):
     self._refresh_book_btn()
     book = meta.get('book_name') or ''
     self._source_lbl.setText(format_source_attribution(book))
-    self._source_lbl.setVisible(bool(book))
+    self._source_lbl.setVisible(True)
     self._source_lbl.setCursor(Qt.PointingHandCursor if book else Qt.ArrowCursor)
 
   def _show_book_menu(self):
@@ -2014,7 +2017,8 @@ class TyperWindow(QWidget):
     self._book_meta = None
     self._doc.set_idle_message(msg)
     self._source_lbl.clear()
-    self._source_lbl.setVisible(False)
+    self._source_lbl.setVisible(True)
+    self._source_lbl.setCursor(Qt.ArrowCursor)
     self._typer.setReadOnly(True)
     self._typer._pin_typing_center = False
     self._prog.setValue(0)
@@ -2146,7 +2150,8 @@ class TyperWindow(QWidget):
     elif mode == MODE_BOOK and self._book_meta:
       self._update_book_footer()
     else:
-      self._source_lbl.setVisible(False)
+      self._source_lbl.clear()
+      self._source_lbl.setVisible(True)
       self._source_lbl.setCursor(Qt.ArrowCursor)
     if not load:
       return

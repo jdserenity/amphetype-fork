@@ -910,6 +910,28 @@ def test_typer_canvas_page_differs_from_window_chrome(qapp):
   assert 'background-color: #4a4a4a' in tw.styleSheet().replace('"', '')
 
 
+def test_improve_canvas_height_matches_book_corpus_title_row(qapp):
+  """Improve reserves footer title space so the canvas matches book/corpus height."""
+  import typing_program.mainwindow  # noqa: F401
+  from typing_program.book_mode import MODE_IMPROVE
+  from typing_program.typer import TyperWindow
+
+  tw = TyperWindow()
+  tw.resize(900, 700)
+  tw.show()
+  qapp.processEvents()
+  assert tw._mode == MODE_IMPROVE
+  # Source label stays laid out (empty) so improve does not steal vertical space.
+  assert tw._source_lbl.isVisible()
+  assert tw._source_lbl.minimumHeight() >= tw._source_lbl.fontMetrics().height()
+  h_improve = tw._canvas.height()
+
+  tw._source_lbl.setText('— Pride and Prejudice')
+  tw._source_lbl.setVisible(True)
+  qapp.processEvents()
+  assert tw._canvas.height() == h_improve
+
+
 def test_typer_page_background_survives_main_tab_reparent(qapp):
   """Regression: canvas page fill must still be armed after main-tab reparent."""
   import typing_program.mainwindow as A
