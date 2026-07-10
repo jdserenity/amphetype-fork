@@ -54,10 +54,10 @@ class MainWindow(QMainWindow):
 
     self.quitSc = QShortcut(QKeySequence('Ctrl+Q'), self)
     self.quitSc.activated.connect(QApplication.instance().quit)
-    # Opt/Alt+Cmd/Ctrl+[ ] cycle main toolbar tabs (Ctrl = Cmd on macOS in QKeySequence).
-    self._sc_tab_prev = QShortcut(QKeySequence('Ctrl+Alt+['), self)
+    # Cmd/Ctrl+Shift+[ ] cycle main toolbar tabs (Ctrl = Cmd on macOS in QKeySequence).
+    self._sc_tab_prev = QShortcut(QKeySequence('Ctrl+Shift+['), self)
     self._sc_tab_prev.activated.connect(lambda: self._cycle_main_tab(-1))
-    self._sc_tab_next = QShortcut(QKeySequence('Ctrl+Alt+]'), self)
+    self._sc_tab_next = QShortcut(QKeySequence('Ctrl+Shift+]'), self)
     self._sc_tab_next.activated.connect(lambda: self._cycle_main_tab(1))
 
     tabs = QTabWidget()

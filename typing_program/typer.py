@@ -34,7 +34,8 @@ from typing_program.read_ahead import (
   READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
 )
 from typing_program.block_bkspc import allows_backspace
-from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS
+from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS, should_apply_idle_blank
+from typing_program.typer_focus import should_refocus_typer
 from typing_program.keyboard_nav import cycle_practice_mode
 from typing_program.follow_mode import (
   FOLLOW_CURSOR_COLOR, MAX_FOLLOW_WPM, MIN_FOLLOW_WPM,
@@ -74,6 +75,9 @@ _IMPROVE_BTN_LABEL = 'improve'
 _CORPUS_BTN_LABEL = 'corpus'
 _GENERATING_BTN_LABEL = 'generating…'
 _FOOTER_ITEM_GAP = 8
+# Horizontal pad inside each mode button so spacing is part of the button
+# (layout gaps between widgets show the arrow cursor — jarring).
+_FOOTER_BTN_PAD_X = 4
 _BADGE_FONT_PT = 13
 # Two-layer greys: outer chrome lighter; lesson canvas a step darker (not near-black).
 TYPER_CHROME_COLOR = QColor('#4a4a4a')
@@ -100,8 +104,8 @@ def _footer_btn_style(active=False, greyed=False):
     hover = MODE_BTN_HOVER
   return (
     'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
-    ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
-    'QPushButton:hover { color: %s; }' % (color, hover))
+    ' padding: 0px %dpx; margin: 0; min-width: 0; min-height: 0; }'
+    'QPushButton:hover { color: %s; }' % (color, _FOOTER_BTN_PAD_X, hover))
 
 
 def lesson_completion_action(mode, is_lesson, auto_review, has_review_words, focus_drill=False):
@@ -995,22 +999,43 @@ class TyperWidget(QTextEdit):
     settings('background_color').bind_value(lambda v: configure_transparent_typer(self))
 
     # Blank the mouse pointer after a couple seconds still; show it on move.
+    # Mouse moves land on the viewport (QTextEdit), not TyperWidget — filter them.
     self.setMouseTracking(True)
     self.viewport().setMouseTracking(True)
+    self.viewport().installEventFilter(self)
     self._mouse_cursor_timer = QTimer(self)
     self._mouse_cursor_timer.setSingleShot(True)
     self._mouse_cursor_timer.setInterval(MOUSE_CURSOR_IDLE_MS)
     self._mouse_cursor_timer.timeout.connect(self._hide_idle_mouse_cursor)
     self._mouse_cursor_timer.start()
 
-  def _show_mouse_cursor(self):
+  def _pointer_over_canvas(self):
+    return self.underMouse() or self.viewport().underMouse()
+
+  def _restore_mouse_cursor(self):
     self.unsetCursor()
     self.viewport().unsetCursor()
+
+  def _show_mouse_cursor(self):
+    self._restore_mouse_cursor()
     self._mouse_cursor_timer.start()
 
   def _hide_idle_mouse_cursor(self):
+    # Timer may fire after the pointer already left for the footer.
+    if not should_apply_idle_blank(self._pointer_over_canvas()):
+      return
     self.setCursor(Qt.BlankCursor)
     self.viewport().setCursor(Qt.BlankCursor)
+
+  def eventFilter(self, obj, event):
+    if obj is self.viewport():
+      t = event.type()
+      if t in (QEvent.MouseMove, QEvent.Enter):
+        self._show_mouse_cursor()
+      elif t == QEvent.Leave:
+        self._mouse_cursor_timer.stop()
+        self._restore_mouse_cursor()
+    return super().eventFilter(obj, event)
 
   def mouseMoveEvent(self, e):
     self._show_mouse_cursor()
@@ -1022,8 +1047,7 @@ class TyperWidget(QTextEdit):
 
   def leaveEvent(self, e):
     self._mouse_cursor_timer.stop()
-    self.unsetCursor()
-    self.viewport().unsetCursor()
+    self._restore_mouse_cursor()
     super().leaveEvent(e)
 
   def _typing_region_doc_y_range(self):
@@ -1356,15 +1380,19 @@ class TyperWindow(QWidget):
 
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+    # Book/corpus titles usually wrap to two footer lines and shrink the canvas.
+    # Reserve that height in improve too (Minimum policy — minHeight alone is ignored).
+    self._source_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    self._source_lbl.setMinimumHeight(2 * self._source_lbl.fontMetrics().height())
     self._source_lbl.installEventFilter(self)
     self._book_prog_text = ''
 
     self._mode_btn_style = (
       'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
-      ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
+      ' padding: 0px %dpx; margin: 0; min-width: 0; min-height: 0; }'
       'QPushButton:hover { color: %s; }'
       'QPushButton[activeMode="true"] { color: %s; }' % (
-        MODE_BTN_INACTIVE, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
+        MODE_BTN_INACTIVE, _FOOTER_BTN_PAD_X, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
 
     self._btn_improve = QPushButton(_IMPROVE_BTN_LABEL, flat=True)
     self._btn_book = QPushButton('book', flat=True)
@@ -1382,14 +1410,14 @@ class TyperWindow(QWidget):
     self._follow_wpm_panel = self._make_follow_wpm_panel()
     for b in (self._btn_improve, self._btn_corpus, self._btn_book, self._btn_read_ahead,
               self._btn_read_ahead_level, self._btn_block_bkspc, self._btn_improve_level):
-      b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setStyleSheet(self._mode_btn_style)
+      b.setCursor(Qt.PointingHandCursor)
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       _footer_zero_margins(b)
     for b in (self._btn_heatmap, self._btn_heatmap_kind, self._btn_follow):
-      b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
+      b.setCursor(Qt.PointingHandCursor)
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       _footer_zero_margins(b)
     self._btn_improve.clicked.connect(self._on_improve_click)
@@ -1403,23 +1431,34 @@ class TyperWindow(QWidget):
 
     self._heatmap_legend = make_heatmap_legend()
     self._heatmap_panel = QWidget()
+    self._heatmap_panel.setFocusPolicy(Qt.NoFocus)
     hp_lay = QHBoxLayout(self._heatmap_panel)
     hp_lay.setContentsMargins(0, 0, 0, 0)
-    hp_lay.setSpacing(_FOOTER_ITEM_GAP)
+    hp_lay.setSpacing(0)
     hp_lay.addWidget(self._btn_heatmap_kind, 0)
     hp_lay.addWidget(self._heatmap_legend, 0)
 
-    mode_row = QWidget()
-    mode_lay = QHBoxLayout(mode_row)
-    mode_lay.setContentsMargins(0, 0, 0, 0)
-    mode_lay.setSpacing(_FOOTER_ITEM_GAP)
+    # Spacing lives in button padding (not layout gaps) so the hand cursor
+    # never drops to arrow between mode labels.
+    self._footer_controls = QWidget()
+    self._footer_controls.setFocusPolicy(Qt.NoFocus)
+    controls_lay = QHBoxLayout(self._footer_controls)
+    controls_lay.setContentsMargins(0, 0, 0, 0)
+    controls_lay.setSpacing(0)
     self._heatmap_panel.setVisible(False)
     self._follow_wpm_panel.setVisible(False)
-    # Footer: improve · corpus · book · read ahead · Block ⌫ · heatmap · follow
     for w in (self._btn_improve, self._btn_improve_level, self._btn_corpus, self._btn_book,
               self._btn_read_ahead, self._btn_read_ahead_level, self._btn_block_bkspc,
               self._btn_heatmap, self._heatmap_panel, self._btn_follow, self._follow_wpm_panel):
-      mode_lay.addWidget(w)
+      controls_lay.addWidget(w)
+
+    mode_row = QWidget()
+    mode_row.setFocusPolicy(Qt.NoFocus)
+    mode_lay = QHBoxLayout(mode_row)
+    mode_lay.setContentsMargins(0, 0, 0, 0)
+    mode_lay.setSpacing(_FOOTER_ITEM_GAP)
+    # Footer: [improve · corpus · … · follow] · stretch · source title
+    mode_lay.addWidget(self._footer_controls, 0)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
 
@@ -1454,6 +1493,56 @@ class TyperWindow(QWidget):
     self._apply_read_ahead_from_settings()
     self._refresh_follow_footer()
     self._install_keyboard_nav()
+    self._install_typer_focus_guard()
+
+  def _install_typer_focus_guard(self):
+    """Lesson keeps keyboard focus; only the follow WPM box may steal it."""
+    for w in (self, self._canvas, self._label, self._prog, self._progw,
+              self._source_lbl, self._heatmap_legend, self._heatmap_panel,
+              self._follow_wpm_panel):
+      w.setFocusPolicy(Qt.NoFocus)
+    # Child timer dies with this widget — avoids singleShot callbacks after teardown.
+    self._typer_refocus_timer = QTimer(self)
+    self._typer_refocus_timer.setSingleShot(True)
+    self._typer_refocus_timer.timeout.connect(self._ensure_typer_focus)
+    app = QApplication.instance()
+    if app is None:
+      return
+    slot = self._on_app_focus_changed
+    app.focusChanged.connect(slot)
+    def _disconnect(*_args):
+      try:
+        app.focusChanged.disconnect(slot)
+      except (TypeError, RuntimeError):
+        pass
+    self.destroyed.connect(_disconnect)
+
+  def _focus_inside_typer_window(self, widget):
+    return widget is not None and (widget is self or self.isAncestorOf(widget))
+
+  def _on_app_focus_changed(self, _old, new):
+    try:
+      visible = self.isVisible()
+      inside = self._focus_inside_typer_window(new)
+      edit = getattr(self, '_follow_wpm_edit', None)
+      typer = self._typer
+    except RuntimeError:
+      return  # TyperWindow already destroyed (app focusChanged during teardown)
+    if not should_refocus_typer(new, visible, inside, typer, edit):
+      return
+    # Defer so button clicks finish before we reclaim focus.
+    self._typer_refocus_timer.start(0)
+
+  def _ensure_typer_focus(self):
+    try:
+      edit = getattr(self, '_follow_wpm_edit', None)
+      if edit is not None and edit.hasFocus():
+        return
+      if not self.isVisible():
+        return
+      self._typer.setFocus(Qt.OtherFocusReason)
+    except RuntimeError:
+      return
 
   def _install_keyboard_nav(self):
     """Cmd/Ctrl+Opt/Alt+←→ cycle practice mode. Tab cycles submode (TyperWidget).
@@ -1508,6 +1597,7 @@ class TyperWindow(QWidget):
       self._btn_improve_level.setStyleSheet(self._mode_btn_style)
       self._btn_improve_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_improve_level)
+      self._btn_improve_level.setCursor(Qt.PointingHandCursor)
 
   def _load_improve_lesson(self):
     # Drop empty oblivion (and any other unavailable saved index) before loading.
@@ -1565,12 +1655,14 @@ class TyperWindow(QWidget):
     self._btn_read_ahead.setStyleSheet(self._mode_btn_style)
     self._btn_read_ahead.setProperty('activeMode', enabled)
     self._polish_mode_btn(self._btn_read_ahead)
+    self._btn_read_ahead.setCursor(Qt.PointingHandCursor)
     self._btn_read_ahead_level.setText(READ_AHEAD_LEVEL_LABELS[level])
     self._btn_read_ahead_level.setVisible(enabled)
     if enabled:
       self._btn_read_ahead_level.setStyleSheet(self._mode_btn_style)
       self._btn_read_ahead_level.setProperty('activeMode', True)
       self._polish_mode_btn(self._btn_read_ahead_level)
+      self._btn_read_ahead_level.setCursor(Qt.PointingHandCursor)
     if refresh_doc:
       self._doc.set_read_ahead_mode(document_read_ahead_mode(enabled, level))
 
@@ -1582,6 +1674,7 @@ class TyperWindow(QWidget):
     self._btn_block_bkspc.setStyleSheet(self._mode_btn_style)
     self._btn_block_bkspc.setProperty('activeMode', on)
     self._polish_mode_btn(self._btn_block_bkspc)
+    self._btn_block_bkspc.setCursor(Qt.PointingHandCursor)
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
@@ -1595,6 +1688,7 @@ class TyperWindow(QWidget):
 
   def _style_heatmap_footer_btn(self, btn, on):
     btn.setStyleSheet(_footer_btn_style(on))
+    btn.setCursor(Qt.PointingHandCursor)
 
   def _onHeatmapSetting(self, *_):
     on = bool(self.S('speed_heatmap').get())
@@ -1616,13 +1710,16 @@ class TyperWindow(QWidget):
     lay = QHBoxLayout(panel)
     lay.setContentsMargins(0, 0, 0, 0)
     lay.setSpacing(2)
-    btn_style = _footer_btn_style(active=True)
+    btn_style = (
+      'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
+      ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
+      'QPushButton:hover { color: %s; }' % (MODE_BTN_ACTIVE, MODE_BTN_HOVER))
     self._follow_wpm_down = QPushButton('−', flat=True)
     self._follow_wpm_up = QPushButton('+', flat=True)
     for b in (self._follow_wpm_down, self._follow_wpm_up):
-      b.setCursor(Qt.PointingHandCursor)
       b.setFocusPolicy(Qt.NoFocus)
       b.setStyleSheet(btn_style)
+      b.setCursor(Qt.PointingHandCursor)
       b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
       b.setFixedWidth(14)
       _footer_zero_margins(b)
@@ -1688,9 +1785,9 @@ class TyperWindow(QWidget):
     enabled = bool(self.S('follow_mode').get())
     st = follow_footer_state(enabled, self._mode)
     self._btn_follow.setEnabled(st['btn_enabled'])
-    self._btn_follow.setCursor(Qt.PointingHandCursor if st['btn_enabled'] else Qt.ArrowCursor)
     self._btn_follow.setStyleSheet(
       _footer_btn_style(active=st['btn_active_style'], greyed=st['btn_greyed']))
+    self._btn_follow.setCursor(Qt.PointingHandCursor if st['btn_enabled'] else Qt.ArrowCursor)
     self._follow_wpm_panel.setVisible(st['wpm_visible'])
     if st['active']:
       self._arm_follow_race()
@@ -1974,7 +2071,8 @@ class TyperWindow(QWidget):
     row = self.DB.fetchone('select name from source where rowid=?', (None,), (srcid,))
     text = format_source_attribution(row[0] if row else '')
     self._source_lbl.setText(text)
-    self._source_lbl.setVisible(bool(text) and self._mode == MODE_CORPUS)
+    # Keep visible even when empty so improve/corpus canvas height stays aligned.
+    self._source_lbl.setVisible(True)
 
   def _update_book_footer(self, meta=None):
     if meta is None:
@@ -1985,7 +2083,7 @@ class TyperWindow(QWidget):
     self._refresh_book_btn()
     book = meta.get('book_name') or ''
     self._source_lbl.setText(format_source_attribution(book))
-    self._source_lbl.setVisible(bool(book))
+    self._source_lbl.setVisible(True)
     self._source_lbl.setCursor(Qt.PointingHandCursor if book else Qt.ArrowCursor)
 
   def _show_book_menu(self):
@@ -2014,7 +2112,8 @@ class TyperWindow(QWidget):
     self._book_meta = None
     self._doc.set_idle_message(msg)
     self._source_lbl.clear()
-    self._source_lbl.setVisible(False)
+    self._source_lbl.setVisible(True)
+    self._source_lbl.setCursor(Qt.ArrowCursor)
     self._typer.setReadOnly(True)
     self._typer._pin_typing_center = False
     self._prog.setValue(0)
@@ -2137,6 +2236,7 @@ class TyperWindow(QWidget):
       btn.setStyleSheet(self._mode_btn_style)
       btn.setProperty('activeMode', mode == m)
       self._polish_mode_btn(btn)
+      btn.setCursor(Qt.PointingHandCursor)
     self._set_improve_submode_ui(self._improve_submode)
     self._refresh_book_btn()
     self._refresh_follow_footer()
@@ -2146,7 +2246,8 @@ class TyperWindow(QWidget):
     elif mode == MODE_BOOK and self._book_meta:
       self._update_book_footer()
     else:
-      self._source_lbl.setVisible(False)
+      self._source_lbl.clear()
+      self._source_lbl.setVisible(True)
       self._source_lbl.setCursor(Qt.ArrowCursor)
     if not load:
       return

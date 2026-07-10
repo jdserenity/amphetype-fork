@@ -29,3 +29,27 @@ Rules:
 ## Follow mode uses its own race clock
 
 Lesson runs often cold-start with `RunStats.started is None` until the run is fixed up at the end. Follow mode therefore keeps a separate pause-aware clock on `TyperWindow` (`_follow_clock_*`) instead of reading `run.active_elapsed()` for caret position.
+
+## Footer title height needs Minimum size policy
+
+Reserving space for the book/corpus source title in improve mode: `QLabel.setMinimumHeight(2 * fontMetrics().height())` alone does **not** expand the footer `QHBoxLayout` row when the label is empty — the canvas stays tall. Also set `QSizePolicy.Expanding, QSizePolicy.Minimum` (or `setFixedHeight`) so the row actually grows and the canvas matches book/corpus.
+
+## Trigram gibberish: collapse boundary spaces
+
+Weak trigrams often start or end with a space (`"he "`, `" th"`). Naively joining them with another separator space produces `  ` runs that feel broken to type. `build_trigram_gibberish_lesson` must merge boundary spaces so the lesson never has two spaces in a row (middle spaces inside a trigram like `"e h"` stay as a single space).
+
+## Focus drills: plain shuffle, repeats OK
+
+Focus-drill ordering should be a true shuffle of the equal-weight copies — do not smooth away adjacent repeats or A B A B patterns. Anti-repeat interleave made drills feel less random, which is the opposite of what we want here. (`_interleave` may still smooth normal/trigram lessons.)
+
+## Idle cursor: filter the QTextEdit viewport
+
+`TyperWidget.mouseMoveEvent` does not see most moves — they go to the viewport. Without `viewport().installEventFilter(...)`, the idle-hide timer never resets while the user is moving, so the pointer blanks mid-motion. Also only apply `BlankCursor` when the pointer is still over the canvas (`should_apply_idle_blank`).
+
+## Footer hand cursor: setCursor on buttons, spacing via padding
+
+Qt stylesheets here do not support `cursor:` (spam only). Use `setCursor(PointingHandCursor)` on each mode button. Do **not** put space between buttons in the layout — that dead gap shows the arrow. Put horizontal padding on the buttons instead (`_FOOTER_BTN_PAD_X`) with layout spacing 0 so the hand stays continuous between labels.
+
+## Typer focus: only follow WPM may steal the keyboard
+
+Users must never need to click the lesson to start typing again after using footer controls. Keep focus on `TyperWidget` via `typer_focus.should_refocus_typer` + `QApplication.focusChanged`. The follow-mode WPM line edit is the only in-Typer exception.

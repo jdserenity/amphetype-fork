@@ -39,18 +39,15 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 
 | Tab | Purpose |
 |-----|---------|
-
-| **Typer** | Practice. Modes: **improve** (weak spots / focus drills), **corpus** (random imported text), **book** (chapter through a novel). Footer extras: read ahead, **Block ⌫**, heatmap, **follow** (corpus/book only — race a moving caret at a set WPM). |
-
+| **Typer** | Practice. Modes: **improve** (weak spots / focus drills), **corpus** (random imported text), **book** (chapter through a novel). Footer extras: read ahead, **Block ⌫**, heatmap, **follow** (corpus/book only — race a moving caret at a set WPM). You can always type without clicking back into the lesson; the only exception is editing the follow WPM number. |
 | **Performance Analysis** | Ranked characters / trigrams / words; progress card (perfect rate, practice time); columns include corpus / drill / perfect; drill or find a target in corpus. |
-
 | **Preferences** | Font, sounds, thresholds; typer options; import books from Project Gutenberg. |
 
 **Improve** builds practice from your worst items. Submodes: **normal** (readable weakspot mix), **trigrams** (raw 3-character chunks only — looks like alien gibberish), then **oblivion / slowest / hesitant / damage** (focus drills). Each focus drill pulls from your 20 worst words in that category and randomly picks 5 (or fewer if you have not typed 20 yet). **Oblivion** only appears in the cycle when you actually have words that slow — under the oblivion speed line. Words only count after you’ve typed them enough times to show up in Performance Analysis (default: at least twice). Finishing an auto focus drill loads a **new** random set; drills started from Performance Analysis keep your chosen targets. Focus-drill length is set in Preferences → General (under the normal lesson size fields).
 
 **Cold start:** opening the app always lands on Typer in **improve · normal**, not whatever mode you left last time.
 
-**Keyboard (macOS):** **Tab** cycles improve submode (when you’re in improve). **⌘⌥← / ⌘⌥→** cycle practice mode (improve · corpus · book). **⌥⌘[ / ⌥⌘]** cycle the top tabs (Typer / Performance Analysis / Preferences).
+**Keyboard (macOS):** **Tab** cycles improve submode (when you’re in improve). **⌘⌥← / ⌘⌥→** cycle practice mode (improve · corpus · book). **⌘⇧[ / ⌘⇧]** cycle the top tabs (Typer / Performance Analysis / Preferences).
 
 **Book place:** finishing a chunk always saves where you are (chapter + chunk). Reopening the book mode resumes from that place — not only after you finish a whole chapter.
 
