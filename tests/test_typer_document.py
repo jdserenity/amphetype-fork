@@ -793,14 +793,18 @@ def test_show_idle_placeholder_uses_canvas_not_label(qapp):
   w._typer = MagicMock()
   w._prog_layout = MagicMock()
   w._prog = MagicMock()
+  w._progw = MagicMock()
   w._label = QLabel()
   w._awaiting_next = False
   w._current_lesson = ('x', 1, 'text')
   w._book_meta = {}
+  w._stop_follow_race = MagicMock()
+  w.S = {'show_progress': True}
+  w.updateLabel = MagicMock()
 
   w._show_idle_placeholder(BOOK_EMPTY_LABEL)
   assert w._doc.toPlainText() == BOOK_EMPTY_LABEL
-  assert w._label.text() == ''
+  w.updateLabel.assert_called_once_with()
 
 
 def test_corpus_click_while_active_fetches_new_text(qapp):
@@ -833,11 +837,16 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
   tw = TyperWindow()
   mode_row = tw.layout().itemAt(2).widget()
   lay = mode_row.layout()
-  # improve, improve_level, corpus, book — then extras
+  # improve, improve_level, corpus, book — then extras — heatmap panel — follow + wpm
   assert lay.itemAt(0).widget() is tw._btn_improve
   assert lay.itemAt(1).widget() is tw._btn_improve_level
   assert lay.itemAt(2).widget() is tw._btn_corpus
   assert lay.itemAt(3).widget() is tw._btn_book
+  # … read ahead, level, Block ⌫, heatmap, heatmap_panel, follow, follow_wpm
+  assert lay.itemAt(7).widget() is tw._btn_heatmap
+  assert lay.itemAt(8).widget() is tw._heatmap_panel
+  assert lay.itemAt(9).widget() is tw._btn_follow
+  assert lay.itemAt(10).widget() is tw._follow_wpm
 
 
 def test_inactive_mode_buttons_use_rgb_140(qapp):

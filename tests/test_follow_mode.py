@@ -63,3 +63,116 @@ def test_follow_race_result_success_failure_tie():
   assert follow_race_result(True, False) == 'success'
   assert follow_race_result(False, True) == 'failure'
   assert follow_race_result(True, True) == 'success'  # tie → typist
+
+
+def test_follow_footer_state_greys_in_improve_keeps_pref():
+  from typing_program.follow_mode import follow_footer_state
+  # On in corpus → active + WPM box
+  on_corpus = follow_footer_state(True, MODE_CORPUS)
+  assert on_corpus['active'] and on_corpus['wpm_visible'] and on_corpus['btn_enabled']
+  assert not on_corpus['btn_greyed']
+  # Same pref in improve → greyed, not active, no WPM box (pref still "on")
+  on_improve = follow_footer_state(True, MODE_IMPROVE)
+  assert not on_improve['active'] and not on_improve['wpm_visible']
+  assert on_improve['btn_greyed'] and not on_improve['btn_enabled']
+  # Back to book → active again without re-toggling
+  on_book = follow_footer_state(True, MODE_BOOK)
+  assert on_book['active'] and on_book['wpm_visible']
+  # Never on → eligible mode does not auto-enable
+  off_corpus = follow_footer_state(False, MODE_CORPUS)
+  assert not off_corpus['active'] and not off_corpus['wpm_visible']
+  assert off_corpus['btn_enabled']
+
+
+def test_runstats_active_elapsed_ignores_pause():
+  from time import sleep
+  from typing_program import timer
+  from typing_program.timingtuple import RunStats
+  run = RunStats.make('ab', started=timer())
+  assert run.started is not None
+  sleep(0.05)
+  e1 = run.active_elapsed()
+  assert e1 >= 0.04
+  run.pause()
+  sleep(0.05)
+  e2 = run.active_elapsed()
+  assert abs(e2 - e1) < 0.03  # pause freezes elapsed
+  run.resume()
+  sleep(0.05)
+  e3 = run.active_elapsed()
+  assert e3 > e2 + 0.03
+
+
+def test_lose_follow_race_locks_input(qapp):
+  from PyQt5.QtGui import QFont
+  from typing_program.typer import LessonDocument
+  doc = LessonDocument(QFont('Arial', 12))
+  lost = []
+  doc.follow_lost.connect(lambda r: lost.append(r))
+  doc.set_text('hello')
+  doc.insert('h')
+  assert doc.is_running()
+  run = doc.lose_follow_race()
+  assert run is not None
+  assert lost == [run]
+  assert doc.is_finished()
+  assert not doc.is_running()
+  idx = doc._run.index
+  doc.insert('e')  # ignored — race already lost
+  assert doc._run.index == idx
+  assert doc.lose_follow_race() is None  # idempotent
+
+
+def test_follow_footer_greys_in_improve_and_restores(qapp):
+  """Pref stays on across improve; control greys out, then lights up again in corpus."""
+  import typing_program.mainwindow  # noqa: F401
+  from typing_program.book_mode import MODE_BOOK, MODE_CORPUS, MODE_IMPROVE
+  from typing_program.typer import MODE_BTN_GREYED, TyperWindow
+
+  tw = TyperWindow()
+  tw.S('follow_mode').set(False)  # isolate from other tests / saved prefs
+  tw._refresh_follow_footer()
+  # Never on at cold start (improve) — greyed because ineligible, WPM hidden
+  assert tw._mode == MODE_IMPROVE
+  assert not tw.S('follow_mode').get()
+  assert not tw._btn_follow.isEnabled()
+  assert tw._follow_wpm.isHidden()
+
+  tw.set_practice_mode(MODE_CORPUS)
+  assert tw._btn_follow.isEnabled()
+  assert tw._follow_wpm.isHidden()  # still off
+
+  tw.S('follow_mode').set(True)
+  assert not tw._follow_wpm.isHidden()
+  assert tw._btn_follow.isEnabled()
+
+  tw.set_practice_mode(MODE_IMPROVE)
+  assert bool(tw.S('follow_mode').get()) is True  # pref kept
+  assert not tw._btn_follow.isEnabled()
+  assert tw._follow_wpm.isHidden()
+  assert MODE_BTN_GREYED in tw._btn_follow.styleSheet()
+
+  tw.set_practice_mode(MODE_BOOK)
+  assert bool(tw.S('follow_mode').get()) is True
+  assert tw._btn_follow.isEnabled()
+  assert not tw._follow_wpm.isHidden()
+  tw.S('follow_mode').set(False)
+
+
+def test_follow_footer_state_greys_in_improve_keeps_pref():
+  from typing_program.follow_mode import follow_footer_state
+  # On in corpus → active + WPM box
+  on_corpus = follow_footer_state(True, MODE_CORPUS)
+  assert on_corpus['active'] and on_corpus['wpm_visible'] and on_corpus['btn_enabled']
+  assert not on_corpus['btn_greyed']
+  # Same pref in improve → greyed, not active, no WPM box (pref still "on")
+  on_improve = follow_footer_state(True, MODE_IMPROVE)
+  assert not on_improve['active'] and not on_improve['wpm_visible']
+  assert on_improve['btn_greyed'] and not on_improve['btn_enabled']
+  # Back to book → active again without re-toggling
+  on_book = follow_footer_state(True, MODE_BOOK)
+  assert on_book['active'] and on_book['wpm_visible']
+  # Never on → eligible mode does not auto-enable
+  off_corpus = follow_footer_state(False, MODE_CORPUS)
+  assert not off_corpus['active'] and not off_corpus['wpm_visible']
+  assert off_corpus['btn_enabled']
