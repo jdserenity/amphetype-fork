@@ -1,20 +1,26 @@
 """Shared statistic aggregation for Analysis and weakspot selection.
 
-Drill rows (<Weakspot>, count=0) update median time/hesitation but not count,
-mistakes, or damage frequency. Drill mistakes are tracked separately.
+Corpus rows (non-discounted sources) grow the known-word floor and damage.
+Drill rows (<Weakspot>, discounted) keep real sample counts/mistakes so they
+raise perfect rate, but never unlock new known words on their own.
+Legacy drill rows with count=0 still count as one drill sample each.
 """
 
 # Legacy: omit discounted sources entirely (heatmap, etc.).
 STAT_OMIT_DISCOUNTED = "(st.source is null or src.discount is null)"
 
 _STAT_IS_COUNTED = "(coalesce(src.discount, 0) = 0)"
+# Discounted samples: prefer real count; legacy count=0 rows count as one sample.
+_DRILL_SAMPLES = f"(case when not {_STAT_IS_COUNTED} then (case when st.count > 0 then st.count else 1 end) else 0 end)"
+_DRILL_MISTAKES = f"(case when not {_STAT_IS_COUNTED} then st.mistakes else 0 end)"
 
 STATS_AGG_SUBQUERY = f"""select data,
   agg_median(time) as time,
   agg_median(viscosity) as viscosity,
-  sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) as total,
-  sum(case when {_STAT_IS_COUNTED} then st.mistakes else 0 end) as mistakes,
-  sum(case when not {_STAT_IS_COUNTED} and st.count = 0 then 1 else 0 end) as drilled
+  sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) as corpus,
+  sum(case when {_STAT_IS_COUNTED} then st.mistakes else 0 end) as corpus_mistakes,
+  sum({_DRILL_SAMPLES}) as drilled,
+  sum({_DRILL_MISTAKES}) as drill_mistakes
   from statistic as st
   left join source as src on st.source = src.rowid
   where st.w >= ? and st.type = ?
@@ -29,18 +35,21 @@ RAW_TARGETS_SQL = f"""select data,
   where st.w >= ? and st.type = ?
   group by data having sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) >= ?"""
 
+# Row: data, wpm, viscosity, corpus, drilled, perfect, damage. Known floor = corpus only.
 ANALYSIS_OUTER_SQL = """select data, 12.0/time as wpm,
-  viscosity, total, total - mistakes as perfect, drilled,
-  total*time*time*(1.0+mistakes/total) as damage
+  viscosity, corpus, drilled,
+  (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
+  corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where total >= ?
+  where corpus >= ?
   order by %s limit %d"""
 
 ANALYSIS_SEARCH_OUTER_SQL = """select data, 12.0/time as wpm,
-  viscosity, total, total - mistakes as perfect, drilled,
-  total*time*time*(1.0+mistakes/total) as damage
+  viscosity, corpus, drilled,
+  (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
+  corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where total >= ? and %s
+  where corpus >= ? and %s
   order by %s"""
 
 # Heatmap WPM uses the same median-time pool as Analysis; damage uses counted rows only.
@@ -84,7 +93,7 @@ SESSION_WPM_TOTALS_SQL = """select sum(char_count), sum(duration)
 # w >= 0 includes every statistic/result row (all-time).
 ALL_TIME_HIST = 0
 
-# Session WPM stays hidden until this many corpus/book/improve-normal lessons finish.
+# Session progress stays hidden until this many corpus/book/improve-normal lessons finish.
 WPM_GATE_MIN_LESSONS = 10
 
 WPM_GATE_LESSONS_SQL = """select count(*) from result r
@@ -101,10 +110,11 @@ WPM_GATE_FIRST_LESSON_SQL = """select r.char_count, r.duration from result r
 
 # round(..., 1) matches Performance Analysis "%.1f wpm" so a displayed 32.0 is never oblivion.
 OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
-  viscosity, total, total - mistakes as perfect, drilled,
-  total*time*time*(1.0+mistakes/total) as damage
+  viscosity, corpus, drilled,
+  (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
+  corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where total >= ? and round(12.0/time, 1) < ?
+  where corpus >= ? and round(12.0/time, 1) < ?
   order by wpm asc"""
 
 SPEED_STATS_ALL_TIME_SQL = f"""select data,
@@ -136,8 +146,9 @@ _LEGACY_ANALYSIS_ORDER = {
   'perfect desc': 'perfect_pct desc',
 }
 _ANALYSIS_ORDER_SQL = {
-  'perfect_pct asc': 'cast(total - mistakes as real) / total asc, total asc',
-  'perfect_pct desc': 'cast(total - mistakes as real) / total desc, total desc',
+  'perfect_pct asc': 'cast(perfect as real) / nullif(corpus + drilled, 0) asc, corpus asc',
+  'perfect_pct desc': 'cast(perfect as real) / nullif(corpus + drilled, 0) desc, corpus desc',
+  'total desc': 'corpus desc',
 }
 
 
@@ -231,6 +242,34 @@ def fetch_word_counted_totals(db, words, hist_cutoff=ALL_TIME_HIST):
   return {data: int(total or 0) for data, total in rows}
 
 
+def fetch_word_perfect_baselines(db, words, hist_cutoff=ALL_TIME_HIST):
+  """Prior perfect/(corpus+drill) per word for lesson-end perfect-rate progress."""
+  if not words:
+    return {}
+  qs = ','.join('?' * len(words))
+  rows = db.execute(
+    '''select st.data,
+      sum(case when %s then st.count else 0 end),
+      sum(case when %s then st.mistakes else 0 end),
+      sum(%s),
+      sum(%s)
+    from statistic as st
+    left join source as src on st.source = src.rowid
+    where st.w >= ? and st.type = ? and st.data in (%s)
+    group by st.data''' % (_STAT_IS_COUNTED, _STAT_IS_COUNTED, _DRILL_SAMPLES, _DRILL_MISTAKES, qs),
+    (hist_cutoff, STAT_TYPE_WORD, *words)).fetchall()
+  out = {}
+  for data, corpus, c_miss, drilled, d_miss in rows:
+    corpus = int(corpus or 0)
+    drilled = int(drilled or 0)
+    total = corpus + drilled
+    if total <= 0:
+      continue
+    perfect = (corpus - int(c_miss or 0)) + max(0, drilled - int(d_miss or 0))
+    out[data] = {'count': total, 'perfect': max(0, perfect), 'corpus': corpus}
+  return out
+
+
 def aggregate_session_wpm(total_chars, total_seconds):
   """Session WPM across finished lessons: total chars / total typing seconds * (60/5)."""
   if not total_chars or not total_seconds:
@@ -260,26 +299,71 @@ def wpm_gate_remaining(db):
   return max(0, WPM_GATE_MIN_LESSONS - count_wpm_gate_lessons(db))
 
 
-def format_wpm_gate_label(db):
+def format_progress_gate_label(db):
+  """Placeholder until enough qualifying lessons to show perfect-rate since start."""
   if wpm_gate_complete(db):
     return None
   left = wpm_gate_remaining(db)
   if left == WPM_GATE_MIN_LESSONS:
-    return 'Complete %d lessons to calculate WPM' % WPM_GATE_MIN_LESSONS
-  return 'Complete %d more lesson%s to calculate WPM' % (left, '' if left == 1 else 's')
+    return 'Complete %d lessons to calculate perfect rate' % WPM_GATE_MIN_LESSONS
+  return 'Complete %d more lesson%s to calculate perfect rate' % (left, '' if left == 1 else 's')
+
+
+def format_wpm_gate_label(db):
+  """Alias for format_progress_gate_label (legacy name)."""
+  return format_progress_gate_label(db)
+
+
+OVERALL_WORD_PERFECT_SQL = """select
+  sum((corpus - corpus_mistakes) + max(0, drilled - drill_mistakes)),
+  sum(corpus + drilled)
+  from (%s)
+  where corpus >= ?"""
+
+
+def overall_word_perfect_rate(db, hist_cutoff=ALL_TIME_HIST, min_count=WORD_ANALYSIS_MIN_COUNT):
+  """Sample-weighted perfect%% on known words: perfect / (corpus + drill) * 100."""
+  floor = analysis_min_count(STAT_TYPE_WORD, min_count)
+  row = db.execute(
+    OVERALL_WORD_PERFECT_SQL % STATS_AGG_SUBQUERY,
+    (hist_cutoff, STAT_TYPE_WORD, floor)).fetchone()
+  if not row or not row[1]:
+    return None
+  perfect, total = row[0] or 0, row[1]
+  return 100.0 * float(perfect) / float(total)
+
+
+def ensure_perfect_rate_baseline(db, hist_cutoff=ALL_TIME_HIST):
+  """Snapshot overall perfect rate into app_meta the first time the lesson gate opens."""
+  from typing_program.app_meta import (
+    PERFECT_RATE_BASELINE_KEY, ensure_app_meta, get_app_meta_float, set_app_meta_float)
+  if not wpm_gate_complete(db):
+    return None
+  ensure_app_meta(db)
+  existing = get_app_meta_float(db, PERFECT_RATE_BASELINE_KEY, None)
+  if existing is not None:
+    return existing
+  rate = overall_word_perfect_rate(db, hist_cutoff)
+  if rate is None:
+    return None
+  set_app_meta_float(db, PERFECT_RATE_BASELINE_KEY, rate)
+  return rate
+
+
+def format_perfect_rate_label(db, hist_cutoff=ALL_TIME_HIST):
+  """Performance Analysis secondary: current sample-weighted word perfect rate."""
+  gate = format_progress_gate_label(db)
+  if gate:
+    return gate
+  rate = overall_word_perfect_rate(db, hist_cutoff)
+  if rate is None:
+    return 'Perfect rate: —'
+  return 'Perfect rate: %.1f%%' % rate
 
 
 def format_avg_wpm_label(db, hist_cutoff=ALL_TIME_HIST):
-  """Performance Analysis header: hide Avg WPM until enough lessons; then use all saved runs."""
-  gate = format_wpm_gate_label(db)
-  if gate:
-    return gate
-  avg = aggregate_session_wpm_from_results(db, hist_cutoff)
-  if avg is None:
-    return 'Avg WPM: —'
-  from typing_program.wpm_percentile import format_adult_top_percent_label
-  rank_lbl = format_adult_top_percent_label(avg)
-  return 'Avg WPM: %.1f · %s' % (avg, rank_lbl) if rank_lbl else 'Avg WPM: %.1f' % avg
+  """Legacy alias — progress card now uses format_perfect_rate_label."""
+  return format_perfect_rate_label(db, hist_cutoff)
 
 
 def first_qualifying_session_wpm(db):
@@ -299,6 +383,28 @@ def session_wpm_since_start_gain(db, hist_cutoff=ALL_TIME_HIST):
   if current is None or first is None:
     return None
   return int(round(current - first))
+
+
+def perfect_rate_since_start_gain(db, hist_cutoff=ALL_TIME_HIST):
+  """Current overall word perfect rate minus gated snapshot. None until gate opens."""
+  if not wpm_gate_complete(db):
+    return None
+  baseline = ensure_perfect_rate_baseline(db, hist_cutoff)
+  current = overall_word_perfect_rate(db, hist_cutoff)
+  if baseline is None or current is None:
+    return None
+  return round(current - baseline, 1)
+
+
+def format_perfect_rate_gain(gain):
+  """Hero text for perfect-rate since-start delta (one decimal)."""
+  if gain is None:
+    return '—'
+  if gain > 0:
+    return '+%.1f%%' % gain
+  if gain < 0:
+    return '%.1f%%' % gain
+  return '+0.0%'
 
 
 def lesson_qualifies_for_wpm_gate(mode, improve_submode=0, focus_drill=False):

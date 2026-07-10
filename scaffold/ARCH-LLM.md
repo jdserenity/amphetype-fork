@@ -84,7 +84,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 - **Heatmap** (`speed_heatmap.py`): off default; modes words/trigrams/chars; all-time stats; prefs `typer/speed_heatmap`, `typer/speed_heatmap_mode`.
 - **Follow** (`follow_mode.py`): off default; **corpus/book only** (not improve). Footer toggle after heatmap; when on, minimal WPM stepper beside it (arrows ±1 or type; live, no Enter; Enter/Esc unfocus). Prefs: `typer/follow_mode`, `typer/follow_wpm` (default 70, persists). Preference stays on across mode switches; in improve the control is greyed/disabled immediately; returning to corpus/book restores active follow if it was on; if never on, eligible modes do not auto-enable. Race: a second caret advances through the lesson at the set WPM (5 chars = 1 word); starts with the run (first keystroke); pauses with ESC. Finish before the caret → “You beat the cursor!” (cyan). Caret first → “The cursor beat you… 👎” (heatmap red). Either way: normal progress stats; **book place still advances** on failure.
 - Sounds: `typing_sounds.py`; prefs `typer/typing_sound`, `typing_error_sound`, `typing_sound_volume`.
-- Word progress: `word_progress.py` — green + badges when median improves; orange = **new common words** that cross the PA min-count pool this run (`analysis_min_count` / `WORD_ANALYSIS_MIN_COUNT`). Message: “You typed N new common word(s)!”. **Improve modes (all submodes including normal) never show this** and never gather counted word samples (`count=0` on discounted `<Weakspot>`).
+- Word progress: `word_progress.py` — green highlight when a known word’s perfect rate rises this run (no mistype + prior corpus/drill samples); orange = **new common words** that cross the PA min-count **corpus** pool this run. Message: “You improved perfect rate on N out of M words”. **Improve modes never show new-common** (`include_new_common=False`); improve writes discounted rows with real counts so perfect rate can rise without minting known words.
 - Book: full chapter grey inactive; active chunk sized by min/max chars; soft newlines auto-skip; para ⏎ match invisible; vertical center when scroll needed.
 - `limit_backspace` (typer pref): separate — won’t back over correct text when set.
 
@@ -94,9 +94,9 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 - End of lesson: `collect_run_stat_rows` — each completed **occurrence** is one sample; same spelling in one lesson → one row with `count` = samples (e.g. two “the” → count 2).
 - `RunStats.pop_char` on backspace: moves index; does **not** clear mistakes/first timings → retype of same slot still one sample, mistakes accumulate.
 - Idle: `IDLE_THRESHOLD = 3.0` s in `timingtuple.py` — gaps capped for WPM/`active_duration`.
-- Focus/weakspot drills: `<Weakspot>` rows, `count=0` — affect medians/hesitation, not counted damage totals the same way (`stats_query.py`).
-- Counted practice writes `result` with `char_count`/`duration` (corpus, book, improve-normal). Focus drills skip counted `result`/counts.
-- Analysis: all-time (`ALL_TIME_HIST = 0`); words need ≥ `WORD_ANALYSIS_MIN_COUNT` (2) via `analysis_min_count` — **holy floor for all word pulls** (Performance Analysis, focus drills oblivion/slowest/hesitant/damage, weakspot `fetch_weak_targets`, Lesson Generator “from typed”). Chars/trigrams may use a lower configured min. WPM card gated on `WPM_GATE_MIN_LESSONS` (10) qualifying results.
+- Focus/weakspot drills: `<Weakspot>` discounted rows keep real `count`/`mistakes` so they raise perfect rate (perfect / (corpus+drill)); they do **not** raise the corpus floor that unlocks known words (`count_analysis_words` / `analysis_min_count` still corpus-only). Legacy `count=0` drill rows still count as one drill sample.
+- Counted practice writes `result` with `char_count`/`duration` (corpus, book, improve-normal). Focus drills skip `result` rows.
+- Analysis: all-time (`ALL_TIME_HIST = 0`); words need ≥ `WORD_ANALYSIS_MIN_COUNT` (2) **corpus** samples via `analysis_min_count` — **holy floor for all word pulls** (Performance Analysis, focus drills oblivion/slowest/hesitant/damage, weakspot `fetch_weak_targets`, Lesson Generator “from typed”). Chars/trigrams may use a lower configured min. Progress-card perfect-rate hero gated on `WPM_GATE_MIN_LESSONS` (10) qualifying results; baseline snapshot in `app_meta.perfect_rate_baseline_pct`.
 - Damage/importance: time² · frequency-style factors (see weakspot / heatmap). Heatmap WPM uses median-time pool (`SPEED_STATS_SQL`).
 
 ## Weakspot rules (composer)
@@ -105,7 +105,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
 ## Performance Analysis
 
-`PerformanceAnalysis.py` + `progress_card.py`. Columns: speed, hesitation, count, perfect (count−mistakes), drilled, impact; words: Improved. Sort includes lowest perfect %, most improved. Actions: drill, find in corpus (`corpus_find.py` + FTS5 `text_index.py`), delete stats. Progress: WPM since start, avg WPM / adult percentile (`wpm_percentile.py`), unique common words, total practice time.
+`PerformanceAnalysis.py` + `progress_card.py`. Columns: speed, hesitation, corpus, drill, perfect, impact; words: Improved. Perfect % = perfect / (corpus + drill). Sort includes lowest perfect %, most improved. Actions: drill, find in corpus (`corpus_find.py` + FTS5 `text_index.py`), delete stats. Progress: perfect rate since start (sample-weighted word perfect% vs gated `app_meta` snapshot), current perfect rate, unique common words, total practice time.
 
 ## Session timer
 

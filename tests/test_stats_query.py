@@ -47,7 +47,7 @@ def _add_source(conn, name, discount=None):
 
 class TestStatsAggregation(unittest.TestCase):
 
-  def test_drill_row_updates_median_not_count(self):
+  def test_drill_row_updates_median_not_corpus(self):
     conn = _test_db(); now = 1e9
     book = _add_source(conn, 'Novel')
     weak = _add_source(conn, '<Weakspot>', 1)
@@ -59,12 +59,13 @@ class TestStatsAggregation(unittest.TestCase):
       ])
     row = conn.execute(STATS_AGG_SUBQUERY, (0, 2)).fetchone()
     self.assertEqual(row[0], 'from')
-    self.assertEqual(row[3], 20)   # total
-    self.assertEqual(row[4], 2)    # mistakes
-    self.assertEqual(row[5], 1)    # drilled
+    self.assertEqual(row[3], 20)   # corpus
+    self.assertEqual(row[4], 2)    # corpus_mistakes
+    self.assertEqual(row[5], 1)    # drilled (legacy count=0 → 1)
+    self.assertEqual(row[6], 1)    # drill_mistakes
     self.assertAlmostEqual(row[1], 0.35)  # median(0.5, 0.2)
 
-  def test_focus_drill_rows_increment_drilled_not_count(self):
+  def test_focus_drill_rows_add_drill_samples_not_corpus(self):
     from typing_program.timingtuple import collect_focus_drill_stat_rows, RunStats
     conn = _test_db(); now = 1e9
     book = _add_source(conn, 'Novel')
@@ -79,15 +80,16 @@ class TestStatsAggregation(unittest.TestCase):
       last = t; t += 0.20
       run[i].last = t
     run.index = len(run)
-    for t, vis, w, m, tp, data in collect_focus_drill_stat_rows(
+    for t, vis, w, c, m, tp, data in collect_focus_drill_stat_rows(
         run, run.median_timing, now + 1, [('word', 'slow')]):
       conn.execute(
         'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-        (w, data, tp, t, 0, m, vis, weak))
+        (w, data, tp, t, c, m, vis, weak))
     row = conn.execute(STATS_AGG_SUBQUERY, (0, STAT_TYPE_WORD)).fetchone()
-    self.assertEqual(row[3], 10)   # total unchanged
-    self.assertEqual(row[4], 2)    # mistakes unchanged
-    self.assertEqual(row[5], 1)    # drilled +1
+    self.assertEqual(row[3], 10)   # corpus unchanged
+    self.assertEqual(row[4], 2)    # corpus_mistakes unchanged
+    self.assertEqual(row[5], 2)    # drilled = two "slow" samples
+    self.assertEqual(row[6], 0)    # drill_mistakes
     self.assertLess(row[1], 0.50)   # median time improved
 
   def test_discounted_high_count_row_ignored(self):
@@ -122,7 +124,7 @@ class TestStatsAggregation(unittest.TestCase):
     self.assertLess(t, 0.50)
     self.assertLess(after, before)
 
-  def test_analysis_sql_includes_drilled_columns(self):
+  def test_analysis_sql_corpus_drill_perfect_order(self):
     conn = _test_db(); now = 1e9
     book = _add_source(conn, 'Novel')
     weak = _add_source(conn, '<Weakspot>', 1)
@@ -130,25 +132,26 @@ class TestStatsAggregation(unittest.TestCase):
       'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
       [
         (now, 'from', 2, 0.40, 10, 1, 5.0, book),
-        (now + 1, 'from', 2, 0.30, 0, 2, 4.0, weak),
+        (now + 1, 'from', 2, 0.30, 3, 0, 4.0, weak),
       ])
     sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'damage desc', 10)
     row = conn.execute(sql, (0, 2, 1)).fetchone()
     self.assertEqual(row[0], 'from')
-    self.assertEqual(row[3], 10)   # total
-    self.assertEqual(row[4], 9)    # perfect (10 - 1 mistake)
-    self.assertEqual(row[5], 1)    # drilled
+    self.assertEqual(row[3], 10)   # corpus
+    self.assertEqual(row[4], 3)    # drill
+    self.assertEqual(row[5], 12)   # perfect = (10-1) + (3-0)
 
-  def test_analysis_sql_perfect_is_count_minus_mistakes(self):
+  def test_analysis_sql_perfect_is_corpus_minus_mistakes(self):
     conn = _test_db(); now = 1e9
     book = _add_source(conn, 'Novel')
     conn.execute(
       'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
       (now, 'once', 2, 0.40, 1, 1, 5.0, book))
-    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', 10)
+    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'corpus desc', 10)
     row = conn.execute(sql, (0, 2, 1)).fetchone()
-    self.assertEqual(row[3], 1)
-    self.assertEqual(row[4], 0)
+    self.assertEqual(row[3], 1)   # corpus
+    self.assertEqual(row[4], 0)   # drill
+    self.assertEqual(row[5], 0)   # perfect
 
   def test_word_stats_keep_case_separate(self):
     conn = _test_db(); now = 1e9
@@ -222,8 +225,11 @@ def test_analysis_order_clause_rejects_unknown_sort():
   assert analysis_order_clause('perfect asc') == 'perfect_pct asc'
   assert analysis_order_clause('perfect desc') == 'perfect_pct desc'
   assert analysis_order_clause('perfect_pct desc') == 'perfect_pct desc'
-  assert analysis_order_sql('perfect_pct asc') == 'cast(total - mistakes as real) / total asc, total asc'
-  assert analysis_order_sql('perfect_pct desc') == 'cast(total - mistakes as real) / total desc, total desc'
+  assert analysis_order_sql('perfect_pct asc') == (
+    'cast(perfect as real) / nullif(corpus + drilled, 0) asc, corpus asc')
+  assert analysis_order_sql('perfect_pct desc') == (
+    'cast(perfect as real) / nullif(corpus + drilled, 0) desc, corpus desc')
+  assert analysis_order_sql('total desc') == 'corpus desc'
 
 
 def test_analysis_min_count_requires_two_for_words():
@@ -256,8 +262,8 @@ def test_perfect_pct_sort_lowest_first():
   sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_sql('perfect_pct asc'), 10)
   rows = conn.execute(sql, (0, STAT_TYPE_WORD, 2)).fetchall()
   assert [r[0] for r in rows] == ['bad', 'good']
-  assert rows[0][4] == 1   # perfect
-  assert rows[1][4] == 9
+  assert rows[0][5] == 1   # perfect
+  assert rows[1][5] == 9
 
 
 def test_perfect_pct_desc_ties_rank_higher_count():

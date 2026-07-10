@@ -1,4 +1,4 @@
-"""Per-word progress vs historical baseline WPM."""
+"""Per-word progress vs historical baselines (perfect rate at lesson end; WPM helpers for PA Improved)."""
 
 import re
 from collections import Counter, defaultdict
@@ -33,7 +33,7 @@ def fetch_word_stat_times(db, words):
 
 
 def fetch_word_baselines(db, words):
-  """All-time word WPM plus raw timing samples for median-shift deltas."""
+  """All-time word WPM plus raw timing samples for median-shift deltas (PA Improved column)."""
   if not words:
     return {}
   stats = fetch_speed_stats(db, hist_cutoff=0, stat_type=STAT_TYPE_WORD)
@@ -42,6 +42,36 @@ def fetch_word_baselines(db, words):
     w: {'wpm': stats[w]['wpm'], 'times': times.get(w, [])}
     for w in words if w in stats
   }
+
+
+def baseline_perfect_count(entry):
+  """Return (perfect, count) from a perfect-rate baseline entry."""
+  if not isinstance(entry, dict):
+    return None, None
+  count = int(entry.get('count') or 0)
+  if count <= 0:
+    return None, None
+  perfect = entry.get('perfect')
+  if perfect is None:
+    return None, None
+  return int(perfect), count
+
+
+def perfect_rate_rises(prior_perfect, prior_count, add_perfect=1, add_count=1):
+  """True when adding samples raises perfect/count."""
+  if prior_count is None or prior_count <= 0 or prior_perfect is None:
+    return False
+  if add_count <= 0:
+    return False
+  old = float(prior_perfect) / float(prior_count)
+  new = float(prior_perfect + add_perfect) / float(prior_count + add_count)
+  return new > old
+
+
+def word_perfect_rate_improves(base_entry):
+  """Whether one more perfect sample would raise this word's perfect rate."""
+  perfect, count = baseline_perfect_count(base_entry)
+  return perfect_rate_rises(perfect, count)
 
 
 def baseline_wpm(entry):
@@ -127,13 +157,6 @@ class RunProgress:
     return int(round(self.gain_total / self.gain_count))
 
 
-def _word_run_gain(sub, base_entry):
-  bump = median_wpm_bump(sub, base_entry)
-  if bump is None or bump < 1:
-    return None, None
-  return word_wpm_from_slice(sub), bump
-
-
 def lifetime_wpm_gain(current_wpm, first_wpm):
   """Current median WPM minus entry baseline WPM (median of first N counted samples)."""
   if current_wpm is None or first_wpm is None:
@@ -182,60 +205,58 @@ def new_word_spans(run, new_common, match_text):
 
 
 def improved_word_spans(run, baselines, match_text):
-  """Each improved word occurrence: (start, end, run_wpm, median_bump)."""
+  """Each perfect-rate-improved word occurrence: (start, end)."""
   out = []
   for start, end, word in word_spans(match_text or ''):
     sub = run[start:end]
     if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
       continue
+    if word_spc_from_slice(sub) is None:
+      continue
     base = baselines.get(word)
     if base is None:
       continue
-    _wpm, bump = _word_run_gain(sub, base)
-    if bump is not None:
-      out.append((start, end, _wpm, bump))
+    if word_perfect_rate_improves(base):
+      out.append((start, end))
   return out
 
 
 def analyze_run_progress(run, baselines, match_text=None, prior_counts=None,
                          min_count=WORD_ANALYSIS_MIN_COUNT, include_new_common=True):
-  """Score a finished run against baselines/counts captured before the run wrote stats.
+  """Score a finished run against perfect-rate baselines/counts captured before stats write.
 
   New common words = words that reach the Performance Analysis min-count pool this run
   (counted samples only). Improve modes pass include_new_common=False.
   """
-  improved = 0; known = 0; gain_total = 0; gain_count = 0
+  improved = 0; known = 0
   for start, end, word in word_spans(match_text or run.text):
     sub = run[start:end]
     if not sub.is_complete() or any(sub[i].mistakes for i in range(len(sub))):
       continue
-    wpm = word_wpm_from_slice(sub)
-    if wpm is None:
+    if word_spc_from_slice(sub) is None:
       continue
     base = baselines.get(word)
     if base is not None:
       known += 1
-      _wpm, bump = _word_run_gain(sub, base)
-      if bump is not None:
+      if word_perfect_rate_improves(base):
         improved += 1
-        gain_total += bump; gain_count += 1
   new_words = []
   if include_new_common:
     run_counts = run_word_sample_counts(run, match_text)
     new_words = words_crossing_min_count(prior_counts, run_counts, min_count)
-  return RunProgress(improved, known, new_words, gain_total, gain_count)
+  return RunProgress(improved, known, new_words)
 
 
 def progress_badges_for_run(run, baselines, match_text):
-  """(start, end, gain) spans for improved words; shown after the run completes."""
-  return [(s, e, g) for s, e, _w, g in improved_word_spans(run, baselines, match_text)]
+  """No numeric WPM badges; green highlight covers perfect-rate gains."""
+  return []
 
 
 def format_progress_html(progress, stats_saved=True):
   imp_color = PROGRESS_GREEN if progress.improved > 0 else PROGRESS_RED
   lines = [
-    'You improved on <span style="color:%s">%d</span> out of %d words at an average of <span style="color:%s">+%d</span>wpm!' % (
-      imp_color, progress.improved, progress.known, imp_color, progress.avg_gain),
+    'You improved perfect rate on <span style="color:%s">%d</span> out of %d words' % (
+      imp_color, progress.improved, progress.known),
   ]
   if progress.new_count > 0:
     lines.append('You typed <span style="color:%s">%d</span> new common word%s!' % (
