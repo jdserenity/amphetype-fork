@@ -41,3 +41,11 @@ Weak trigrams often start or end with a space (`"he "`, `" th"`). Naively joinin
 ## Focus drills: plain shuffle, repeats OK
 
 Focus-drill ordering should be a true shuffle of the equal-weight copies — do not smooth away adjacent repeats or A B A B patterns. Anti-repeat interleave made drills feel less random, which is the opposite of what we want here. (`_interleave` may still smooth normal/trigram lessons.)
+
+## Idle cursor: filter the QTextEdit viewport
+
+`TyperWidget.mouseMoveEvent` does not see most moves — they go to the viewport. Without `viewport().installEventFilter(...)`, the idle-hide timer never resets while the user is moving, so the pointer blanks mid-motion. Also only apply `BlankCursor` when the pointer is still over the canvas (`should_apply_idle_blank`).
+
+## Footer buttons need `cursor: pointer` in the stylesheet
+
+Styled `QPushButton`s ignore `setCursor(PointingHandCursor)` unless the stylesheet also sets `cursor: pointer`. Mode / heatmap / follow footer styles must include it.

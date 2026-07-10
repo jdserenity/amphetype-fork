@@ -59,7 +59,7 @@ Improve submodes: normal | trigrams | oblivion | slowest | hesitant | damage (`i
 
 **Cold start:** every app launch forces practice mode improve + submode normal (`apply_cold_start_practice_mode` in `book_mode.py`, called from `TyperWindow` init). Last session’s book/corpus/submode is not restored.
 
-**Idle mouse cursor:** on the typer canvas (`TyperWidget` + `idle_cursor.py`), the pointer blanks after `MOUSE_CURSOR_IDLE_MS` (2000) with no movement; reappears on move/enter.
+**Idle mouse cursor:** on the typer canvas (`TyperWidget` + `idle_cursor.py`), the pointer blanks after `MOUSE_CURSOR_IDLE_MS` (2000) with no movement; reappears on move/enter. Mouse moves are watched via a **viewport** event filter (QTextEdit delivers moves there, not to `mouseMoveEvent` on the widget). Hide is skipped if the pointer has already left the canvas (`should_apply_idle_blank`). Footer mode buttons include `cursor: pointer` in their stylesheets (Qt stylesheets otherwise override `setCursor(PointingHandCursor)`).
 
 Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 
