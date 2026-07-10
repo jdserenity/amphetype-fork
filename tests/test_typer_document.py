@@ -836,7 +836,9 @@ def test_footer_mode_order_is_improve_corpus_book(qapp):
 
   tw = TyperWindow()
   mode_row = tw.layout().itemAt(2).widget()
-  lay = mode_row.layout()
+  row_lay = mode_row.layout()
+  assert row_lay.itemAt(0).widget() is tw._footer_controls
+  lay = tw._footer_controls.layout()
   # improve, improve_level, corpus, book — then extras — heatmap panel — follow + wpm
   assert lay.itemAt(0).widget() is tw._btn_improve
   assert lay.itemAt(1).widget() is tw._btn_improve_level

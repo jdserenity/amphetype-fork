@@ -1434,18 +1434,28 @@ class TyperWindow(QWidget):
     hp_lay.addWidget(self._btn_heatmap_kind, 0)
     hp_lay.addWidget(self._heatmap_legend, 0)
 
+    # One hand cursor over the whole control strip (including layout gaps).
+    # Per-button cursors alone flicker to arrow in the 8px spacing between modes.
+    self._footer_controls = QWidget()
+    self._footer_controls.setFocusPolicy(Qt.NoFocus)
+    self._footer_controls.setCursor(Qt.PointingHandCursor)
+    controls_lay = QHBoxLayout(self._footer_controls)
+    controls_lay.setContentsMargins(0, 0, 0, 0)
+    controls_lay.setSpacing(_FOOTER_ITEM_GAP)
+    self._heatmap_panel.setVisible(False)
+    self._follow_wpm_panel.setVisible(False)
+    for w in (self._btn_improve, self._btn_improve_level, self._btn_corpus, self._btn_book,
+              self._btn_read_ahead, self._btn_read_ahead_level, self._btn_block_bkspc,
+              self._btn_heatmap, self._heatmap_panel, self._btn_follow, self._follow_wpm_panel):
+      controls_lay.addWidget(w)
+
     mode_row = QWidget()
     mode_row.setFocusPolicy(Qt.NoFocus)
     mode_lay = QHBoxLayout(mode_row)
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
-    self._heatmap_panel.setVisible(False)
-    self._follow_wpm_panel.setVisible(False)
-    # Footer: improve · corpus · book · read ahead · Block ⌫ · heatmap · follow
-    for w in (self._btn_improve, self._btn_improve_level, self._btn_corpus, self._btn_book,
-              self._btn_read_ahead, self._btn_read_ahead_level, self._btn_block_bkspc,
-              self._btn_heatmap, self._heatmap_panel, self._btn_follow, self._follow_wpm_panel):
-      mode_lay.addWidget(w)
+    # Footer: [improve · corpus · … · follow] · stretch · source title
+    mode_lay.addWidget(self._footer_controls, 0)
     mode_lay.addStretch(1)
     mode_lay.addWidget(self._source_lbl)
 

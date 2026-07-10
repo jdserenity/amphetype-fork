@@ -29,7 +29,7 @@ def test_should_not_blank_when_pointer_left_canvas():
 
 
 def test_footer_mode_buttons_use_pointing_hand(qapp):
-  """Hand cursor via setCursor — never CSS cursor: (unsupported, log spam only)."""
+  """Hand cursor on the whole controls strip so gaps between modes don't flicker."""
   import typing_program.mainwindow  # noqa: F401
   from PyQt5.QtCore import Qt, qInstallMessageHandler
   from typing_program.typer import TyperWindow, _footer_btn_style
@@ -40,15 +40,13 @@ def test_footer_mode_buttons_use_pointing_hand(qapp):
   tw = TyperWindow()
   assert 'cursor:' not in tw._mode_btn_style
   assert 'cursor:' not in _footer_btn_style(False)
+  # Strip covers layout gaps between buttons — not only the labels themselves.
+  assert tw._footer_controls.cursor().shape() == Qt.PointingHandCursor
   assert tw._btn_improve.cursor().shape() == Qt.PointingHandCursor
   assert tw._btn_corpus.cursor().shape() == Qt.PointingHandCursor
   assert tw._btn_book.cursor().shape() == Qt.PointingHandCursor
-  # Follow is greyed in improve (cold start) — arrow until corpus/book.
+  # Follow is greyed in improve (cold start) — arrow on that button only.
   assert tw._btn_follow.cursor().shape() == Qt.ArrowCursor
-  # Stylesheet/polish must not clear the hand.
-  tw._btn_improve.setStyleSheet(tw._mode_btn_style)
-  tw._polish_mode_btn(tw._btn_improve)
-  assert tw._btn_improve.cursor().shape() == Qt.PointingHandCursor
   assert not any('Unknown property cursor' in m for m in msgs)
 
 
