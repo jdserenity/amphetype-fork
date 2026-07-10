@@ -40,7 +40,7 @@ Desktop typing trainer. You practice on a lesson canvas; the app records speed a
 | Tab | Purpose |
 |-----|---------|
 | **Typer** | Practice. Modes: **improve** (weak spots / focus drills), **corpus** (random imported text), **book** (chapter through a novel). Footer extras: read ahead, **Block ⌫**, heatmap. |
-| **Performance Analysis** | Ranked characters / trigrams / words; progress card (WPM, practice time); drill or find a target in corpus. |
+| **Performance Analysis** | Ranked characters / trigrams / words; progress card (perfect rate, practice time); drill or find a target in corpus. |
 | **Preferences** | Font, sounds, thresholds; typer options; import books from Project Gutenberg. |
 
 **Improve** builds practice from your worst items. Submodes: **normal** (readable weakspot mix), **trigrams** (raw 3-character chunks only — looks like alien gibberish), then **oblivion / slowest / hesitant / damage** (focus drills). Each focus drill pulls from your 20 worst words in that category and randomly picks 5 (or fewer if you have not typed 20 yet). **Oblivion** only appears in the cycle when you actually have words that slow — under the oblivion speed line. Words only count after you’ve typed them enough times to show up in Performance Analysis (default: at least twice). Finishing an auto focus drill loads a **new** random set; drills started from Performance Analysis keep your chosen targets. Focus-drill length is set in Preferences → General (under the normal lesson size fields).

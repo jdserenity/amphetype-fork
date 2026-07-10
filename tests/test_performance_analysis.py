@@ -34,14 +34,14 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
     'typing_program.progress_card.count_analysis_words',
     lambda db, hist: 42)
   monkeypatch.setattr(
-    'typing_program.progress_card.format_avg_wpm_label',
-    lambda db, hist: 'Avg WPM: 74.5 · Top 13% of adults')
+    'typing_program.progress_card.format_perfect_rate_label',
+    lambda db, hist: 'Perfect rate: 91%')
   monkeypatch.setattr(
-    'typing_program.progress_card.format_wpm_gate_label',
+    'typing_program.progress_card.format_progress_gate_label',
     lambda db: None)
   monkeypatch.setattr(
-    'typing_program.progress_card.session_wpm_since_start_gain',
-    lambda db, hist: 12)
+    'typing_program.progress_card.perfect_rate_since_start_gain',
+    lambda db, hist: 6)
   pa = PerformanceAnalysis()
   class _FakeTimer:
     def total_seconds(self):
@@ -49,9 +49,9 @@ def test_performance_analysis_unique_typed_labels(qapp, monkeypatch):
   pa.set_session_timer(_FakeTimer())
   pa.updateAll()
   assert pa._progress._words_lbl.text() == 'Unique common words typed: 42'
-  assert pa._progress._wpm_lbl.text() == 'Avg WPM: 74.5 · Top 13% of adults'
+  assert pa._progress._rate_lbl.text() == 'Perfect rate: 91%'
   assert pa._progress._practice_lbl.text() == 'Total practice time: 1h 1m'
-  assert pa._progress._gain_num.text() == '+12'
+  assert pa._progress._gain_num.text() == '+6%'
 
 
 def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
@@ -69,39 +69,39 @@ def test_performance_analysis_refreshes_on_tab_select(qapp, monkeypatch):
   assert len(calls) >= 1
 
 
-def test_performance_analysis_avg_wpm_shows_gate_before_enough_lessons(qapp, monkeypatch):
+def test_performance_analysis_perfect_rate_shows_gate_before_enough_lessons(qapp, monkeypatch):
   monkeypatch.setattr('typing_program.progress_card.count_analysis_words', lambda *a: 0)
   monkeypatch.setattr(
-    'typing_program.progress_card.format_avg_wpm_label',
-    lambda db, hist: 'Complete 10 lessons to calculate WPM')
+    'typing_program.progress_card.format_perfect_rate_label',
+    lambda db, hist: 'Complete 10 lessons to calculate perfect rate')
   monkeypatch.setattr(
-    'typing_program.progress_card.format_wpm_gate_label',
-    lambda db: 'Complete 10 lessons to calculate WPM')
+    'typing_program.progress_card.format_progress_gate_label',
+    lambda db: 'Complete 10 lessons to calculate perfect rate')
   pa = PerformanceAnalysis()
   pa.updateAll()
-  assert pa._progress._wpm_lbl.text() == 'Complete 10 lessons to calculate WPM'
+  assert pa._progress._rate_lbl.text() == 'Complete 10 lessons to calculate perfect rate'
 
 
-def test_performance_analysis_avg_wpm_shows_dash_when_no_data(qapp, monkeypatch):
+def test_performance_analysis_perfect_rate_shows_dash_when_no_data(qapp, monkeypatch):
   monkeypatch.setattr('typing_program.progress_card.count_analysis_words', lambda *a: 0)
   monkeypatch.setattr(
-    'typing_program.progress_card.format_avg_wpm_label',
-    lambda db, hist: 'Avg WPM: —')
-  monkeypatch.setattr('typing_program.progress_card.format_wpm_gate_label', lambda db: None)
-  monkeypatch.setattr('typing_program.progress_card.session_wpm_since_start_gain', lambda *a: None)
+    'typing_program.progress_card.format_perfect_rate_label',
+    lambda db, hist: 'Perfect rate: —')
+  monkeypatch.setattr('typing_program.progress_card.format_progress_gate_label', lambda db: None)
+  monkeypatch.setattr('typing_program.progress_card.perfect_rate_since_start_gain', lambda *a: None)
   pa = PerformanceAnalysis()
   pa.updateAll()
-  assert pa._progress._wpm_lbl.text() == 'Avg WPM: —'
+  assert pa._progress._rate_lbl.text() == 'Perfect rate: —'
 
 
-def test_performance_analysis_progress_card_before_wpm_gate(qapp, monkeypatch):
+def test_performance_analysis_progress_card_before_gate(qapp, monkeypatch):
   monkeypatch.setattr('typing_program.progress_card.count_analysis_words', lambda *a: 0)
   monkeypatch.setattr(
-    'typing_program.progress_card.format_avg_wpm_label',
-    lambda db, hist: 'Complete 7 more lessons to calculate WPM')
+    'typing_program.progress_card.format_perfect_rate_label',
+    lambda db, hist: 'Complete 7 more lessons to calculate perfect rate')
   monkeypatch.setattr(
-    'typing_program.progress_card.format_wpm_gate_label',
-    lambda db: 'Complete 7 more lessons to calculate WPM')
+    'typing_program.progress_card.format_progress_gate_label',
+    lambda db: 'Complete 7 more lessons to calculate perfect rate')
   pa = PerformanceAnalysis()
   pa.updateAll()
   assert pa._progress._gain_num.text() == '—'
