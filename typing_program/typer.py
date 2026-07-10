@@ -33,7 +33,7 @@ from typing_program.read_ahead import (
   READ_AHEAD_OFF, document_read_ahead_mode, READ_AHEAD_LEVEL_LABELS,
 )
 from typing_program.block_bkspc import allows_backspace
-from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS
+from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS, should_apply_idle_blank
 from typing_program.keyboard_nav import cycle_practice_mode
 from typing_program.follow_mode import (
   FOLLOW_CURSOR_COLOR, MAX_FOLLOW_WPM, MIN_FOLLOW_WPM,
@@ -99,7 +99,7 @@ def _footer_btn_style(active=False, greyed=False):
     hover = MODE_BTN_HOVER
   return (
     'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
-    ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
+    ' padding: 0; margin: 0; min-width: 0; min-height: 0; cursor: pointer; }'
     'QPushButton:hover { color: %s; }' % (color, hover))
 
 
@@ -995,22 +995,43 @@ class TyperWidget(QTextEdit):
     settings('background_color').bind_value(lambda v: configure_transparent_typer(self))
 
     # Blank the mouse pointer after a couple seconds still; show it on move.
+    # Mouse moves land on the viewport (QTextEdit), not TyperWidget — filter them.
     self.setMouseTracking(True)
     self.viewport().setMouseTracking(True)
+    self.viewport().installEventFilter(self)
     self._mouse_cursor_timer = QTimer(self)
     self._mouse_cursor_timer.setSingleShot(True)
     self._mouse_cursor_timer.setInterval(MOUSE_CURSOR_IDLE_MS)
     self._mouse_cursor_timer.timeout.connect(self._hide_idle_mouse_cursor)
     self._mouse_cursor_timer.start()
 
-  def _show_mouse_cursor(self):
+  def _pointer_over_canvas(self):
+    return self.underMouse() or self.viewport().underMouse()
+
+  def _restore_mouse_cursor(self):
     self.unsetCursor()
     self.viewport().unsetCursor()
+
+  def _show_mouse_cursor(self):
+    self._restore_mouse_cursor()
     self._mouse_cursor_timer.start()
 
   def _hide_idle_mouse_cursor(self):
+    # Timer may fire after the pointer already left for the footer.
+    if not should_apply_idle_blank(self._pointer_over_canvas()):
+      return
     self.setCursor(Qt.BlankCursor)
     self.viewport().setCursor(Qt.BlankCursor)
+
+  def eventFilter(self, obj, event):
+    if obj is self.viewport():
+      t = event.type()
+      if t in (QEvent.MouseMove, QEvent.Enter):
+        self._show_mouse_cursor()
+      elif t == QEvent.Leave:
+        self._mouse_cursor_timer.stop()
+        self._restore_mouse_cursor()
+    return super().eventFilter(obj, event)
 
   def mouseMoveEvent(self, e):
     self._show_mouse_cursor()
@@ -1022,8 +1043,7 @@ class TyperWidget(QTextEdit):
 
   def leaveEvent(self, e):
     self._mouse_cursor_timer.stop()
-    self.unsetCursor()
-    self.viewport().unsetCursor()
+    self._restore_mouse_cursor()
     super().leaveEvent(e)
 
   def _typing_region_doc_y_range(self):
@@ -1365,7 +1385,7 @@ class TyperWindow(QWidget):
 
     self._mode_btn_style = (
       'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
-      ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
+      ' padding: 0; margin: 0; min-width: 0; min-height: 0; cursor: pointer; }'
       'QPushButton:hover { color: %s; }'
       'QPushButton[activeMode="true"] { color: %s; }' % (
         MODE_BTN_INACTIVE, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
