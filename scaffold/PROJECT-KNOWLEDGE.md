@@ -29,3 +29,7 @@ Rules:
 ## Follow mode uses its own race clock
 
 Lesson runs often cold-start with `RunStats.started is None` until the run is fixed up at the end. Follow mode therefore keeps a separate pause-aware clock on `TyperWindow` (`_follow_clock_*`) instead of reading `run.active_elapsed()` for caret position.
+
+## Footer title height needs Minimum size policy
+
+Reserving space for the book/corpus source title in improve mode: `QLabel.setMinimumHeight(2 * fontMetrics().height())` alone does **not** expand the footer `QHBoxLayout` row when the label is empty — the canvas stays tall. Also set `QSizePolicy.Expanding, QSizePolicy.Minimum` (or `setFixedHeight`) so the row actually grows and the canvas matches book/corpus.

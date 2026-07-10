@@ -911,25 +911,36 @@ def test_typer_canvas_page_differs_from_window_chrome(qapp):
 
 
 def test_improve_canvas_height_matches_book_corpus_title_row(qapp):
-  """Improve reserves footer title space so the canvas matches book/corpus height."""
-  import typing_program.mainwindow  # noqa: F401
-  from typing_program.book_mode import MODE_IMPROVE
-  from typing_program.typer import TyperWindow
+  """Improve reserves the same footer title space book/corpus use for source names."""
+  import typing_program.mainwindow as A
+  from typing_program.book_mode import MODE_BOOK, MODE_CORPUS, MODE_IMPROVE
 
-  tw = TyperWindow()
-  tw.resize(900, 700)
-  tw.show()
+  w = A.MainWindow()
+  w.resize(1100, 800)
+  w.show()
   qapp.processEvents()
+  tw = w._tabs.widget(0)
   assert tw._mode == MODE_IMPROVE
-  # Source label stays laid out (empty) so improve does not steal vertical space.
-  assert tw._source_lbl.isVisible()
-  assert tw._source_lbl.minimumHeight() >= tw._source_lbl.fontMetrics().height()
   h_improve = tw._canvas.height()
 
-  tw._source_lbl.setText('— Pride and Prejudice')
-  tw._source_lbl.setVisible(True)
-  qapp.processEvents()
+  tw.set_practice_mode(MODE_CORPUS)
+  for _ in range(15):
+    qapp.processEvents()
+  assert tw._source_lbl.text().startswith('—')
+  # Real corpus titles wrap to ~2 footer lines; improve must not be taller.
   assert tw._canvas.height() == h_improve
+
+  tw.set_practice_mode(MODE_BOOK)
+  for _ in range(25):
+    qapp.processEvents()
+  assert tw._source_lbl.text().startswith('—')
+  assert tw._canvas.height() == h_improve
+
+  tw.set_practice_mode(MODE_IMPROVE)
+  for _ in range(15):
+    qapp.processEvents()
+  assert tw._canvas.height() == h_improve
+  assert tw._source_lbl.minimumHeight() >= 2 * tw._source_lbl.fontMetrics().height()
 
 
 def test_typer_page_background_survives_main_tab_reparent(qapp):

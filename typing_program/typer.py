@@ -1356,8 +1356,10 @@ class TyperWindow(QWidget):
 
     self._source_lbl = QLabel(wordWrap=True)
     self._source_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-    # Always reserve one line of title height so improve canvas matches book/corpus.
-    self._source_lbl.setMinimumHeight(self._source_lbl.fontMetrics().height())
+    # Book/corpus titles usually wrap to two footer lines and shrink the canvas.
+    # Reserve that height in improve too (Minimum policy — minHeight alone is ignored).
+    self._source_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    self._source_lbl.setMinimumHeight(2 * self._source_lbl.fontMetrics().height())
     self._source_lbl.installEventFilter(self)
     self._book_prog_text = ''
 
