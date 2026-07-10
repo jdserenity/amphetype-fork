@@ -77,8 +77,9 @@ COUNT_TYPED_MIN_SQL = f"""select count(*) from (
 STAT_TYPE_CHAR = 0
 STAT_TYPE_TRIGRAM = 1
 STAT_TYPE_WORD = 2
+STAT_TYPE_BIWORD = 3
 
-# Performance Analysis words: one-off typos are noise; only show repeat vocabulary.
+# Performance Analysis words/biwords: one-off typos are noise; only show repeat vocabulary.
 WORD_ANALYSIS_MIN_COUNT = 2
 
 # WPM = (chars / seconds) * (60 / 5); five characters is the usual "word" in typing tests.
@@ -163,15 +164,15 @@ def analysis_order_sql(order):
 
 
 def analysis_min_count(stat_type, configured):
-  """Words in Performance Analysis need at least WORD_ANALYSIS_MIN_COUNT completions."""
+  """Words/biwords in Performance Analysis need at least WORD_ANALYSIS_MIN_COUNT completions."""
   n = int(configured or 1)
-  if stat_type == STAT_TYPE_WORD:
+  if stat_type in (STAT_TYPE_WORD, STAT_TYPE_BIWORD):
     return max(n, WORD_ANALYSIS_MIN_COUNT)
   return n
 
 
 def analysis_search_data_clause(stat_type):
-  if stat_type == STAT_TYPE_WORD:
+  if stat_type in (STAT_TYPE_WORD, STAT_TYPE_BIWORD):
     return 'instr(lower(data), lower(?)) > 0'
   return 'instr(data, ?) > 0'
 

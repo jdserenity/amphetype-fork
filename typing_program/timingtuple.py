@@ -297,12 +297,22 @@ class RunStats(datatuple):
       if not complete or word.is_complete():
         yield word
 
+  def timed_biwords(self, complete=True):
+    """Consecutive word pairs; key is 'w1 w2' (punctuation between words ignored in the key)."""
+    matches = list(re.finditer(r"\w+(?:['-]\w+)*", self.text))
+    for i in range(len(matches) - 1):
+      m0, m1 = matches[i], matches[i + 1]
+      span = self[m0.start():m1.end()]
+      if not complete or span.is_complete():
+        yield m0.group(0) + ' ' + m1.group(0), span
+
 
 def collect_run_stat_rows(run, med_char, when, source_id):
-  """Build statistic insert rows; char/trigram/word buckets kept separate (3-letter words are words)."""
+  """Build statistic insert rows; char/trigram/word/biword buckets kept separate."""
   char_s, char_v = defaultdict(Statistic), defaultdict(Statistic)
   tri_s, tri_v = defaultdict(Statistic), defaultdict(Statistic)
   word_s, word_v = defaultdict(Statistic), defaultdict(Statistic)
+  bi_s, bi_v = defaultdict(Statistic), defaultdict(Statistic)
 
   for i in range(len(run)):
     sub = run[i:i + 1]
@@ -328,8 +338,16 @@ def collect_run_stat_rows(run, med_char, when, source_id):
     if vc is not None:
       word_v[sub.text].append(vc)
 
+  for key, sub in run.timed_biwords():
+    spc, vc, flaw = sub.stats
+    if spc is None:
+      continue
+    bi_s[key].append(spc, flaw)
+    if vc is not None:
+      bi_v[key].append(vc)
+
   rows = []
-  for tp, st, vs in ((0, char_s, char_v), (1, tri_s, tri_v), (2, word_s, word_v)):
+  for tp, st, vs in ((0, char_s, char_v), (1, tri_s, tri_v), (2, word_s, word_v), (3, bi_s, bi_v)):
     for k, s in st.items():
       v = vs[k].median()
       if v is not None:
@@ -337,7 +355,7 @@ def collect_run_stat_rows(run, med_char, when, source_id):
       rows.append((s.median(), v, when, len(s), s.flawed(), tp, k, source_id))
   return rows
 
-_STAT_KIND = {0: 'char', 1: 'trigram', 2: 'word'}
+_STAT_KIND = {0: 'char', 1: 'trigram', 2: 'word', 3: 'biword'}
 
 def collect_focus_drill_stat_rows(run, med_char, when, focus_targets):
   """One weakspot drill row per focus target in this run; keep real count/mistakes."""

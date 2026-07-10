@@ -45,6 +45,40 @@ def test_three_letter_words_saved_as_word_type_not_trigram(qapp):
   assert ('the', 1) in by_type
 
 
+def test_timed_biwords_yields_consecutive_word_pairs():
+  run = RunStats.make('the cat sat')
+  pairs = list(run.timed_biwords(complete=False))
+  assert [key for key, _span in pairs] == ['the cat', 'cat sat']
+  assert [span.text for _key, span in pairs] == ['the cat', 'cat sat']
+
+
+def test_timed_biwords_key_ignores_intervening_punctuation():
+  run = RunStats.make('hello, world')
+  pairs = list(run.timed_biwords(complete=False))
+  assert len(pairs) == 1
+  key, span = pairs[0]
+  assert key == 'hello world'
+  assert span.text == 'hello, world'
+
+
+def test_collect_run_stat_rows_includes_biword_type():
+  run = _make_typed_run('the cat sat')
+  rows = collect_run_stat_rows(run, run.median_timing, 1.0, 1)
+  by_type = {(r[6], r[5]) for r in rows}
+  assert ('the cat', 3) in by_type
+  assert ('cat sat', 3) in by_type
+  assert ('the', 2) in by_type
+  assert ('cat', 2) in by_type
+
+
+def test_collect_run_stat_rows_aggregates_repeated_biwords():
+  run = _make_typed_run('of the of the')
+  rows = collect_run_stat_rows(run, run.median_timing, 1.0, 1)
+  bi = [r for r in rows if r[5] == 3 and r[6] == 'of the']
+  assert len(bi) == 1
+  assert bi[0][3] == 2  # count = two occurrences
+
+
 def _make_typed_run(text, spc=0.1):
   run = RunStats.make(text, started=1000.0)
   t = 1000.0; last = None
