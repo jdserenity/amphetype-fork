@@ -2,8 +2,8 @@
 
 from typing_program.speed_heatmap import PROGRESS_GREEN
 from typing_program.stats_query import (
-  ALL_TIME_HIST, count_analysis_words, format_avg_wpm_label, format_wpm_gate_label,
-  session_wpm_since_start_gain,
+  ALL_TIME_HIST, count_analysis_words, format_perfect_rate_label, format_progress_gate_label,
+  perfect_rate_since_start_gain,
 )
 from typing_program.QtUtil import *
 
@@ -29,7 +29,7 @@ class ProgressCard(QWidget):
     self.setStyleSheet(_CARD_STYLE)
 
     self._gain_num = QLabel(parent=self)
-    self._gain_cap = QLabel('WPM since start', parent=self)
+    self._gain_cap = QLabel('Perfect rate since start', parent=self)
     self._gain_num.setStyleSheet(_HERO_NUM_STYLE)
     self._gain_cap.setStyleSheet(_HERO_CAP_STYLE)
     gain_col = QWidget(parent=self)
@@ -39,10 +39,10 @@ class ProgressCard(QWidget):
     gain_lay.addWidget(self._gain_num, 0)
     gain_lay.addWidget(self._gain_cap, 0)
 
-    self._wpm_lbl = QLabel(parent=self)
+    self._rate_lbl = QLabel(parent=self)
     self._words_lbl = QLabel(parent=self)
     self._practice_lbl = QLabel(parent=self)
-    for lbl in (self._wpm_lbl, self._words_lbl, self._practice_lbl):
+    for lbl in (self._rate_lbl, self._words_lbl, self._practice_lbl):
       lbl.setStyleSheet(_STAT_STYLE)
     self._session_timer = None
 
@@ -51,7 +51,7 @@ class ProgressCard(QWidget):
     row_lay.setContentsMargins(12, 10, 12, 10)
     row_lay.setSpacing(_METRIC_GAP)
     row_lay.addWidget(gain_col, 0, Qt.AlignVCenter)
-    row_lay.addWidget(self._wpm_lbl, 0, Qt.AlignVCenter)
+    row_lay.addWidget(self._rate_lbl, 0, Qt.AlignVCenter)
     row_lay.addWidget(self._words_lbl, 0, Qt.AlignVCenter)
     row_lay.addWidget(self._practice_lbl, 0, Qt.AlignVCenter)
     row_lay.addStretch(1)
@@ -61,6 +61,11 @@ class ProgressCard(QWidget):
     lay.setSpacing(0)
     lay.addWidget(row, 0)
     self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+  # Compat for tests that still poke _wpm_lbl
+  @property
+  def _wpm_lbl(self):
+    return self._rate_lbl
 
   def set_session_timer(self, session_timer):
     self._session_timer = session_timer
@@ -76,25 +81,25 @@ class ProgressCard(QWidget):
   def update_all(self):
     words = count_analysis_words(self._db, self._hist)
     self._words_lbl.setText('Unique common words typed: %d' % words)
-    self._wpm_lbl.setText(format_avg_wpm_label(self._db, self._hist))
+    self._rate_lbl.setText(format_perfect_rate_label(self._db, self._hist))
     self._practice_lbl.setText(self._practice_time_text())
-    gate = format_wpm_gate_label(self._db)
+    gate = format_progress_gate_label(self._db)
     if gate:
       self._gain_num.setText('—')
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #888;')
       self._gain_cap.setText(gate)
       return
-    gain = session_wpm_since_start_gain(self._db, self._hist)
-    self._gain_cap.setText('WPM since start')
+    gain = perfect_rate_since_start_gain(self._db, self._hist)
+    self._gain_cap.setText('Perfect rate since start')
     if gain is None:
       self._gain_num.setText('—')
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #888;')
     elif gain > 0:
-      self._gain_num.setText('+%d' % gain)
+      self._gain_num.setText('+%d%%' % gain)
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: %s;' % PROGRESS_GREEN)
     elif gain < 0:
-      self._gain_num.setText('%d' % gain)
+      self._gain_num.setText('%d%%' % gain)
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #c44;')
     else:
-      self._gain_num.setText('+0')
+      self._gain_num.setText('+0%')
       self._gain_num.setStyleSheet(_HERO_NUM_STYLE + ' color: #888;')
