@@ -34,6 +34,7 @@ from typing_program.read_ahead import (
 )
 from typing_program.block_bkspc import allows_backspace
 from typing_program.idle_cursor import MOUSE_CURSOR_IDLE_MS, should_apply_idle_blank
+from typing_program.typer_focus import should_refocus_typer
 from typing_program.keyboard_nav import cycle_practice_mode
 from typing_program.follow_mode import (
   FOLLOW_CURSOR_COLOR, MAX_FOLLOW_WPM, MIN_FOLLOW_WPM,
@@ -1434,6 +1435,7 @@ class TyperWindow(QWidget):
     hp_lay.addWidget(self._heatmap_legend, 0)
 
     mode_row = QWidget()
+    mode_row.setFocusPolicy(Qt.NoFocus)
     mode_lay = QHBoxLayout(mode_row)
     mode_lay.setContentsMargins(0, 0, 0, 0)
     mode_lay.setSpacing(_FOOTER_ITEM_GAP)
@@ -1478,6 +1480,56 @@ class TyperWindow(QWidget):
     self._apply_read_ahead_from_settings()
     self._refresh_follow_footer()
     self._install_keyboard_nav()
+    self._install_typer_focus_guard()
+
+  def _install_typer_focus_guard(self):
+    """Lesson keeps keyboard focus; only the follow WPM box may steal it."""
+    for w in (self, self._canvas, self._label, self._prog, self._progw,
+              self._source_lbl, self._heatmap_legend, self._heatmap_panel,
+              self._follow_wpm_panel):
+      w.setFocusPolicy(Qt.NoFocus)
+    # Child timer dies with this widget — avoids singleShot callbacks after teardown.
+    self._typer_refocus_timer = QTimer(self)
+    self._typer_refocus_timer.setSingleShot(True)
+    self._typer_refocus_timer.timeout.connect(self._ensure_typer_focus)
+    app = QApplication.instance()
+    if app is None:
+      return
+    slot = self._on_app_focus_changed
+    app.focusChanged.connect(slot)
+    def _disconnect(*_args):
+      try:
+        app.focusChanged.disconnect(slot)
+      except (TypeError, RuntimeError):
+        pass
+    self.destroyed.connect(_disconnect)
+
+  def _focus_inside_typer_window(self, widget):
+    return widget is not None and (widget is self or self.isAncestorOf(widget))
+
+  def _on_app_focus_changed(self, _old, new):
+    try:
+      visible = self.isVisible()
+      inside = self._focus_inside_typer_window(new)
+      edit = getattr(self, '_follow_wpm_edit', None)
+      typer = self._typer
+    except RuntimeError:
+      return  # TyperWindow already destroyed (app focusChanged during teardown)
+    if not should_refocus_typer(new, visible, inside, typer, edit):
+      return
+    # Defer so button clicks finish before we reclaim focus.
+    self._typer_refocus_timer.start(0)
+
+  def _ensure_typer_focus(self):
+    try:
+      edit = getattr(self, '_follow_wpm_edit', None)
+      if edit is not None and edit.hasFocus():
+        return
+      if not self.isVisible():
+        return
+      self._typer.setFocus(Qt.OtherFocusReason)
+    except RuntimeError:
+      return
 
   def _install_keyboard_nav(self):
     """Cmd/Ctrl+Opt/Alt+←→ cycle practice mode. Tab cycles submode (TyperWidget).
