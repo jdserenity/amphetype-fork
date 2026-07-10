@@ -69,7 +69,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 |----------|--------|--------|
 | **Tab** | Next improve submode (`cycle_improve_submode`; no-op outside improve) | Typer canvas (`TyperWidget.keyPressEvent` → `_on_tab_nav`) |
 | **Cmd/Ctrl+Opt/Alt+← / →** | Previous / next practice mode (improve · corpus · book) | `TyperWindow` QShortcut (`Ctrl+Alt+Left/Right`); helpers in `keyboard_nav.py` |
-| **Opt/Alt+Cmd/Ctrl+[ / ]** | Previous / next main toolbar tab (Typer / PA / Preferences) | `MainWindow` QShortcut |
+| **Cmd+Shift+[ / Cmd+Shift+]** | Previous / next main toolbar tab (Typer / Performance Analysis / Preferences) | `MainWindow` QShortcut |
 
 `QKeySequence` uses `Ctrl` for Command on macOS. Pure helpers: `cycle_practice_mode`, `cycle_index`.
 
@@ -84,7 +84,8 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 - **Heatmap** (`speed_heatmap.py`): off default; modes words/trigrams/chars; all-time stats; prefs `typer/speed_heatmap`, `typer/speed_heatmap_mode`.
 - **Follow** (`follow_mode.py`): off default; **corpus/book only** (not improve). Footer toggle after heatmap; when on, minimal WPM stepper beside it (arrows ±1 or type; live, no Enter; Enter/Esc unfocus). Prefs: `typer/follow_mode`, `typer/follow_wpm` (default 70, persists). Preference stays on across mode switches; in improve the control is greyed/disabled immediately; returning to corpus/book restores active follow if it was on; if never on, eligible modes do not auto-enable. Race: a second caret advances through the lesson at the set WPM (5 chars = 1 word); starts with the run (first keystroke); pauses with ESC. Finish before the caret → “You beat the cursor!” (cyan). Caret first → “The cursor beat you… 👎” (heatmap red). Either way: normal progress stats; **book place still advances** on failure.
 - Sounds: `typing_sounds.py`; prefs `typer/typing_sound`, `typing_error_sound`, `typing_sound_volume`.
-- Word progress: `word_progress.py` — green + badges when median improves; orange = **new common words** that cross the PA min-count pool this run (`analysis_min_count` / `WORD_ANALYSIS_MIN_COUNT`). Message: “You typed N new common word(s)!”. **Improve modes (all submodes including normal) never show this** and never gather counted word samples (`count=0` on discounted `<Weakspot>`).
+- Word progress: `word_progress.py` — green + badges when median improves; orange = **new common words** that cross the PA min-count pool this run (`analysis_min_count` / `WORD_ANALYSIS_MIN_COUNT`). Message: “You found N new common word(s)!”. **Improve modes (all submodes including normal) never show this** and never gather counted word samples (`count=0` on discounted `<Weakspot>`).
+- Footer source title (`_source_lbl`): always keeps one line of height reserved (even when empty in improve), so the lesson canvas height matches book/corpus.
 - Book: full chapter grey inactive; active chunk sized by min/max chars; soft newlines auto-skip; para ⏎ match invisible; vertical center when scroll needed.
 - `limit_backspace` (typer pref): separate — won’t back over correct text when set.
 

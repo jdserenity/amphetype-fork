@@ -211,7 +211,9 @@ def test_format_progress_html_new_common_words_orange():
     _make_run('brand brand', spc=0.1), {}, prior_counts={}, min_count=2)
   html = format_progress_html(p)
   assert PROGRESS_ORANGE in html
+  assert 'You found' in html
   assert '1</span> new common word!' in html
+  assert 'typed' not in html
   assert 'unique' not in html
 
 
