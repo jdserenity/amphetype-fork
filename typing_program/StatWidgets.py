@@ -113,7 +113,8 @@ class AnalysisSortCombo(QComboBox):
 
 class AnalysisWhatCombo(SettingsCombo):
   def __init__(self):
-    super(AnalysisWhatCombo, self).__init__('analysis_what', ['keys', 'trigrams', 'words'])
+    super(AnalysisWhatCombo, self).__init__(
+      'analysis_what', ['keys', 'trigrams', 'words', 'biwords'])
     self.setFocusPolicy(Qt.ClickFocus)
     self.activated[int].connect(lambda _idx: self.clearFocus())
 

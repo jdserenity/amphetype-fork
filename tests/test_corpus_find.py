@@ -30,6 +30,12 @@ class TestTargetInText(unittest.TestCase):
     self.assertTrue(target_in_text('char', 'C', 'Cloth'))
     self.assertFalse(target_in_text('char', 'c', 'Cloth'))
 
+  def test_biword_consecutive_words(self):
+    self.assertTrue(target_in_text('biword', 'the cat', 'see the cat run'))
+    self.assertFalse(target_in_text('biword', 'the cat', 'the big cat'))
+    self.assertFalse(target_in_text('biword', 'the cat', 'The cat sat'))
+    self.assertTrue(target_in_text('biword', 'hello world', 'say hello, world now'))
+
 
 class TestCorpusFind(unittest.TestCase):
 
@@ -71,6 +77,13 @@ class TestCorpusFind(unittest.TestCase):
     conn.execute("insert into text (id, source, text, disabled) values ('t1', 1, 'fly from here', null)")
     hit = find_text_for_target(db, 'trigram', 'y f')
     self.assertEqual(hit[0], 't1')
+
+  def test_biword_scans_corpus(self):
+    db, conn = self._db()
+    conn.execute("insert into source (rowid, name, discount) values (1, 'Novel', null)")
+    conn.execute("insert into text (id, source, text, disabled) values ('b1', 1, 'of the people', null)")
+    hit = find_text_for_target(db, 'biword', 'of the')
+    self.assertEqual(hit[0], 'b1')
 
   def test_no_match_returns_none(self):
     db, conn = self._db()

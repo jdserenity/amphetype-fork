@@ -8,7 +8,7 @@ import pytest
 from typing_program.speed_heatmap import OBLIVION_WPM
 from typing_program.stats_query import (
   ALL_TIME_HIST, ANALYSIS_OUTER_SQL, RAW_TARGETS_SQL, STATS_AGG_SUBQUERY,
-  STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, aggregate_session_wpm,
+  STAT_TYPE_CHAR, STAT_TYPE_TRIGRAM, STAT_TYPE_WORD, STAT_TYPE_BIWORD, aggregate_session_wpm,
   aggregate_session_wpm_from_results, analysis_min_count, analysis_order_clause,
   analysis_order_sql, count_analysis_words, count_unique_typed,
   fetch_analysis_baseline_wpm, fetch_analysis_search, fetch_oblivion_pool, fetch_oblivion_picks,
@@ -236,6 +236,9 @@ def test_analysis_min_count_requires_two_for_words():
   assert analysis_min_count(STAT_TYPE_WORD, 1) == 2
   assert analysis_min_count(STAT_TYPE_WORD, 5) == 5
   assert analysis_min_count(STAT_TYPE_TRIGRAM, 1) == 1
+  assert analysis_min_count(STAT_TYPE_BIWORD, 1) == 2
+  assert analysis_min_count(STAT_TYPE_BIWORD, 5) == 5
+  assert analysis_min_count(STAT_TYPE_CHAR, 1) == 1
 
 
 def test_fetch_analysis_top_hides_one_shot_words():
