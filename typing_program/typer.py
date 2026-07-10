@@ -100,7 +100,7 @@ def _footer_btn_style(active=False, greyed=False):
     hover = MODE_BTN_HOVER
   return (
     'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
-    ' padding: 0; margin: 0; min-width: 0; min-height: 0; cursor: pointer; }'
+    ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
     'QPushButton:hover { color: %s; }' % (color, hover))
 
 
@@ -1386,7 +1386,7 @@ class TyperWindow(QWidget):
 
     self._mode_btn_style = (
       'QPushButton { color: %s; border: none; background: transparent; font-size: 11px;'
-      ' padding: 0; margin: 0; min-width: 0; min-height: 0; cursor: pointer; }'
+      ' padding: 0; margin: 0; min-width: 0; min-height: 0; }'
       'QPushButton:hover { color: %s; }'
       'QPushButton[activeMode="true"] { color: %s; }' % (
         MODE_BTN_INACTIVE, MODE_BTN_HOVER, MODE_BTN_ACTIVE))

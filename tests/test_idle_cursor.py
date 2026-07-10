@@ -28,16 +28,18 @@ def test_should_not_blank_when_pointer_left_canvas():
   assert not should_apply_idle_blank(True, idle_ms=MOUSE_CURSOR_IDLE_MS - 1)
 
 
-def test_footer_mode_styles_request_pointing_hand(qapp):
-  """Qt stylesheets override setCursor unless cursor: pointer is in the CSS."""
+def test_footer_mode_buttons_use_pointing_hand(qapp):
+  """Hand cursor comes from setCursor — not stylesheet `cursor:` (Qt warns on that)."""
   import typing_program.mainwindow  # noqa: F401
+  from PyQt5.QtCore import Qt
   from typing_program.typer import TyperWindow, _footer_btn_style
 
   tw = TyperWindow()
-  assert 'cursor: pointer' in tw._mode_btn_style
-  assert 'cursor: pointer' in _footer_btn_style(False)
-  assert 'cursor: pointer' in _footer_btn_style(True)
-  assert 'cursor: pointer' in tw._btn_improve.styleSheet()
+  assert 'cursor:' not in tw._mode_btn_style
+  assert 'cursor:' not in _footer_btn_style(False)
+  assert tw._btn_improve.cursor().shape() == Qt.PointingHandCursor
+  assert tw._btn_corpus.cursor().shape() == Qt.PointingHandCursor
+  assert tw._btn_follow.cursor().shape() == Qt.PointingHandCursor
 
 
 def test_viewport_mouse_move_restores_cursor(qapp):

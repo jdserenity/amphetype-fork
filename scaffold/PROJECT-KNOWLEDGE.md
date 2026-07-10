@@ -46,9 +46,9 @@ Focus-drill ordering should be a true shuffle of the equal-weight copies — do 
 
 `TyperWidget.mouseMoveEvent` does not see most moves — they go to the viewport. Without `viewport().installEventFilter(...)`, the idle-hide timer never resets while the user is moving, so the pointer blanks mid-motion. Also only apply `BlankCursor` when the pointer is still over the canvas (`should_apply_idle_blank`).
 
-## Footer buttons need `cursor: pointer` in the stylesheet
+## Footer hand cursor: setCursor, not stylesheet `cursor:`
 
-Styled `QPushButton`s ignore `setCursor(PointingHandCursor)` unless the stylesheet also sets `cursor: pointer`. Mode / heatmap / follow footer styles must include it.
+Qt stylesheets here do **not** support `cursor: pointer` — it only prints `Unknown property cursor` repeatedly and does nothing. Use `QWidget.setCursor(Qt.PointingHandCursor)` on footer buttons instead.
 
 ## Typer focus: only follow WPM may steal the keyboard
 
