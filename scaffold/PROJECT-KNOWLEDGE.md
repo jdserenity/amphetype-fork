@@ -49,3 +49,7 @@ Focus-drill ordering should be a true shuffle of the equal-weight copies — do 
 ## Footer buttons need `cursor: pointer` in the stylesheet
 
 Styled `QPushButton`s ignore `setCursor(PointingHandCursor)` unless the stylesheet also sets `cursor: pointer`. Mode / heatmap / follow footer styles must include it.
+
+## Typer focus: only follow WPM may steal the keyboard
+
+Users must never need to click the lesson to start typing again after using footer controls. Keep focus on `TyperWidget` via `typer_focus.should_refocus_typer` + `QApplication.focusChanged`. The follow-mode WPM line edit is the only in-Typer exception.
