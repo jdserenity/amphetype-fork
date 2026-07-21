@@ -42,7 +42,7 @@ scaffold/         # agent docs (this file)
 - Dev: `./run-dev.sh` or `typing-program --skip-license` after `pip install -e .`
 - Skip license: `--skip-license` / `TYPING_PROGRAM_SKIP_LICENSE=1`
 - Main window: `mainwindow.py` / `main.py` — wires Typer, Performance Analysis, Preferences, session timer
-- Typer core: `typer.py` — `LessonDocument`, `TyperWidget`, `TyperWindow`
+- Typer core: `typer/` package (`document.py`, `widget.py`, `window.py`, …) — facade re-exports `LessonDocument`, `TyperWidget`, `TyperWindow` from `typing_program.typer`
 - Timing/stats collect: `timingtuple.py` (`RunStats`, `collect_run_stat_rows`, `collect_focus_drill_stat_rows`)
 - Analysis queries: `stats_query.py`
 - Settings defaults: `Config.py`
@@ -164,7 +164,7 @@ Tests: `python -m pytest tests/ -q` (pytest-qt for GUI).
 
 | Concern | Module(s) |
 |---------|-----------|
-| Typer UI/doc | `typer.py` |
+| Typer UI/doc | `typer/` (`document`, `widget`, `window`; import via `typing_program.typer`) |
 | Block ⌫ | `block_bkspc.py` |
 | Read ahead | `read_ahead.py` |
 | Heatmap | `speed_heatmap.py` |
