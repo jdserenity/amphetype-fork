@@ -1565,6 +1565,41 @@ class TyperWindow(QWidget):
     btn.style().unpolish(btn)
     btn.style().polish(btn)
 
+  def _set_mode_btn_active(self, btn, active):
+    btn.setStyleSheet(self._mode_btn_style)
+    btn.setProperty('activeMode', active)
+    self._polish_mode_btn(btn)
+    btn.setCursor(Qt.PointingHandCursor)
+
+  def _clear_focus_drill(self):
+    self._focus_drill = None
+    self._focus_drill_wpm = {}
+    self._focus_drill_from_pa = False
+
+  def _load_for_mode(self, mode):
+    """Load a lesson for improve / book / corpus (invalidate book cache when needed)."""
+    if mode in (MODE_WEAKSPOT, MODE_IMPROVE):
+      self._load_improve_lesson()
+    elif mode == MODE_BOOK:
+      self._book.invalidate_cache()
+      self._book.request_lesson(advance_chapter=False)
+    else:
+      self._set_improve_footer_busy(False)
+      self.wantText.emit()
+
+  def _activate_loaded_lesson(self, text_len, center=True, focus=True):
+    """Shared chrome after a lesson body is in the document."""
+    if center:
+      self._schedule_typing_center()
+    else:
+      self._typer._pin_typing_center = False
+    self._refreshHeatmap()
+    if focus:
+      self._typer.setFocus()
+    self._prog.setMaximum(max(1, text_len))
+    self._prog.setValue(0)
+    self._show_progress_strip()
+
   def _refresh_book_btn(self):
     if self._mode == MODE_BOOK and self._book_prog_text:
       self._btn_book.setText('book · ' + self._book_prog_text)
@@ -1594,10 +1629,7 @@ class TyperWindow(QWidget):
     self._btn_improve_level.setText(IMPROVE_SUBMODE_LABELS[level])
     self._btn_improve_level.setVisible(visible)
     if visible:
-      self._btn_improve_level.setStyleSheet(self._mode_btn_style)
-      self._btn_improve_level.setProperty('activeMode', True)
-      self._polish_mode_btn(self._btn_improve_level)
-      self._btn_improve_level.setCursor(Qt.PointingHandCursor)
+      self._set_mode_btn_active(self._btn_improve_level, True)
 
   def _load_improve_lesson(self):
     # Drop empty oblivion (and any other unavailable saved index) before loading.
@@ -1608,15 +1640,11 @@ class TyperWindow(QWidget):
       self._set_improve_submode_ui(submode)
       self.S('improve_submode').set(submode)
     if submode == IMPROVE_SUBMODE_NORMAL:
-      self._focus_drill = None
-      self._focus_drill_wpm = {}
-      self._focus_drill_from_pa = False
+      self._clear_focus_drill()
       self._weakspot.request_next_lesson(force=True)
       return
     if submode == IMPROVE_SUBMODE_TRIGRAMS:
-      self._focus_drill = None
-      self._focus_drill_wpm = {}
-      self._focus_drill_from_pa = False
+      self._clear_focus_drill()
       targets = fetch_weak_trigram_targets(
         self.DB, ALL_TIME_HIST, Settings.get('analysis_count'), Settings.get('analysis_many'))
       if not targets:
@@ -1652,17 +1680,11 @@ class TyperWindow(QWidget):
   def _set_read_ahead_ui(self, enabled, level, refresh_doc=False):
     self._read_ahead_on = enabled
     self._read_ahead_level = level
-    self._btn_read_ahead.setStyleSheet(self._mode_btn_style)
-    self._btn_read_ahead.setProperty('activeMode', enabled)
-    self._polish_mode_btn(self._btn_read_ahead)
-    self._btn_read_ahead.setCursor(Qt.PointingHandCursor)
+    self._set_mode_btn_active(self._btn_read_ahead, enabled)
     self._btn_read_ahead_level.setText(READ_AHEAD_LEVEL_LABELS[level])
     self._btn_read_ahead_level.setVisible(enabled)
     if enabled:
-      self._btn_read_ahead_level.setStyleSheet(self._mode_btn_style)
-      self._btn_read_ahead_level.setProperty('activeMode', True)
-      self._polish_mode_btn(self._btn_read_ahead_level)
-      self._btn_read_ahead_level.setCursor(Qt.PointingHandCursor)
+      self._set_mode_btn_active(self._btn_read_ahead_level, True)
     if refresh_doc:
       self._doc.set_read_ahead_mode(document_read_ahead_mode(enabled, level))
 
@@ -1671,10 +1693,7 @@ class TyperWindow(QWidget):
 
   def _onBlockBkspcSetting(self, *_):
     on = bool(self.S('word_delete_enabled').get())
-    self._btn_block_bkspc.setStyleSheet(self._mode_btn_style)
-    self._btn_block_bkspc.setProperty('activeMode', on)
-    self._polish_mode_btn(self._btn_block_bkspc)
-    self._btn_block_bkspc.setCursor(Qt.PointingHandCursor)
+    self._set_mode_btn_active(self._btn_block_bkspc, on)
 
   def updateFont(self):
     self._doc.setDefaultFont(self._settings.getFont('typer_font'))
@@ -1991,22 +2010,15 @@ class TyperWindow(QWidget):
 
   def _request_new_lesson(self):
     """Load a fresh exercise for the current practice mode."""
-    if self._mode in (MODE_WEAKSPOT, MODE_IMPROVE):
-      if self._focus_drill:
-        # Auto improve drills re-sample targets; PA drills keep the chosen targets.
-        if self._focus_drill_from_pa:
-          if not self._emit_focus_lesson(self._focus_drill):
-            self.updateLabel('Could not rebuild focus drill for those targets.')
-        else:
-          self._load_improve_lesson()
-        return
-      self._load_improve_lesson()
-    elif self._mode == MODE_BOOK:
-      self._book.invalidate_cache()
-      self._book.request_lesson(advance_chapter=False)
-    else:
-      self._set_improve_footer_busy(False)
-      self.wantText.emit()
+    if self._mode in (MODE_WEAKSPOT, MODE_IMPROVE) and self._focus_drill:
+      # Auto improve drills re-sample targets; PA drills keep the chosen targets.
+      if self._focus_drill_from_pa:
+        if not self._emit_focus_lesson(self._focus_drill):
+          self.updateLabel('Could not rebuild focus drill for those targets.')
+      else:
+        self._load_improve_lesson()
+      return
+    self._load_for_mode(self._mode)
 
   def _schedule_typing_center(self):
     self._typer.setTextCursor(self._doc.cursor)
@@ -2057,15 +2069,7 @@ class TyperWindow(QWidget):
     epilogue = ('\n' + post[2]) if post is not None else ''
 
     self._doc.set_text(txt[2], prologue=prologue, epilogue=epilogue)
-    if self._mode == MODE_CORPUS:
-      self._schedule_typing_center()
-    else:
-      self._typer._pin_typing_center = False
-    self._refreshHeatmap()
-    self._typer.setFocus()
-    self._prog.setMaximum(max(1, len(txt[2] or '')))
-    self._prog.setValue(0)
-    self._show_progress_strip()
+    self._activate_loaded_lesson(len(txt[2] or ''), center=(self._mode == MODE_CORPUS))
 
   def _update_source_label(self, srcid):
     row = self.DB.fetchone('select name from source where rowid=?', (None,), (srcid,))
@@ -2140,21 +2144,14 @@ class TyperWindow(QWidget):
     self._current_lesson = (tid, srcid, active)
     self._update_book_footer(meta)
     self._doc.set_book_chapter(body, chunks, meta['chunk_index'], auto_returns=True)
-    self._schedule_typing_center()
-    self._refreshHeatmap()
-    self._typer.setFocus()
-    self._prog.setValue(0)
-    self._prog.setMaximum(max(1, len(active)))
-    self._show_progress_strip()
+    self._activate_loaded_lesson(len(active), center=True)
 
   def _apply_practice_mode_from_settings(self):
     mode = practice_mode_from_settings(self._settings.get('practice_mode'))
     self._set_mode_ui(mode, load=False)
-    if mode == MODE_IMPROVE:
-      self._load_improve_lesson()
-    elif mode == MODE_BOOK:
-      self._book.invalidate_cache()
-      self._book.request_lesson(advance_chapter=False)
+    # Cold start is improve; do not emit wantText for corpus here.
+    if mode in (MODE_IMPROVE, MODE_BOOK):
+      self._load_for_mode(mode)
 
   def _on_improve_click(self):
     if self._mode == MODE_IMPROVE and (self._focus_drill or self._improve_submode != IMPROVE_SUBMODE_NORMAL):
@@ -2170,18 +2167,14 @@ class TyperWindow(QWidget):
     self.set_practice_mode(MODE_CORPUS)
 
   def _exit_focus_drill(self):
-    self._focus_drill = None
-    self._focus_drill_wpm = {}
-    self._focus_drill_from_pa = False
+    self._clear_focus_drill()
     if self._improve_submode != IMPROVE_SUBMODE_NORMAL:
       self.S('improve_submode').set(IMPROVE_SUBMODE_NORMAL)
     self._weakspot.request_next_lesson(force=True)
 
   def load_corpus_text(self, v):
     """Open a corpus chunk in corpus mode (from Performance Analysis Find in corpus)."""
-    self._focus_drill = None
-    self._focus_drill_wpm = {}
-    self._focus_drill_from_pa = False
+    self._clear_focus_drill()
     self._settings.set('practice_mode', practice_mode_to_settings(MODE_CORPUS))
     self._set_mode_ui(MODE_CORPUS, load=False)
     self.setText(v)
@@ -2206,9 +2199,7 @@ class TyperWindow(QWidget):
       if len(t) > 2 and t[2] is not None:
         self._focus_drill_wpm[t[1]] = t[2]
     if not self._emit_focus_lesson(self._focus_drill):
-      self._focus_drill = None
-      self._focus_drill_wpm = {}
-      self._focus_drill_from_pa = False
+      self._clear_focus_drill()
       self.updateLabel('Could not build a drill for those targets.')
       return False
     return True
@@ -2223,20 +2214,14 @@ class TyperWindow(QWidget):
   def set_practice_mode(self, mode):
     if mode == self._mode:
       return
-    if mode != MODE_IMPROVE:
-      self._focus_drill = None
-      self._focus_drill_from_pa = False
-    self._focus_drill_wpm = {}
+    self._clear_focus_drill()
     self._settings.set('practice_mode', practice_mode_to_settings(mode))
     self._set_mode_ui(mode, load=True)
 
   def _set_mode_ui(self, mode, load):
     self._mode = mode
     for btn, m in ((self._btn_improve, MODE_IMPROVE), (self._btn_corpus, MODE_CORPUS), (self._btn_book, MODE_BOOK)):
-      btn.setStyleSheet(self._mode_btn_style)
-      btn.setProperty('activeMode', mode == m)
-      self._polish_mode_btn(btn)
-      btn.setCursor(Qt.PointingHandCursor)
+      self._set_mode_btn_active(btn, mode == m)
     self._set_improve_submode_ui(self._improve_submode)
     self._refresh_book_btn()
     self._refresh_follow_footer()
@@ -2249,16 +2234,8 @@ class TyperWindow(QWidget):
       self._source_lbl.clear()
       self._source_lbl.setVisible(True)
       self._source_lbl.setCursor(Qt.ArrowCursor)
-    if not load:
-      return
-    if mode == MODE_IMPROVE:
-      self._load_improve_lesson()
-    elif mode == MODE_BOOK:
-      self._book.invalidate_cache()
-      self._book.request_lesson(advance_chapter=False)
-    else:
-      self._set_improve_footer_busy(False)
-      self.wantText.emit()
+    if load:
+      self._load_for_mode(mode)
 
   def _set_improve_footer_busy(self, busy):
     self._weakspot_generating = busy
@@ -2348,11 +2325,7 @@ class TyperWindow(QWidget):
         tid = lesson_text_id(srcid, m['chapter_index'], m['chunk_index'])
         self._current_lesson = (tid, srcid, active)
         self._update_book_footer(m)
-        self._prog.setValue(0)
-        self._prog.setMaximum(max(1, len(active)))
-        self._show_progress_strip()
-        self._schedule_typing_center()
-        self._refreshHeatmap()
+        self._activate_loaded_lesson(len(active), center=True, focus=False)
       return
     if action == 'book_next':
       self._book.request_lesson(advance_chapter=False)
@@ -2377,6 +2350,39 @@ class TyperWindow(QWidget):
     if text:
       self._show_result_label()
 
+  def _insert_statistic_rows(self, rows):
+    """Write statistic rows and refresh heatmap/listeners. Returns True if any rows written."""
+    if not rows:
+      return False
+    self.DB.executemany_('''
+    insert into statistic
+    (time,viscosity,w,count,mistakes,type,data,source)
+    values (?,?,?,?,?,?,?,?)
+    ''', rows)
+    self.DB.commit()
+    self.statsChanged.emit()
+    self._refreshHeatmap()
+    return True
+
+  def _should_write_lesson_stats(self, srcid):
+    is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
+    write_stats = self._mode not in (MODE_IMPROVE,) and (not is_lesson or self._settings.get('use_lesson_stats'))
+    return is_lesson, write_stats
+
+  def _pending_after_book_chunk(self, srcid, now, fallback_action):
+    """Persist book place and set _pending_action. Returns True if mid-chapter chunk remains."""
+    if self._mode == MODE_BOOK and self._book_meta is not None:
+      m = self._book_meta
+      # Always persist place on every finished chunk (not only chapter ends).
+      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
+      if self._doc.has_next_book_chunk():
+        self._pending_action = 'book_chunk'
+        return True
+      self._pending_action = 'book_next'
+      return False
+    self._pending_action = fallback_action
+    return False
+
   def typingFailed(self, txt):
     self.updateLabel(txt)
 
@@ -2398,29 +2404,12 @@ class TyperWindow(QWidget):
     textid, srcid, _ = self._current_lesson
     if med_char:
       vals = collect_run_stat_rows(run, med_char, now, srcid)
-      is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
-      write_stats = self._mode not in (MODE_IMPROVE,) and (not is_lesson or self._settings.get('use_lesson_stats'))
+      _is_lesson, write_stats = self._should_write_lesson_stats(srcid)
       if write_stats and vals:
-        self.DB.executemany_('''
-        insert into statistic
-        (time,viscosity,w,count,mistakes,type,data,source)
-        values (?,?,?,?,?,?,?,?)
-        ''', vals)
-        self.DB.commit()
-        self.statsChanged.emit()
-        self._refreshHeatmap()
-        stats_saved = True
+        stats_saved = self._insert_statistic_rows(vals)
 
     # Book place still advances on follow failure (same as a finished chunk).
-    if self._mode == MODE_BOOK and self._book_meta is not None:
-      m = self._book_meta
-      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
-      if self._doc.has_next_book_chunk():
-        self._pending_action = 'book_chunk'
-      else:
-        self._pending_action = 'book_next'
-    else:
-      self._pending_action = 'normal_next'
+    self._pending_after_book_chunk(srcid, now, 'normal_next')
     self._pending_now = now
     self._pending_review_words = None
     self._show_progress_summary(run, stats_saved=stats_saved)
@@ -2449,14 +2438,8 @@ class TyperWindow(QWidget):
       ws_src = self.DB.getSource('<Weakspot>', lesson=1)
       drill_rows = collect_focus_drill_stat_rows(run, med_char, now, self._focus_drill)
       if drill_rows:
-        self.DB.executemany_('''
-        insert into statistic
-        (time,viscosity,w,count,mistakes,type,data,source)
-        values (?,?,?,?,?,?,?,?)
-        ''', [(t, vis, w, c, m, tp, data, ws_src) for t, vis, w, c, m, tp, data in drill_rows])
-        self.DB.commit()
-        self.statsChanged.emit()
-        self._refreshHeatmap()
+        rows = [(t, vis, w, c, m, tp, data, ws_src) for t, vis, w, c, m, tp, data in drill_rows]
+        self._insert_statistic_rows(rows)
       self._pending_action = 'focus_repeat'
       self._show_progress_summary(run, stats_saved=bool(drill_rows))
       return
@@ -2479,8 +2462,7 @@ class TyperWindow(QWidget):
 
     vals = collect_run_stat_rows(run, med_char, now, srcid)
 
-    is_lesson = self.DB.fetchone("select discount from source where rowid=?", (None,), (srcid, ))[0]
-    write_stats = self._mode not in (MODE_IMPROVE,) and (not is_lesson or self._settings.get('use_lesson_stats'))
+    is_lesson, write_stats = self._should_write_lesson_stats(srcid)
 
     if self._mode == MODE_IMPROVE:
       ws_src = self.DB.getSource('<Weakspot>', lesson=1)
@@ -2518,17 +2500,9 @@ class TyperWindow(QWidget):
     self._pending_now = now
     self._pending_review_words = review_words if action == 'review' else None
 
-    if self._mode == MODE_BOOK and self._book_meta is not None:
-      m = self._book_meta
-      srcid = self._current_lesson[1]
-      # Always persist place on every finished chunk (not only chapter ends).
-      # Mid-chapter advances used to skip this and reopened the same chunk forever.
-      self._book.on_chunk_completed(srcid, m['chapter_index'], m['chunk_index'], now)
-      if self._doc.has_next_book_chunk():
-        self._pending_action = 'book_chunk'
-        self._show_progress_summary(run, stats_saved=True)
-        return
+    if self._pending_after_book_chunk(srcid, now, action):
+      self._show_progress_summary(run, stats_saved=True)
+      return
 
-    self._pending_action = action
     self._show_progress_summary(run, stats_saved=True)
 
