@@ -48,7 +48,9 @@ from collections import Counter
 from time import time
 import logging as log
 
+from typing_program import timer
 from typing_program.typer.document import LessonDocument
+from typing_program.typer.follow_clock import FollowClock
 from typing_program.typer.widget import TyperWidget, configure_transparent_typer
 from typing_program.typer.pause_overlay import _LessonPauseOverlay
 from typing_program.typer.source_attr import format_source_attribution, lesson_completion_action
@@ -169,39 +171,17 @@ class TyperWindow(QWidget):
       'QPushButton[activeMode="true"] { color: %s; }' % (
         MODE_BTN_INACTIVE, _FOOTER_BTN_PAD_X, MODE_BTN_HOVER, MODE_BTN_ACTIVE))
 
-    self._btn_improve = QPushButton(_IMPROVE_BTN_LABEL, flat=True)
-    self._btn_book = QPushButton('book', flat=True)
-    self._btn_corpus = QPushButton(_CORPUS_BTN_LABEL, flat=True)
-    self._btn_read_ahead = QPushButton('read ahead', flat=True)
-    self._btn_read_ahead_level = QPushButton('normal', flat=True)
-    self._btn_block_bkspc = QPushButton('Block ⌫', flat=True)
-    self._btn_improve_level = QPushButton('normal', flat=True)
-    self._btn_heatmap = QPushButton('heatmap', flat=True)
-    self._btn_heatmap.clicked.connect(self._toggleHeatmap)
-    self._btn_heatmap_kind = QPushButton(flat=True)
-    self._btn_heatmap_kind.clicked.connect(self._cycleHeatmapMode)
-    self._btn_follow = QPushButton('follow', flat=True)
-    self._btn_follow.clicked.connect(self._toggleFollow)
+    self._btn_improve = self._make_footer_btn(_IMPROVE_BTN_LABEL, slot=self._on_improve_click)
+    self._btn_book = self._make_footer_btn('book', slot=lambda: self.set_practice_mode(MODE_BOOK))
+    self._btn_corpus = self._make_footer_btn(_CORPUS_BTN_LABEL, slot=self._on_corpus_click)
+    self._btn_read_ahead = self._make_footer_btn('read ahead', slot=self.toggle_read_ahead)
+    self._btn_read_ahead_level = self._make_footer_btn('normal', slot=self.cycle_read_ahead_level)
+    self._btn_block_bkspc = self._make_footer_btn('Block ⌫', slot=self.toggle_block_bkspc)
+    self._btn_improve_level = self._make_footer_btn('normal', slot=self.cycle_improve_submode)
+    self._btn_heatmap = self._make_footer_btn('heatmap', mode_style=False, slot=self._toggleHeatmap)
+    self._btn_heatmap_kind = self._make_footer_btn('', mode_style=False, slot=self._cycleHeatmapMode)
+    self._btn_follow = self._make_footer_btn('follow', mode_style=False, slot=self._toggleFollow)
     self._follow_wpm_panel = self._make_follow_wpm_panel()
-    for b in (self._btn_improve, self._btn_corpus, self._btn_book, self._btn_read_ahead,
-              self._btn_read_ahead_level, self._btn_block_bkspc, self._btn_improve_level):
-      b.setFocusPolicy(Qt.NoFocus)
-      b.setStyleSheet(self._mode_btn_style)
-      b.setCursor(Qt.PointingHandCursor)
-      b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
-      _footer_zero_margins(b)
-    for b in (self._btn_heatmap, self._btn_heatmap_kind, self._btn_follow):
-      b.setFocusPolicy(Qt.NoFocus)
-      b.setCursor(Qt.PointingHandCursor)
-      b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
-      _footer_zero_margins(b)
-    self._btn_improve.clicked.connect(self._on_improve_click)
-    self._btn_corpus.clicked.connect(self._on_corpus_click)
-    self._btn_book.clicked.connect(lambda: self.set_practice_mode(MODE_BOOK))
-    self._btn_read_ahead.clicked.connect(self.toggle_read_ahead)
-    self._btn_read_ahead_level.clicked.connect(self.cycle_read_ahead_level)
-    self._btn_block_bkspc.clicked.connect(self.toggle_block_bkspc)
-    self._btn_improve_level.clicked.connect(self.cycle_improve_submode)
     self._weakspot_generating = False
 
     self._heatmap_legend = make_heatmap_legend()
@@ -242,9 +222,7 @@ class TyperWindow(QWidget):
     self._follow_timer.timeout.connect(self._on_follow_tick)
     self._follow_racing = False
     self._follow_race_outcome = None
-    self._follow_clock_started = None
-    self._follow_clock_pause_total = 0.0
-    self._follow_clock_paused_at = None
+    self._follow_clock = FollowClock(timer)
 
     self.S('speed_heatmap').bind_value(self._onHeatmapSetting, call=True)
     self.S('speed_heatmap_mode').bind_value(self._onHeatmapSetting, call=True)
@@ -335,6 +313,18 @@ class TyperWindow(QWidget):
 
   def _cycle_practice_mode(self, delta):
     self.set_practice_mode(cycle_practice_mode(self._mode, delta))
+
+  def _make_footer_btn(self, label='', *, mode_style=True, slot=None):
+    b = QPushButton(label, flat=True)
+    b.setFocusPolicy(Qt.NoFocus)
+    b.setCursor(Qt.PointingHandCursor)
+    b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+    _footer_zero_margins(b)
+    if mode_style:
+      b.setStyleSheet(self._mode_btn_style)
+    if slot is not None:
+      b.clicked.connect(slot)
+    return b
 
   def _polish_mode_btn(self, btn):
     btn.style().unpolish(btn)
@@ -599,7 +589,7 @@ class TyperWindow(QWidget):
     self._follow_race_outcome = None
     self._typer.set_follow_cursor_index(0)
     if self._doc.is_running() and not self._doc.is_paused():
-      self._start_follow_clock()
+      self._follow_clock.start()
       self._follow_racing = True
       if not self._follow_timer.isActive():
         self._follow_timer.start()
@@ -607,39 +597,12 @@ class TyperWindow(QWidget):
     else:
       self._follow_racing = False
       self._follow_timer.stop()
-      self._reset_follow_clock()
-
-  def _reset_follow_clock(self):
-    self._follow_clock_started = None
-    self._follow_clock_pause_total = 0.0
-    self._follow_clock_paused_at = None
-
-  def _start_follow_clock(self):
-    """Own clock — RunStats.started is often unset on cold start until the end."""
-    if self._follow_clock_started is None:
-      self._follow_clock_started = timer()
-      self._follow_clock_pause_total = 0.0
-      self._follow_clock_paused_at = None
-
-  def _pause_follow_clock(self):
-    if self._follow_clock_started is not None and self._follow_clock_paused_at is None:
-      self._follow_clock_paused_at = timer()
-
-  def _resume_follow_clock(self):
-    if self._follow_clock_paused_at is not None:
-      self._follow_clock_pause_total += timer() - self._follow_clock_paused_at
-      self._follow_clock_paused_at = None
-
-  def _follow_elapsed(self):
-    if self._follow_clock_started is None:
-      return 0.0
-    t = self._follow_clock_paused_at if self._follow_clock_paused_at is not None else timer()
-    return max(0.0, t - self._follow_clock_started - self._follow_clock_pause_total)
+      self._follow_clock.reset()
 
   def _stop_follow_race(self, clear_caret=False):
     self._follow_racing = False
     self._follow_timer.stop()
-    self._reset_follow_clock()
+    self._follow_clock.reset()
     if clear_caret:
       self._typer.set_follow_cursor_index(None)
 
@@ -653,7 +616,7 @@ class TyperWindow(QWidget):
     if self._doc.is_paused():
       return
     wpm = int(self.S('follow_wpm').get())
-    elapsed = self._follow_elapsed()
+    elapsed = self._follow_clock.elapsed()
     idx = follow_index(elapsed, wpm, len(text))
     self._typer.set_follow_cursor_index(idx)
     user_done = bool(self._doc._run.is_complete())
@@ -744,7 +707,7 @@ class TyperWindow(QWidget):
   def _on_lesson_started(self):
     self._typer._pin_typing_center = False
     if self._follow_is_active():
-      self._start_follow_clock()
+      self._follow_clock.start()
       self._follow_racing = True
       self._follow_race_outcome = None
       if not self._follow_timer.isActive():
@@ -752,14 +715,14 @@ class TyperWindow(QWidget):
       self._on_follow_tick()
 
   def _on_lesson_paused(self):
-    self._pause_follow_clock()
+    self._follow_clock.pause()
     self._pause_overlay.setGeometry(self._canvas.rect())
     self._pause_overlay.show()
     self._pause_overlay.raise_()
     self._typer.updateStatus()
 
   def _on_lesson_resumed(self):
-    self._resume_follow_clock()
+    self._follow_clock.resume()
     self._pause_overlay.hide()
     self._typer.updateStatus()
     self._typer.setFocus()

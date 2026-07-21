@@ -28,7 +28,7 @@ Rules:
 
 ## Follow mode uses its own race clock
 
-Lesson runs often cold-start with `RunStats.started is None` until the run is fixed up at the end. Follow mode therefore keeps a separate pause-aware clock on `TyperWindow` (`_follow_clock_*`) instead of reading `run.active_elapsed()` for caret position.
+Lesson runs often cold-start with `RunStats.started is None` until the run is fixed up at the end. Follow mode therefore keeps a separate pause-aware clock (`FollowClock` in `typer/follow_clock.py`, owned by `TyperWindow`) instead of reading `run.active_elapsed()` for caret position.
 
 ## Footer title height needs Minimum size policy
 

@@ -6,6 +6,40 @@ from typing_program.follow_mode import (
   chars_per_second, clamp_follow_wpm, follow_active, follow_eligible,
   follow_index, follow_race_result, follow_reached_end, parse_follow_wpm,
 )
+from typing_program.typer.follow_clock import FollowClock
+
+
+class _FakeNow:
+  def __init__(self, t=0.0):
+    self.t = t
+  def __call__(self):
+    return self.t
+
+
+def test_follow_clock_elapsed_and_pause():
+  now = _FakeNow(10.0)
+  clock = FollowClock(now)
+  assert clock.elapsed() == 0.0
+  clock.start()
+  now.t = 12.5
+  assert clock.elapsed() == 2.5
+  clock.pause()
+  now.t = 20.0
+  assert clock.elapsed() == 2.5  # frozen while paused
+  clock.resume()
+  now.t = 21.0
+  assert clock.elapsed() == 3.5
+  clock.reset()
+  assert clock.elapsed() == 0.0
+
+
+def test_follow_clock_start_is_idempotent():
+  now = _FakeNow(1.0)
+  clock = FollowClock(now)
+  clock.start()
+  now.t = 3.0
+  clock.start()  # must not restart
+  assert clock.elapsed() == 2.0
 
 
 def test_follow_eligible_corpus_and_book_only():
