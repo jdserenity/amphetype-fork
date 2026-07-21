@@ -2,7 +2,7 @@
 
 from typing_program.book_mode import MODE_BOOK, MODE_CORPUS, MODE_IMPROVE
 from typing_program.keyboard_nav import (
-  PRACTICE_MODE_ORDER, cycle_index, cycle_practice_mode,
+  PRACTICE_MODE_ORDER, cycle_index, cycle_practice_mode, selectable_practice_modes,
 )
 
 
@@ -11,20 +11,21 @@ def test_practice_mode_order_matches_footer():
 
 
 def test_cycle_practice_mode_forward():
-  assert cycle_practice_mode(MODE_IMPROVE, 1) == MODE_CORPUS
-  assert cycle_practice_mode(MODE_CORPUS, 1) == MODE_BOOK
-  assert cycle_practice_mode(MODE_BOOK, 1) == MODE_IMPROVE
+  order = selectable_practice_modes()
+  for i, mode in enumerate(order):
+    assert cycle_practice_mode(mode, 1) == order[(i + 1) % len(order)]
 
 
 def test_cycle_practice_mode_backward():
-  assert cycle_practice_mode(MODE_IMPROVE, -1) == MODE_BOOK
-  assert cycle_practice_mode(MODE_BOOK, -1) == MODE_CORPUS
-  assert cycle_practice_mode(MODE_CORPUS, -1) == MODE_IMPROVE
+  order = selectable_practice_modes()
+  for i, mode in enumerate(order):
+    assert cycle_practice_mode(mode, -1) == order[(i - 1) % len(order)]
 
 
 def test_cycle_practice_mode_unknown_starts_at_improve():
-  assert cycle_practice_mode('nope', 1) == MODE_CORPUS  # index treated as 0 → +1
-  assert cycle_practice_mode('nope', 0) == MODE_IMPROVE
+  order = selectable_practice_modes()
+  assert cycle_practice_mode('nope', 1) == order[1]  # index treated as 0 → +1
+  assert cycle_practice_mode('nope', 0) == order[0]
 
 
 def test_cycle_index_wraps():
@@ -81,14 +82,15 @@ def test_cycle_practice_mode_on_typer_window(qapp):
   from typing_program.typer import TyperWindow
 
   tw = TyperWindow()
+  order = selectable_practice_modes()
   # Cold start is improve
-  assert tw._mode == MODE_IMPROVE
+  assert tw._mode == order[0]
   tw._cycle_practice_mode(1)
-  assert tw._mode == MODE_CORPUS
+  assert tw._mode == order[1]
   tw._cycle_practice_mode(1)
-  assert tw._mode == MODE_BOOK
+  assert tw._mode == order[2 % len(order)]
   tw._cycle_practice_mode(-1)
-  assert tw._mode == MODE_CORPUS
+  assert tw._mode == order[1]
 
 
 def test_main_window_has_tab_cycle_shortcuts(qapp):

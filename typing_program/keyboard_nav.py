@@ -2,19 +2,28 @@
 
 Shortcuts (wired in UI):
   Tab — next improve submode (Typer, improve mode only)
-  Cmd/Ctrl+Opt/Alt+← / → — previous / next practice mode (improve · corpus · book)
+  Cmd/Ctrl+Opt/Alt+← / → — previous / next selectable practice mode (improve · corpus · book when enabled)
   Cmd/Ctrl+Shift+[ / ] — previous / next main toolbar tab
 """
 
-from typing_program.book_mode import MODE_BOOK, MODE_CORPUS, MODE_IMPROVE
+from typing_program.book_mode import (
+  BOOK_MODE_FOOTER_VISIBLE, MODE_BOOK, MODE_CORPUS, MODE_IMPROVE,
+)
 
-# Same order as the Typer footer mode buttons.
+# Full footer order (including modes that may be hidden via BOOK_MODE_FOOTER_VISIBLE).
 PRACTICE_MODE_ORDER = (MODE_IMPROVE, MODE_CORPUS, MODE_BOOK)
+
+
+def selectable_practice_modes():
+  """Modes the user can pick via footer buttons or Cmd/Ctrl+Opt+← / →."""
+  if BOOK_MODE_FOOTER_VISIBLE:
+    return PRACTICE_MODE_ORDER
+  return tuple(m for m in PRACTICE_MODE_ORDER if m != MODE_BOOK)
 
 
 def cycle_practice_mode(current, delta=1):
   """Next/previous practice mode. delta +1 = forward (→), -1 = back (←)."""
-  order = PRACTICE_MODE_ORDER
+  order = selectable_practice_modes()
   try:
     i = order.index(current)
   except ValueError:

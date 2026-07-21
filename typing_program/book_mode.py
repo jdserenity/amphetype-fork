@@ -13,6 +13,9 @@ from typing_program.Text import find_relative
 
 MODE_BOOK = 'book'
 
+# Set True to show the footer "book" mode button and include book in mode shortcuts.
+BOOK_MODE_FOOTER_VISIBLE = False
+
 _CHAPTER_HDR = re.compile(
   r'^(?:chapter|book|part)\s+(?:\d+|[IVXLCDM]+)\b',
   re.I,

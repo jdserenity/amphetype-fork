@@ -12,7 +12,7 @@ from typing_program.WeakSpotLessons import (
 )
 from typing_program.Config import Settings
 from typing_program.book_mode import (
-  BookLessonBuilder, MODE_BOOK, format_book_progress, lesson_text_id,
+  BOOK_MODE_FOOTER_VISIBLE, BookLessonBuilder, MODE_BOOK, format_book_progress, lesson_text_id,
   apply_cold_start_practice_mode,
   practice_mode_from_settings, practice_mode_to_settings, ensure_practice_mode_migrated,
   MODE_IMPROVE, MODE_CORPUS,
@@ -173,15 +173,17 @@ class TyperWindow(QWidget):
 
     self._btn_improve = self._make_footer_btn(_IMPROVE_BTN_LABEL, slot=self._on_improve_click)
     self._btn_book = self._make_footer_btn('book', slot=lambda: self.set_practice_mode(MODE_BOOK))
+    if not BOOK_MODE_FOOTER_VISIBLE:
+      self._btn_book.setVisible(False)
     self._btn_corpus = self._make_footer_btn(_CORPUS_BTN_LABEL, slot=self._on_corpus_click)
     self._btn_read_ahead = self._make_footer_btn('read ahead', slot=self.toggle_read_ahead)
     self._btn_read_ahead_level = self._make_footer_btn('normal', slot=self.cycle_read_ahead_level)
     self._btn_block_bkspc = self._make_footer_btn('Block ⌫', slot=self.toggle_block_bkspc)
     self._btn_improve_level = self._make_footer_btn('normal', slot=self.cycle_improve_submode)
-    self._btn_heatmap = self._make_footer_btn('heatmap', mode_style=False, slot=self._toggleHeatmap)
-    self._btn_heatmap_kind = self._make_footer_btn('', mode_style=False, slot=self._cycleHeatmapMode)
     self._btn_follow = self._make_footer_btn('follow', mode_style=False, slot=self._toggleFollow)
     self._follow_wpm_panel = self._make_follow_wpm_panel()
+    self._btn_heatmap = self._make_footer_btn('heatmap', mode_style=False, slot=self._toggleHeatmap)
+    self._btn_heatmap_kind = self._make_footer_btn('', mode_style=False, slot=self._cycleHeatmapMode)
     self._weakspot_generating = False
 
     self._heatmap_legend = make_heatmap_legend()
