@@ -176,6 +176,6 @@ Tests: `python -m pytest tests/ -q` (pytest-qt for GUI).
 | Stats I/O | `timingtuple.py`, `stats_query.py`, `Data.py` |
 | Analysis UI | `PerformanceAnalysis.py`, `progress_card.py` |
 | Corpus find | `corpus_find.py`, `text_index.py` |
-| Gutenberg | `gutenberg/`, Sources tab |
+| Gutenberg | `gutenberg/` (US `pg_catalog` only), Sources tab |
 | License/update | `license.py`, `updater.py` |
 | Paths/legacy | `db_paths.py`, `legacy_data.py` |
