@@ -193,4 +193,3 @@ class FSettings(QSettings):
 
   def varChanged(self, obj):
     self.setValue(obj.objectName(), obj.get())
-
