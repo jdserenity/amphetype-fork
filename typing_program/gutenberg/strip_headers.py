@@ -1,5 +1,3 @@
-import re
-
 # Boilerplate removal adapted from c-w/Gutenberg (strip_headers.py).
 
 TEXT_START_MARKERS = (
@@ -61,65 +59,3 @@ def strip_headers(text):
       i += 1
 
   return '\n'.join(out).strip() + '\n' if out else ''
-
-
-_AUS_BODY_RE = re.compile(
-  r'^(PART\b|Chapter\s+(?:\d+|[IVXLC]+)\b|BOOK\s+(ONE|TWO|THREE|\d+|[IVXLC]+)\b|'
-  r'PROLOGUE\b|INTRODUCTION\b|PREFACE\b|LETTER\s+(?:\d+|[IVXLC]+)\b)',
-  re.I,
-)
-_AUS_META_RE = re.compile(
-  r'^(Title:|Author:|eBook No\.|Language:|Date |\* A Project Gutenberg)',
-  re.I,
-)
-_AUS_FOOTER_RE = re.compile(r'^Project Gutenberg (of )?Australia', re.I)
-
-
-def _aus_has_us_markers(text):
-  return any(m in text for m in TEXT_START_MARKERS[:3])
-
-
-def _aus_body_start(lines):
-  for i, line in enumerate(lines):
-    s = line.strip()
-    if s and _AUS_BODY_RE.match(s):
-      return i
-  past_contact = False
-  for i, line in enumerate(lines):
-    s = line.strip()
-    if not s:
-      continue
-    if 'gutenberg.net.au' in s.lower() and 'licence' not in s.lower():
-      past_contact = True
-      continue
-    if not past_contact or _AUS_META_RE.match(s):
-      continue
-    return i
-  return None
-
-
-def _trim_aus_footer(lines):
-  end = len(lines)
-  for i in range(len(lines) - 1, -1, -1):
-    s = lines[i].strip()
-    if not s:
-      end = i
-      continue
-    if _AUS_FOOTER_RE.match(s):
-      end = i
-      continue
-    break
-  return lines[:end]
-
-
-def strip_aus_headers(text):
-  if _aus_has_us_markers(text):
-    cleaned = strip_headers(text)
-    if cleaned.strip():
-      return cleaned
-  lines = text.splitlines()
-  start = _aus_body_start(lines)
-  if start is None:
-    return text.strip() + '\n' if text.strip() else ''
-  body = _trim_aus_footer(lines[start:])
-  return '\n'.join(body).strip() + '\n'

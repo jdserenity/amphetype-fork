@@ -33,26 +33,19 @@ class _CatalogWorker(QThread):
 class _ImportWorker(QThread):
   done = pyqtSignal(bool, str, str, str)  # ok, source_name, path, err
 
-  def __init__(self, region, book_id, authors, title, url=None):
+  def __init__(self, book_id, authors, title):
     super().__init__()
-    self.region = region
     self.book_id = book_id
     self.authors = authors
     self.title = title
-    self.url = url
 
   def run(self):
     try:
-      source_name, path = write_book_file(
-        self.book_id, self.authors, self.title, region=self.region, url=self.url)
+      source_name, path = write_book_file(self.book_id, self.authors, self.title)
       self.done.emit(True, source_name, str(path), '')
     except Exception as e:
       log.exception('gutenberg import failed')
       self.done.emit(False, '', '', str(e))
-
-
-def _book_key(book):
-  return f"{book['region']}:{book['id']}"
 
 
 class GutenbergBrowser(QWidget):
@@ -92,7 +85,7 @@ class GutenbergBrowser(QWidget):
 
     lay = QVBoxLayout(self)
     lay.setContentsMargins(0, 0, 0, 0)
-    lay.addWidget(QLabel('<b>US/AU catalog</b>'))
+    lay.addWidget(QLabel('<b>Project Gutenberg</b>'))
     lay.addWidget(self._stale_row)
     row = QHBoxLayout()
     row.addWidget(self._search, 1)
@@ -156,7 +149,7 @@ class GutenbergBrowser(QWidget):
       if b['authors']:
         label += f" — {b['authors']}"
       item = QListWidgetItem(label)
-      item.setData(Qt.UserRole, _book_key(b))
+      item.setData(Qt.UserRole, b['id'])
       self._results.addItem(item)
     self._status.setText(f'{len(self._books)} result(s)' if self._books else 'No matches.')
     self._status.show()
@@ -173,16 +166,15 @@ class GutenbergBrowser(QWidget):
       return
     if self._import_worker and self._import_worker.isRunning():
       return
-    key = item.data(Qt.UserRole)
-    book = next((b for b in self._books if _book_key(b) == key), None)
+    book_id = item.data(Qt.UserRole)
+    book = next((b for b in self._books if b['id'] == book_id), None)
     if not book:
       return
-    secs = estimate_import_seconds(book['region'])
+    secs = estimate_import_seconds()
     self._status.setText(f'Importing {book["title"]}… (~{secs} seconds)')
     self._status.show()
     self._set_busy(True)
-    self._import_worker = _ImportWorker(
-      book['region'], book['id'], book['authors'], book['title'], book.get('url'))
+    self._import_worker = _ImportWorker(book['id'], book['authors'], book['title'])
     self._import_worker.done.connect(self._on_import_done)
     self._import_worker.start()
 

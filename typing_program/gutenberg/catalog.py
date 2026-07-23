@@ -6,14 +6,12 @@ import sqlite3
 import time
 from pathlib import Path
 
-from typing_program.gutenberg.aus_catalog import GUTINDEX_URL, gutindex_path, parse_gutindex_aus
 from typing_program.gutenberg.paths import gutenberg_cache_dir
 from typing_program.https import urlopen as https_urlopen
 
 CATALOG_URL = 'https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv.gz'
 CATALOG_STALE_DAYS = 7
 COMPRESSED_CATALOG_BYTES = 5_300_000
-GUTINDEX_BYTES = 2_000_000
 RECORD_RE = re.compile(r'^\d+,')
 
 
@@ -26,28 +24,18 @@ def catalog_db_path(cache_dir=None):
 
 
 def estimate_update_seconds():
-  return max(5, round((COMPRESSED_CATALOG_BYTES + GUTINDEX_BYTES) / (500 * 1024)))
-
-
-def _catalog_mtimes(cache_dir):
-  cache_dir = cache_dir or gutenberg_cache_dir()
-  times = []
-  for p in (catalog_csv_path(cache_dir), gutindex_path(cache_dir)):
-    if p.is_file():
-      times.append(p.stat().st_mtime)
-  return times
+  return max(5, round(COMPRESSED_CATALOG_BYTES / (500 * 1024)))
 
 
 def catalog_age_days(cache_dir=None):
-  times = _catalog_mtimes(cache_dir)
-  if not times:
+  path = catalog_csv_path(cache_dir)
+  if not path.is_file():
     return None
-  return (time.time() - min(times)) / 86400.0
+  return (time.time() - path.stat().st_mtime) / 86400.0
 
 
 def catalog_missing(cache_dir=None):
-  cache_dir = cache_dir or gutenberg_cache_dir()
-  return not catalog_csv_path(cache_dir).is_file() or not gutindex_path(cache_dir).is_file()
+  return not catalog_csv_path(cache_dir).is_file()
 
 
 def catalog_index_ready(cache_dir=None):
@@ -78,14 +66,10 @@ def needs_catalog_update(cache_dir=None):
 
 
 def estimate_rebuild_seconds(cache_dir=None):
-  cache_dir = cache_dir or gutenberg_cache_dir()
-  total = 0
-  for p in (catalog_csv_path(cache_dir), gutindex_path(cache_dir)):
-    if p.is_file():
-      total += p.stat().st_size
-  if not total:
+  path = catalog_csv_path(cache_dir)
+  if not path.is_file():
     return estimate_update_seconds()
-  return max(2, round(total / (5 * 1024 * 1024)))
+  return max(2, round(path.stat().st_size / (5 * 1024 * 1024)))
 
 
 def catalog_notice(cache_dir=None):
@@ -144,11 +128,11 @@ def parse_catalog_csv(text):
     authors = row[5].strip() if len(row) > 5 else ''
     if not title:
       continue
-    books.append(dict(region='us', id=book_id, type=typ, title=title, language=language, authors=authors, url=None))
-  return _dedupe_region_ids(books)
+    books.append(dict(id=book_id, type=typ, title=title, language=language, authors=authors))
+  return _dedupe_ids(books)
 
 
-def _dedupe_region_ids(books):
+def _dedupe_ids(books):
   by_id = {}
   for b in books:
     by_id[b['id']] = b
@@ -156,28 +140,20 @@ def _dedupe_region_ids(books):
 
 
 def _load_books(cache_dir):
-  cache_dir = Path(cache_dir)
-  us = parse_catalog_csv(catalog_csv_path(cache_dir).read_text(encoding='utf-8'))
-  gut = gutindex_path(cache_dir).read_text(encoding='utf-8', errors='replace')
-  aus = parse_gutindex_aus(gut)
-  books = us + aus
+  books = parse_catalog_csv(catalog_csv_path(cache_dir).read_text(encoding='utf-8'))
   if not books:
-    raise RuntimeError('catalog files produced no books')
+    raise RuntimeError('catalog file produced no books')
   return books
 
 
-def rebuild_index(cache_dir=None, csv_path=None, gutindex_path_arg=None, db_path=None):
+def rebuild_index(cache_dir=None, csv_path=None, db_path=None):
   cache_dir = Path(cache_dir or gutenberg_cache_dir())
-  if csv_path is None and gutindex_path_arg is None:
+  if csv_path is None:
     books = _load_books(cache_dir)
   else:
-    books = []
-    if csv_path:
-      books.extend(parse_catalog_csv(Path(csv_path).read_text(encoding='utf-8')))
-    if gutindex_path_arg:
-      books.extend(parse_gutindex_aus(Path(gutindex_path_arg).read_text(encoding='utf-8', errors='replace')))
+    books = parse_catalog_csv(Path(csv_path).read_text(encoding='utf-8'))
     if not books:
-      raise RuntimeError('catalog files produced no books')
+      raise RuntimeError('catalog file produced no books')
   db_path = Path(db_path or catalog_db_path(cache_dir))
   tmp = db_path.with_suffix('.tmp.sqlite')
   if tmp.is_file():
@@ -185,19 +161,16 @@ def rebuild_index(cache_dir=None, csv_path=None, gutindex_path_arg=None, db_path
   conn = sqlite3.connect(str(tmp))
   try:
     conn.execute('''create table book (
-      region text not null,
-      id text not null,
+      id text not null primary key,
       type text not null,
       title text not null,
       language text,
-      authors text,
-      url text,
-      primary key (region, id)
+      authors text
     )''')
     conn.execute('create index book_title on book(title)')
     conn.executemany(
-      'insert into book (region, id, type, title, language, authors, url) values (?, ?, ?, ?, ?, ?, ?)',
-      [(b['region'], b['id'], b['type'], b['title'], b['language'], b['authors'], b['url']) for b in books],
+      'insert into book (id, type, title, language, authors) values (?, ?, ?, ?, ?)',
+      [(b['id'], b['type'], b['title'], b['language'], b['authors']) for b in books],
     )
     conn.commit()
   except Exception:
@@ -217,49 +190,7 @@ def update_catalog(cache_dir=None, opener=None):
   open_fn = opener or https_urlopen
   with open_fn(CATALOG_URL, timeout=180) as resp:
     catalog_csv_path(cache_dir).write_bytes(gzip.decompress(resp.read()))
-  with open_fn(GUTINDEX_URL, timeout=180) as resp:
-    gutindex_path(cache_dir).write_bytes(resp.read())
   return rebuild_index(cache_dir=cache_dir)
-
-
-def _norm_title(title):
-  t = (title or '').lower()
-  t = re.sub(r'[^a-z0-9]+', ' ', t)
-  t = re.sub(r'\s+', ' ', t).strip()
-  if t.startswith('the '):
-    t = t[3:]
-  return t
-
-
-def _norm_author(authors):
-  a = (authors or '').split(';')[0].strip().lower()
-  if ',' in a:
-    return re.sub(r'[^a-z]+', '', a.split(',')[0])
-  parts = re.sub(r'[^a-z\s]+', ' ', a).split()
-  return parts[-1] if parts else ''
-
-
-def _dup_key(title, authors):
-  return _norm_title(title), _norm_author(authors)
-
-
-def _merge_search_results(rows, limit):
-  out = []
-  keys = {}
-  for region, book_id, title, authors, url in rows:
-    key = _dup_key(title, authors)
-    if key in keys:
-      if region == 'us' and keys[key] != 'us':
-        out = [r for r in out if _dup_key(r['title'], r['authors']) != key]
-        keys[key] = 'us'
-      else:
-        continue
-    else:
-      keys[key] = region
-    out.append(dict(region=region, id=book_id, title=title, authors=authors or '', url=url))
-    if len(out) >= limit:
-      break
-  return out
 
 
 def _search_conn(db_path=None):
@@ -279,12 +210,12 @@ def search_books(query, limit=50, db_path=None):
   try:
     like = f'%{q}%'
     rows = conn.execute(
-      '''select region, id, title, authors, url from book
+      '''select id, title, authors from book
          where type = 'Text' and (title like ? collate nocase or authors like ? collate nocase)
-         order by case region when 'us' then 0 else 1 end, title
+         order by title
          limit ?''',
-      (like, like, max(limit * 4, limit)),
+      (like, like, limit),
     ).fetchall()
-    return _merge_search_results(rows, limit)
+    return [dict(id=book_id, title=title, authors=authors or '') for book_id, title, authors in rows]
   finally:
     conn.close()
