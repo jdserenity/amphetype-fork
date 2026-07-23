@@ -177,5 +177,6 @@ Tests: `python -m pytest tests/ -q` (pytest-qt for GUI).
 | Analysis UI | `PerformanceAnalysis.py`, `progress_card.py` |
 | Corpus find | `corpus_find.py`, `text_index.py` |
 | Gutenberg | `gutenberg/` (US `pg_catalog` only), Sources tab |
+| Bulk text import | `import_texts.py`; Sources GUI (`TextManager`) inserts with `index=False` then `backfill_corpus_index` once |
 | License/update | `license.py`, `updater.py` |
 | Paths/legacy | `db_paths.py`, `legacy_data.py` |

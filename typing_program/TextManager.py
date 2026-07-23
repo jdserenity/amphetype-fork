@@ -114,7 +114,8 @@ class TextManager(QWidget):
       self.progress.hide()
       return
     lm.progress[int].connect(self.progress.setValue)
-    self.addTexts(source_name, lm, update=False, replace=True)
+    self.addTexts(source_name, lm, update=False, replace=True, index=False)
+    self._index_new_corpus_texts()
     self.progress.hide()
     self.update()
     DB.commit()
@@ -145,14 +146,20 @@ class TextManager(QWidget):
       except:
         log.error(f"failed to process file {fname}!")
         continue
-      lm.progress[int].emit(self.progress.setValue)
-      self.addTexts(fname, lm, update=False)
+      lm.progress[int].connect(self.progress.setValue)
+      self.addTexts(fname, lm, update=False, index=False)
 
+    self._index_new_corpus_texts()
     self.progress.hide()
     self.update()
     DB.commit()
 
-  def addTexts(self, source, texts, lesson=None, update=True, replace=False):
+  def _index_new_corpus_texts(self):
+    """Fill text_fts for corpus lessons that were inserted without per-row indexing."""
+    from typing_program.text_index import backfill_corpus_index
+    backfill_corpus_index(DB)
+
+  def addTexts(self, source, texts, lesson=None, update=True, replace=False, index=True):
     id = DB.getSource(source, lesson)
     if replace:
       self._clear_source_texts(id)
@@ -165,7 +172,7 @@ class TextManager(QWidget):
       try:
         DB.execute("insert into text (id,text,source,disabled) values (?,?,?,?)",
                (txt_id, x, id, dis))
-        if lesson is None and dis is None:
+        if index and lesson is None and dis is None:
           from typing_program.text_index import index_chunk
           index_chunk(DB, txt_id, id, x)
         r.append(txt_id)
@@ -216,8 +223,12 @@ class TextManager(QWidget):
     self.emit_text(v)
 
   def _clear_source_texts(self, source_id):
-    for row in DB.fetchall('select id from text where source = ?', (source_id,)):
-      DB.execute('delete from result where text_id = ?', (row[0],))
+    # Set-based deletes — per-lesson loops are what made big-book deletes crawl.
+    DB.execute('delete from result where text_id in (select id from text where source = ?)', (source_id,))
+    try:
+      DB.execute('delete from text_fts where source_id = ?', (source_id,))
+    except Exception:
+      pass
     DB.execute('delete from text where source = ?', (source_id,))
 
   def deleteSelected(self):
@@ -244,6 +255,10 @@ class TextManager(QWidget):
       if row is None:
         continue
       DB.execute('delete from result where text_id = ?', (row[0],))
+      try:
+        DB.execute('delete from text_fts where text_id = ?', (row[0],))
+      except Exception:
+        pass
       DB.execute('delete from text where rowid = ?', (tid,))
       rest = DB.fetchall('select rowid from text where source = ? limit 1', (row[1],))
       if not rest:

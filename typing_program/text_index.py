@@ -44,7 +44,7 @@ def index_chunk(db, text_id, source_id, body):
 
 
 def backfill_corpus_index(db):
-  """Index corpus chunks not yet in text_fts. Run via scripts/backfill_corpus_index.py only."""
+  """Index corpus chunks not yet in text_fts (bulk import / Sources import)."""
   ensure_corpus_index(db)
   try:
     indexed = {r[0] for r in db.execute("select text_id from text_fts").fetchall()}
