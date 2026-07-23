@@ -69,7 +69,7 @@ def test_prefs_subtabs_on_top_toolbar_only_when_preferences_active(qapp):
 
   bar = w._prefs_bar
   assert [bar.tabText(i) for i in range(bar.count())] == [
-    'General Options', 'Typer Options', 'Sources']
+    'General', 'Typer', 'Sources']
 
   w._tabs.setCurrentIndex(0)  # Typer
   qapp.processEvents()

@@ -33,7 +33,7 @@ from pathlib import Path
 from typing_program.TextManager import TextManager
 from typing_program.PerformanceAnalysis import PerformanceAnalysis
 from typing_program.Config import GeneralOptions, TyperOptions
-from typing_program.Lesson import LessonGenerator
+from typing_program.auto_review import AutoReview
 
 from typing_program.typer import TyperWindow
 from typing_program.session_timer import FocusedSessionTimer, INTERACTION_EVENTS, SessionTimerLabel
@@ -81,18 +81,15 @@ class MainWindow(QMainWindow):
     self._perf = pa
     tabs.currentChanged.connect(lambda i: pa.updateAll() if i == self._perf_tab_idx else None)
 
-    # LessonGenerator not shown as a tab; kept for auto_review (wantReview → newReview).
-    lg = LessonGenerator()
-    lg.newLessons.connect(lambda: tabs.setCurrentIndex(1))
-    lg.newLessons.connect(tm.addTexts)
-    lg.newReview.connect(tm.newReview)
+    review = AutoReview()
+    review.newReview.connect(tm.newReview)
 
     pa.setText.connect(tm.emit_text)
     pa.setText.connect(tw.setText)
     tm.setText.connect(tw.setText)
     tw.wantText.connect(tm.nextText)
     tw.needWeakspotLesson.connect(tm.newWeakspot)
-    tw.wantReview.connect(lg.wantReview)
+    tw.wantReview.connect(review.wantReview)
     tw.statsChanged.connect(pa.updateAll)
     pa.st.statsChanged.connect(pa.updateAll)
     pa.st.statsChanged.connect(tw._weakspot.on_stats_changed)
@@ -100,8 +97,8 @@ class MainWindow(QMainWindow):
     pa.loadCorpusText.connect(tw.load_corpus_text)
 
     prefs_pages = (
-      ('General Options', scroll_widget(GeneralOptions())),
-      ('Typer Options', scroll_widget(TyperOptions())),
+      ('General', scroll_widget(GeneralOptions())),
+      ('Typer', scroll_widget(TyperOptions())),
       ('Sources', scroll_widget(tm)),
     )
     pw = QStackedWidget()
@@ -111,10 +108,9 @@ class MainWindow(QMainWindow):
     if 0 <= prefs_tab < pw.count():
       pw.setCurrentIndex(prefs_tab)
     pw.currentChanged.connect(lambda i: set_app_meta_int(DB, PREFERENCES_TAB_KEY, i))
-    tabs.addTab(pw, "Preferences")
+    tabs.addTab(pw, "Setup")
     self._prefs = pw
     self._prefs_tab_idx = tabs.indexOf(pw)
-    self._prefs_sources_idx = 2
 
     # Top-strip nav for prefs pages — only visible while Preferences is selected.
     self._prefs_bar = QTabBar(tabs)
@@ -127,12 +123,6 @@ class MainWindow(QMainWindow):
     self._prefs_bar.currentChanged.connect(self._on_prefs_bar_changed)
     pw.currentChanged.connect(self._sync_prefs_bar_index)
     tabs.currentChanged.connect(lambda *_: self._apply_prefs_bar_visible())
-
-    def goto_sources():
-      # Dead for normal UI: Lesson Generator tab is hidden; newLessons only from its "Add to Sources".
-      tabs.setCurrentWidget(pw)
-      pw.setCurrentIndex(self._prefs_sources_idx)
-    lg.newLessons.connect(goto_sources)
 
     self._session_timer = FocusedSessionTimer()
     self._session_timer.load_saved(DB)
@@ -282,4 +272,3 @@ set_qt_css(Settings.get('qt_css'))
 
 Settings.signal_for('qt_style').connect(app.setStyle)
 app.setStyle(Settings.get('qt_style'))
-

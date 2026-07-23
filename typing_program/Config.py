@@ -78,14 +78,6 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     "analysis_many": 30,
     "analysis_count": 2,
 
-    "gen_copies": 3,
-    "gen_take": 2,
-    "gen_mix": 'c',
-    #"gen_stats": False,
-    "str_clear": 's',
-    "str_extra": 10,
-    "str_what": 'e',
-
     "practice_mode": 0,  # 0 = improve, 1 = book, 2 = corpus
     "practice_mode_v2": True,
     "practice_mode_v3": True,

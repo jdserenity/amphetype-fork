@@ -4,7 +4,7 @@ Confirmed facts only. Package root: `typing_program/`. Version file: `typing_pro
 
 ## Product
 
-Desktop typing trainer: lesson canvas, SQLite stats, weakspot lessons, book/corpus practice. Window title: **Typing Program That Helps You Type Better**. Tabs: Typer, Performance Analysis, Preferences (General / Typer Options / Sources). Off-tab but present: Lesson Generator (`Lesson.py`, `auto_review` only).
+Desktop typing trainer: lesson canvas, SQLite stats, weakspot lessons, book/corpus practice. Window title: **Typing Program That Helps You Type Better**. Tabs: Typer, Performance Analysis, Preferences (General / Typer / Sources). Auto-review after corpus texts: `auto_review.py` (`wantReview` → `TextManager.newReview`).
 
 ## Stack
 
@@ -41,7 +41,8 @@ scaffold/         # agent docs (this file)
 
 - Dev: `./run-dev.sh` or `typing-program --skip-license` after `pip install -e .`
 - Skip license: `--skip-license` / `TYPING_PROGRAM_SKIP_LICENSE=1`
-- Main window: `mainwindow.py` / `main.py` — wires Typer, Performance Analysis, Preferences, session timer. Preferences content is a `QStackedWidget` (no nested tab bar); a `QTabBar` (`_prefs_bar`) on the main strip shows General / Typer Options / Sources only while Preferences is selected
+- Main window: `mainwindow.py` / `main.py` — wires Typer, Performance Analysis, Preferences, session timer. Preferences content is a `QStackedWidget` (no nested tab bar); a `QTabBar` (`_prefs_bar`) on the main strip shows General / Typer / Sources only while Preferences is selected
+- Auto-review: `auto_review.py` (`AutoReview`) — Typer `wantReview` → review lesson text → `TextManager.newReview` when Preferences `auto_review` is on
 - Typer core: `typer/` package (`document.py`, `widget.py`, `window.py`, …) — facade re-exports `LessonDocument`, `TyperWidget`, `TyperWindow` from `typing_program.typer`
 - Timing/stats collect: `timingtuple.py` (`RunStats`, `collect_run_stat_rows`, `collect_focus_drill_stat_rows`)
 - Analysis queries: `stats_query.py`
@@ -69,7 +70,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 |----------|--------|--------|
 | **Tab** | Next improve submode (`cycle_improve_submode`; no-op outside improve) | Typer canvas (`TyperWidget.keyPressEvent` → `_on_tab_nav`) |
 | **Cmd/Ctrl+Opt/Alt+← / →** | Previous / next practice mode (improve · corpus · book) | `TyperWindow` QShortcut (`Ctrl+Alt+Left/Right`); helpers in `keyboard_nav.py` |
-| **Cmd+Shift+[ / Cmd+Shift+]** | Previous / next toolbar slot in one sequence: Typer → Performance Analysis → General Options → Typer Options → Sources (wrap) | `MainWindow` QShortcut; `cycle_toolbar_tabs` in `keyboard_nav.py` |
+| **Cmd+Shift+[ / Cmd+Shift+]** | Previous / next toolbar slot in one sequence: Typer → Performance Analysis → General → Typer → Sources (wrap) | `MainWindow` QShortcut; `cycle_toolbar_tabs` in `keyboard_nav.py` |
 
 `QKeySequence` uses `Ctrl` for Command on macOS. Pure helpers: `cycle_practice_mode`, `cycle_index`.
 
