@@ -11,3 +11,4 @@ __pycache__/
 website/node_modules/
 website/.wrangler/
 website/.dev.vars
+.DS_Store
