@@ -22,14 +22,12 @@
 # Definition of done
 
 A change is done only when:
-
 1. It does what we agreed it should do.
-2. Automated tests cover that behavior (new tests for new behavior; changed tests when behavior changes). Say which test file(s) or command proves it so anyone can rerun the same check.
-3. If facts changed for the product or system, scaffold/ARCH-LLM.md is updated (minimal deltas; no padding). Update scaffold/ARCH-HUMAN.md when the maintainer needs a readable summary.
-4. Work is committed in small logical commits — not left uncommitted, not batched into one mega-commit at the end. Each commit should be one coherent unit you can describe in one short message.
+2. Automated tests cover that behavior (new tests for new behavior; changed tests when behavior changes).
+3. If facts changed for the product or system, scaffold/ARCH-LLM.md is updated (minimal deltas; no padding). Update scaffold/ARCH-HUMAN.md when the maintainer needs a readable summary. Remember, ARCH-HUMAN is not an instruction manual for the app. It is strictly for understanding the *codebase*.
 How to pick test type (project default):
-5. Unit: small pieces of logic with no real database or network.
-6. Integration: behavior that really depends on HTTP + DB, or webhooks / OAuth / Stripe — exercise real boundaries with test keys, stubs, or recorded fixtures as appropriate.
-7. Browser (e2e): only for stable end-to-end flows; avoid writing a dozen e2e tests while screens are still moving daily.
+4. Unit: small pieces of logic with no real database or network.
+5. Integration: behavior that really depends on HTTP + DB, or webhooks / OAuth / Stripe — exercise real boundaries with test keys, stubs, or recorded fixtures as appropriate.
+6. Browser (e2e): only for stable end-to-end flows; avoid writing a dozen e2e tests while screens are still moving daily.
 
-scaffold version: 2.5.0
+scaffold version: 2.5.1
