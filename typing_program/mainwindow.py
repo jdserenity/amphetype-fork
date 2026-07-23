@@ -1,4 +1,3 @@
-
 from typing_program import *
 import sys
 import logging as log
@@ -40,7 +39,7 @@ from typing_program.typer import TyperWindow
 from typing_program.session_timer import FocusedSessionTimer, INTERACTION_EVENTS, SessionTimerLabel
 from typing_program.fwidgets import scroll_widget
 from typing_program.QtUtil import center_widget_on_screen, should_clear_focus_on_click
-from typing_program.keyboard_nav import cycle_index
+from typing_program.keyboard_nav import cycle_toolbar_tabs
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -54,7 +53,7 @@ class MainWindow(QMainWindow):
 
     self.quitSc = QShortcut(QKeySequence('Ctrl+Q'), self)
     self.quitSc.activated.connect(QApplication.instance().quit)
-    # Cmd/Ctrl+Shift+[ ] cycle main toolbar tabs (Ctrl = Cmd on macOS in QKeySequence).
+    # Cmd/Ctrl+Shift+[ ] cycle toolbar slots (main tabs + prefs sub-tabs as one sequence).
     self._sc_tab_prev = QShortcut(QKeySequence('Ctrl+Shift+['), self)
     self._sc_tab_prev.activated.connect(lambda: self._cycle_main_tab(-1))
     self._sc_tab_next = QShortcut(QKeySequence('Ctrl+Shift+]'), self)
@@ -100,19 +99,39 @@ class MainWindow(QMainWindow):
     pa.startDrill.connect(tw.start_focus_drill)
     pa.loadCorpusText.connect(tw.load_corpus_text)
 
-    pw = QTabWidget()
-    pw.addTab(scroll_widget(GeneralOptions()), "General Options")
-    pw.addTab(scroll_widget(TyperOptions()), "Typer Options")
-    pw.addTab(scroll_widget(tm), "Sources")
+    prefs_pages = (
+      ('General Options', scroll_widget(GeneralOptions())),
+      ('Typer Options', scroll_widget(TyperOptions())),
+      ('Sources', scroll_widget(tm)),
+    )
+    pw = QStackedWidget()
+    for _label, page in prefs_pages:
+      pw.addWidget(page)
     prefs_tab = get_app_meta_int(DB, PREFERENCES_TAB_KEY, 0)
     if 0 <= prefs_tab < pw.count():
       pw.setCurrentIndex(prefs_tab)
     pw.currentChanged.connect(lambda i: set_app_meta_int(DB, PREFERENCES_TAB_KEY, i))
     tabs.addTab(pw, "Preferences")
+    self._prefs = pw
+    self._prefs_tab_idx = tabs.indexOf(pw)
+    self._prefs_sources_idx = 2
+
+    # Top-strip nav for prefs pages — only visible while Preferences is selected.
+    self._prefs_bar = QTabBar(tabs)
+    self._prefs_bar.setObjectName('prefsTabs')
+    self._prefs_bar.setDocumentMode(True)
+    self._prefs_bar.setExpanding(False)
+    for label, _page in prefs_pages:
+      self._prefs_bar.addTab(label)
+    self._prefs_bar.setCurrentIndex(pw.currentIndex())
+    self._prefs_bar.currentChanged.connect(self._on_prefs_bar_changed)
+    pw.currentChanged.connect(self._sync_prefs_bar_index)
+    tabs.currentChanged.connect(lambda *_: self._apply_prefs_bar_visible())
 
     def goto_sources():
+      # Dead for normal UI: Lesson Generator tab is hidden; newLessons only from its "Add to Sources".
       tabs.setCurrentWidget(pw)
-      pw.setCurrentWidget(tm)
+      pw.setCurrentIndex(self._prefs_sources_idx)
     lg.newLessons.connect(goto_sources)
 
     self._session_timer = FocusedSessionTimer()
@@ -129,14 +148,46 @@ class MainWindow(QMainWindow):
     self._window_placed = False
     Settings.signal_for('show_session_timer').connect(lambda *_: self._apply_session_clock_visible())
     self._apply_session_clock_visible()
+    self._apply_prefs_bar_visible()
     if self.isActiveWindow():
       self._session_timer.resume()
 
     # Practice mode is forced to improve · normal in TyperWindow (cold start).
 
   def _cycle_main_tab(self, delta):
+    # One sequence: Typer → PA → General → Typer Options → Sources → Typer …
+    main_i, prefs_i = cycle_toolbar_tabs(
+      self._tabs.currentIndex(), self._prefs_tab_idx,
+      self._prefs.currentIndex(), self._prefs.count(), delta)
+    if self._prefs.currentIndex() != prefs_i:
+      self._prefs.setCurrentIndex(prefs_i)
+    if self._tabs.currentIndex() != main_i:
+      self._tabs.setCurrentIndex(main_i)
+
+  def _on_prefs_bar_changed(self, i):
+    if 0 <= i < self._prefs.count() and self._prefs.currentIndex() != i:
+      self._prefs.setCurrentIndex(i)
+
+  def _sync_prefs_bar_index(self, i):
+    if self._prefs_bar.currentIndex() != i:
+      self._prefs_bar.setCurrentIndex(i)
+
+  def _apply_prefs_bar_visible(self):
+    on = self._tabs.currentIndex() == self._prefs_tab_idx
+    self._prefs_bar.setVisible(on)
+    if on:
+      self._reposition_prefs_bar()
+
+  def _reposition_prefs_bar(self):
+    if not self._prefs_bar.isVisible():
+      return
     tabs = self._tabs
-    tabs.setCurrentIndex(cycle_index(tabs.currentIndex(), tabs.count(), delta))
+    main_bar = tabs.tabBar()
+    self._prefs_bar.adjustSize()
+    r = main_bar.tabRect(self._prefs_tab_idx)
+    y = r.y() + max(0, (r.height() - self._prefs_bar.height()) // 2)
+    self._prefs_bar.move(r.right(), y)
+    self._prefs_bar.raise_()
 
   def _apply_session_clock_visible(self):
     on = bool(Settings.get('show_session_timer'))
@@ -174,6 +225,7 @@ class MainWindow(QMainWindow):
         fw.clearFocus()
     if obj is self._tabs and evt.type() in (QEvent.Resize, QEvent.Show):
       self._reposition_session_clock()
+      self._reposition_prefs_bar()
     return super().eventFilter(obj, evt)
 
   def closeEvent(self, evt):
@@ -187,6 +239,7 @@ class MainWindow(QMainWindow):
       center_widget_on_screen(self)
       self._window_placed = True
     self._reposition_session_clock()
+    self._reposition_prefs_bar()
 
   def changeEvent(self, evt):
     if evt.type() == QEvent.ActivationChange:

@@ -104,8 +104,47 @@ def test_main_window_has_tab_cycle_shortcuts(qapp):
   # Cmd/Ctrl+Shift+[ ] (Ctrl = Cmd on macOS in QKeySequence).
   assert w._sc_tab_prev.key() == QKeySequence('Ctrl+Shift+[')
   assert w._sc_tab_next.key() == QKeySequence('Ctrl+Shift+]')
-  start = w._tabs.currentIndex()
+  w._tabs.setCurrentIndex(0)
   w._cycle_main_tab(1)
-  assert w._tabs.currentIndex() == (start + 1) % w._tabs.count()
+  assert w._tabs.currentIndex() == 1
   w._cycle_main_tab(-1)
-  assert w._tabs.currentIndex() == start
+  assert w._tabs.currentIndex() == 0
+
+
+def test_tab_cycle_on_preferences_cycles_pref_subtabs(qapp):
+  import typing_program.mainwindow as A
+
+  w = A.MainWindow()
+  # PA → enter Preferences at General, then through sub-tabs, then out to Typer.
+  w._tabs.setCurrentIndex(w._perf_tab_idx)
+  w._cycle_main_tab(1)
+  assert w._tabs.currentIndex() == w._prefs_tab_idx
+  assert w._prefs.currentIndex() == 0
+  w._cycle_main_tab(1)
+  assert w._prefs.currentIndex() == 1
+  w._cycle_main_tab(1)
+  assert w._prefs.currentIndex() == 2
+  w._cycle_main_tab(1)
+  assert w._tabs.currentIndex() == 0
+  # From Typer left → Sources; from General left → Performance Analysis.
+  w._cycle_main_tab(-1)
+  assert w._tabs.currentIndex() == w._prefs_tab_idx
+  assert w._prefs.currentIndex() == 2
+  w._prefs.setCurrentIndex(0)
+  w._cycle_main_tab(-1)
+  assert w._tabs.currentIndex() == w._perf_tab_idx
+
+
+def test_cycle_toolbar_tabs_flattens_prefs():
+  from typing_program.keyboard_nav import cycle_toolbar_tabs, toolbar_cycle_pos
+
+  # main: 0 Typer, 1 PA, 2 Preferences; 3 prefs sub-tabs
+  assert toolbar_cycle_pos(0, 2, 0, 3) == 0
+  assert toolbar_cycle_pos(1, 2, 0, 3) == 1
+  assert toolbar_cycle_pos(2, 2, 0, 3) == 2
+  assert toolbar_cycle_pos(2, 2, 2, 3) == 4
+  assert cycle_toolbar_tabs(1, 2, 0, 3, 1) == (2, 0)
+  assert cycle_toolbar_tabs(2, 2, 0, 3, 1) == (2, 1)
+  assert cycle_toolbar_tabs(2, 2, 2, 3, 1) == (0, 2)  # out; keep last sub for click-restore
+  assert cycle_toolbar_tabs(0, 2, 2, 3, -1) == (2, 2)
+  assert cycle_toolbar_tabs(2, 2, 0, 3, -1) == (1, 0)

@@ -47,16 +47,55 @@ def test_session_clock_vertically_aligned_with_tabs(qapp):
 def test_main_tabs_suppress_pane_border(qapp):
   """Main tab strip must not draw the full-width line through tabs/session clock."""
   import typing_program.mainwindow as A
+  from PyQt5.QtWidgets import QStackedWidget
 
   w = A.MainWindow()
   assert w._tabs.objectName() == 'mainTabs'
   assert w._tabs.documentMode() is True
   sheet = w._tabs.styleSheet().replace(' ', '')
   assert 'QTabWidget#mainTabs::pane{border:none;background:transparent;}' in sheet
-  # Nested Preferences tabs keep the default framed look.
+  # Preferences is a page stack only — no nested tab bar.
   prefs = w._tabs.widget(2)
-  assert prefs is not None
-  assert prefs.styleSheet() == '' or 'mainTabs' not in prefs.styleSheet()
+  assert isinstance(prefs, QStackedWidget)
+
+
+def test_prefs_subtabs_on_top_toolbar_only_when_preferences_active(qapp):
+  import typing_program.mainwindow as A
+
+  w = A.MainWindow()
+  w.resize(w.sizeHint())
+  w.show()
+  qapp.processEvents()
+
+  bar = w._prefs_bar
+  assert [bar.tabText(i) for i in range(bar.count())] == [
+    'General Options', 'Typer Options', 'Sources']
+
+  w._tabs.setCurrentIndex(0)  # Typer
+  qapp.processEvents()
+  assert not bar.isVisible()
+
+  w._tabs.setCurrentIndex(w._prefs_tab_idx)
+  qapp.processEvents()
+  assert bar.isVisible()
+
+  bar.setCurrentIndex(2)
+  qapp.processEvents()
+  assert w._prefs.currentIndex() == 2
+
+
+def test_prefs_bar_sits_flush_against_preferences_tab(qapp):
+  import typing_program.mainwindow as A
+
+  w = A.MainWindow()
+  w.resize(w.sizeHint())
+  w.show()
+  w._tabs.setCurrentIndex(w._prefs_tab_idx)
+  qapp.processEvents()
+  w._reposition_prefs_bar()
+  qapp.processEvents()
+  prefs_r = w._tabs.tabBar().tabRect(w._prefs_tab_idx)
+  assert w._prefs_bar.x() == prefs_r.right()
 
 
 def test_should_clear_focus_on_click(qapp):
