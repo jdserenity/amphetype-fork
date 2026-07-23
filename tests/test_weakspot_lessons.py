@@ -427,12 +427,14 @@ class TestLessonCache(unittest.TestCase):
 class TestDbIntegration(unittest.TestCase):
   def test_fetch_weak_targets_all_types_and_scored(self):
     conn = _test_db(); now = 1e9
+    a = _add_source(conn, 'A'); b = _add_source(conn, 'B')
     conn.executemany(
-      'insert into statistic (w,data,type,time,count,mistakes,viscosity) values (?,?,?,?,?,?,?)',
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
       [
-        (now, 'C', 0, 0.5, 10, 2, 1.0),
-        (now, 'e h', 1, 0.4, 8, 1, 1.0),
-        (now, 'from', 2, 0.3, 12, 3, 1.0),
+        (now, 'C', 0, 0.5, 10, 2, 1.0, a),
+        (now, 'e h', 1, 0.4, 8, 1, 1.0, a),
+        (now, 'from', 2, 0.3, 11, 3, 1.0, a),
+        (now, 'from', 2, 0.3, 1, 0, 1.0, b),
       ])
     targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
     self.assertEqual({t[0] for t in targets}, {'char', 'trigram', 'word'})
@@ -440,11 +442,14 @@ class TestDbIntegration(unittest.TestCase):
 
   def test_frequent_costly_item_ranked_first(self):
     conn = _test_db(); now = 1e9
+    a = _add_source(conn, 'A'); b = _add_source(conn, 'B')
     conn.executemany(
-      'insert into statistic (w,data,type,time,count,mistakes,viscosity) values (?,?,?,?,?,?,?)',
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
       [
-        (now, 'slow', 2, 1.0, 2, 0, 1.0),     # painful but rare (at analysis floor)
-        (now, 'fast', 2, 0.3, 500, 0, 1.0),   # constant typing cost
+        (now, 'slow', 2, 1.0, 1, 0, 1.0, a),
+        (now, 'slow', 2, 1.0, 1, 0, 1.0, b),
+        (now, 'fast', 2, 0.3, 499, 0, 1.0, a),
+        (now, 'fast', 2, 0.3, 1, 0, 1.0, b),
       ])
     targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
     words = [t[1] for t in targets if t[0] == 'word']
@@ -452,11 +457,13 @@ class TestDbIntegration(unittest.TestCase):
 
   def test_one_shot_words_never_enter_weak_targets(self):
     conn = _test_db(); now = 1e9
+    a = _add_source(conn, 'A'); b = _add_source(conn, 'B')
     conn.executemany(
-      'insert into statistic (w,data,type,time,count,mistakes,viscosity) values (?,?,?,?,?,?,?)',
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
       [
-        (now, 'once', 2, 2.0, 1, 1, 1.0),
-        (now, 'twice', 2, 0.4, 2, 0, 1.0),
+        (now, 'once', 2, 2.0, 1, 1, 1.0, a),
+        (now, 'twice', 2, 0.4, 1, 0, 1.0, a),
+        (now, 'twice', 2, 0.4, 1, 0, 1.0, b),
       ])
     targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
     words = [t[1] for t in targets if t[0] == 'word']
@@ -483,12 +490,13 @@ class TestDbIntegration(unittest.TestCase):
 
   def test_weakspot_stats_excluded_from_selection(self):
     conn = _test_db(); now = 1e9
-    book = _add_source(conn, 'My Book')
+    a = _add_source(conn, 'My Book'); b = _add_source(conn, 'Other')
     weak = _add_source(conn, '<Weakspot>', 1)
     conn.executemany(
       'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
       [
-        (now, 'realword', 2, 0.4, 20, 1, 1.0, book),
+        (now, 'realword', 2, 0.4, 19, 1, 1.0, a),
+        (now, 'realword', 2, 0.4, 1, 0, 1.0, b),
         (now, 'drillword', 2, 1.0, 500, 0, 1.0, weak),  # would dominate if counted
       ])
     targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
@@ -498,11 +506,13 @@ class TestDbIntegration(unittest.TestCase):
 
   def test_build_lesson_from_db_covers_targets(self):
     conn = _test_db(); now = 1e9
+    a = _add_source(conn, 'A'); b = _add_source(conn, 'B')
     conn.executemany(
-      'insert into statistic (w,data,type,time,count,mistakes,viscosity) values (?,?,?,?,?,?,?)',
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
       [
-        (now, 'e h', 1, 0.4, 20, 1, 1.0),
-        (now, 'from', 2, 0.3, 20, 1, 1.0),
+        (now, 'e h', 1, 0.4, 20, 1, 1.0, a),
+        (now, 'from', 2, 0.3, 19, 1, 1.0, a),
+        (now, 'from', 2, 0.3, 1, 0, 1.0, b),
       ])
     path = _wordlist_file(DICT)
     lesson, emphasized = build_lesson_from_db(conn, hist=0, min_count=1, per_type=10,

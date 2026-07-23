@@ -5,7 +5,7 @@ from typing_program.Data import DB
 from typing_program.corpus_find import find_text_for_target
 from typing_program.stats_query import (
   ALL_TIME_HIST, ANALYSIS_OUTER_SQL, STATS_AGG_SUBQUERY, STAT_TYPE_WORD,
-  analysis_min_count, analysis_order_clause, analysis_order_sql,
+  analysis_floor_sql, analysis_min_count, analysis_order_clause, analysis_order_sql,
   delete_stat_target, fetch_analysis_baseline_wpm, fetch_analysis_search)
 from typing_program.word_progress import lifetime_wpm_gain
 from typing_program.WeakSpotLessons import analysis_what_kind
@@ -119,26 +119,6 @@ class AnalysisWhatCombo(SettingsCombo):
     self.activated[int].connect(lambda _idx: self.clearFocus())
 
 
-class AnalysisCountEdit(SettingsEdit):
-  """Performance Analysis minimum-count filter; never below 2."""
-  _MIN = 2
-
-  def __init__(self):
-    if Settings.get('analysis_count') < self._MIN:
-      Settings.set('analysis_count', self._MIN)
-    super(AnalysisCountEdit, self).__init__('analysis_count')
-
-  def updateVal(self):
-    try:
-      v = max(self._MIN, self.conv(self.text()))
-    except ValueError as err:
-      QMessageBox.warning(self, "String Conversion Error", f"Couldn't convert setting value:\n{err}")
-    else:
-      Settings.set(self.setting, v)
-      if self.text() != self.fmt(v):
-        self.setText(self.fmt(v))
-
-
 class StringStats(QWidget):
   startDrill = pyqtSignal(list)
   corpusTextReady = pyqtSignal('PyQt_PyObject')
@@ -165,8 +145,6 @@ class StringStats(QWidget):
     ob = AnalysisSortCombo()
 
     wc = AnalysisWhatCombo()
-    lim = SettingsEdit('analysis_many')
-    self.w_count = AnalysisCountEdit()
     self._baseline_rows = []
     self._search_applied = None
     self._search_edit = QLineEdit()
@@ -178,11 +156,9 @@ class StringStats(QWidget):
     Settings.signal_for("analysis_which").connect(self.update)
     Settings.signal_for("analysis_what").connect(self.update)
     Settings.signal_for("analysis_many").connect(self.update)
-    Settings.signal_for("analysis_count").connect(self.update)
 
     self.setLayout(AppBoxLayout([
         ["Show", wc, "sorted by", ob, 16, self._search_edit, self._search_btn, None],
-        ["Limit list to", lim, "items and don't show items with a count less than", self.w_count, None],
         self._corpus_lbl,
         (self.stats, 1)
       ]))
@@ -231,12 +207,13 @@ class StringStats(QWidget):
   def _query_rows(self, order, limit):
     cat = Settings.get('analysis_what')
     count = analysis_min_count(cat, Settings.get('analysis_count'))
+    floor = analysis_floor_sql(cat)
     if order == 'improved desc':
       pool = max(limit * 10, 200)
-      sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'total desc', pool)
+      sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, floor, 'total desc', pool)
       rows = DB.fetchall(sql, (ALL_TIME_HIST, cat, count))
       return rows, cat
-    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_sql(order), limit)
+    sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, floor, analysis_order_sql(order), limit)
     return DB.fetchall(sql, (ALL_TIME_HIST, cat, count)), cat
 
   def _enrich_word_rows(self, rows):

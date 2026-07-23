@@ -44,9 +44,26 @@ def _insert_qualifying(conn, source_id, wpm=60.0, char_count=60, duration=12.0):
 
 
 def _insert_word(conn, data, count, mistakes, wpm=60.0):
-  conn.execute(
+  """Insert a counted word. count>=2 splits across two books so it is 'found'."""
+  novel = conn._gate_ids[0]
+  if getattr(conn, '_book2', None) is None:
+    conn.execute("insert into source (name, discount) values ('Other', null)")
+    conn._book2 = conn.execute("select rowid from source where name='Other'").fetchone()[0]
+  other = conn._book2
+  t = 12.0 / wpm
+  if count < 2:
+    conn.execute(
+      'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+      (time.time(), data, STAT_TYPE_WORD, t, count, mistakes, 1.0, novel))
+    return
+  c1 = max(1, count // 2)
+  c2 = count - c1
+  conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    (time.time(), data, STAT_TYPE_WORD, 12.0 / wpm, count, mistakes, 1.0, None))
+    [
+      (time.time(), data, STAT_TYPE_WORD, t, c1, mistakes, 1.0, novel),
+      (time.time(), data, STAT_TYPE_WORD, t, c2, 0, 1.0, other),
+    ])
 
 
 def test_format_perfect_rate_gain_one_decimal():
@@ -111,10 +128,15 @@ def test_overall_word_perfect_rate_includes_drill_samples():
   conn = _gate_db()
   novel = conn._gate_ids[0]
   weak = conn._gate_ids[1]
-  # corpus 8/10 = 80%; plus 2 perfect drill samples → 10/12 ≈ 83.333%
+  conn.execute("insert into source (name, discount) values ('Other', null)")
+  other = conn.execute("select rowid from source where name='Other'").fetchone()[0]
+  # corpus across 2 books (8/10) + 2 perfect drill samples → 10/12 ≈ 83.333%
   conn.execute(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    (time.time(), 'hi', STAT_TYPE_WORD, 0.2, 10, 2, 1.0, novel))
+    (time.time(), 'hi', STAT_TYPE_WORD, 0.2, 9, 2, 1.0, novel))
+  conn.execute(
+    'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
+    (time.time(), 'hi', STAT_TYPE_WORD, 0.2, 1, 0, 1.0, other))
   conn.execute(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     (time.time(), 'hi', STAT_TYPE_WORD, 0.2, 2, 0, 1.0, weak))
@@ -129,7 +151,7 @@ def test_drill_only_word_not_in_analysis_list():
   conn.execute(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     (time.time(), 'onlydrill', STAT_TYPE_WORD, 0.2, 50, 0, 1.0, weak))
-  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'corpus desc', 10)
+  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, 'books >= ?', 'corpus desc', 10)
   rows = conn.execute(sql, (0, STAT_TYPE_WORD, 2)).fetchall()
   assert rows == []
 

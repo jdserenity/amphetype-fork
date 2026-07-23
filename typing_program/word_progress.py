@@ -175,15 +175,21 @@ def run_word_sample_counts(run, match_text=None):
   return counts
 
 
-def words_crossing_min_count(prior_counts, run_counts, min_count=WORD_ANALYSIS_MIN_COUNT):
-  """Words whose counted total crosses into the analysis pool this run."""
-  floor = int(min_count or WORD_ANALYSIS_MIN_COUNT)
+def words_crossing_min_books(prior_sources, run_words, run_source_id, min_books=WORD_ANALYSIS_MIN_COUNT):
+  """Words that newly reach the distinct-book floor when this run's source is included.
+
+  Typing the same word again in a book already counted does not unlock it.
+  """
+  floor = int(min_books or WORD_ANALYSIS_MIN_COUNT)
+  if not run_source_id or floor <= 0:
+    return []
+  sid = int(run_source_id)
   new = []
-  for word, n in run_counts.items():
-    if n <= 0:
+  for word in run_words:
+    prev = set((prior_sources or {}).get(word) or ())
+    if sid in prev:
       continue
-    prev = int((prior_counts or {}).get(word, 0) or 0)
-    if prev < floor and prev + n >= floor:
+    if len(prev) < floor and len(prev) + 1 >= floor:
       new.append(word)
   return new
 
@@ -221,12 +227,13 @@ def improved_word_spans(run, baselines, match_text):
   return out
 
 
-def analyze_run_progress(run, baselines, match_text=None, prior_counts=None,
-                         min_count=WORD_ANALYSIS_MIN_COUNT, include_new_common=True):
-  """Score a finished run against perfect-rate baselines/counts captured before stats write.
+def analyze_run_progress(run, baselines, match_text=None,
+                         min_books=WORD_ANALYSIS_MIN_COUNT, include_new_common=True,
+                         prior_sources=None, run_source_id=None):
+  """Score a finished run against perfect-rate baselines/sources captured before stats write.
 
-  New common words = words that reach the Performance Analysis min-count pool this run
-  (counted samples only). Improve modes pass include_new_common=False.
+  New common words = words that reach the Performance Analysis distinct-book floor this run
+  (counted sources only). Improve modes pass include_new_common=False.
   """
   improved = 0; known = 0
   for start, end, word in word_spans(match_text or run.text):
@@ -242,8 +249,8 @@ def analyze_run_progress(run, baselines, match_text=None, prior_counts=None,
         improved += 1
   new_words = []
   if include_new_common:
-    run_counts = run_word_sample_counts(run, match_text)
-    new_words = words_crossing_min_count(prior_counts, run_counts, min_count)
+    typed = [w for w, n in run_word_sample_counts(run, match_text).items() if n > 0]
+    new_words = words_crossing_min_books(prior_sources, typed, run_source_id, min_books)
   return RunProgress(improved, known, new_words)
 
 

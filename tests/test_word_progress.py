@@ -6,13 +6,13 @@ import time
 import pytest
 
 from typing_program.speed_heatmap import PROGRESS_GREEN, PROGRESS_ORANGE, PROGRESS_RED
-from typing_program.stats_query import WORD_ANALYSIS_MIN_COUNT, fetch_word_counted_totals, fetch_word_perfect_baselines
+from typing_program.stats_query import WORD_ANALYSIS_MIN_COUNT, fetch_word_perfect_baselines
 from typing_program.timingtuple import RunStats
 from typing_program.word_progress import (
   analyze_run_progress, avg_wpm_bump, fetch_word_baselines, format_progress_html,
   improved_word_spans, lesson_words, lifetime_wpm_gain, median_wpm_bump,
-  new_word_spans, perfect_rate_rises, progress_badges_for_run, run_word_sample_counts,
-  word_perfect_rate_improves, word_wpm_from_slice, words_crossing_min_count,
+  new_word_spans, perfect_rate_rises, progress_badges_for_run,
+  word_perfect_rate_improves, word_wpm_from_slice, words_crossing_min_books,
 )
 
 
@@ -117,11 +117,25 @@ def test_progress_badges_always_empty():
   assert progress_badges_for_run(run, {'fast': _bl(5, 10)}, 'fast') == []
 
 
-def test_words_crossing_min_count_needs_pool_floor():
-  assert words_crossing_min_count({}, {'brand': 1}, min_count=2) == []
-  assert words_crossing_min_count({}, {'brand': 2}, min_count=2) == ['brand']
-  assert words_crossing_min_count({'brand': 1}, {'brand': 1}, min_count=2) == ['brand']
-  assert words_crossing_min_count({'brand': 2}, {'brand': 1}, min_count=2) == []
+def test_words_crossing_min_books_needs_two_distinct_sources():
+  assert words_crossing_min_books({}, ['brand'], 1, min_books=2) == []
+  assert words_crossing_min_books({'brand': {1}}, ['brand'], 1, min_books=2) == []
+  assert words_crossing_min_books({'brand': {1}}, ['brand'], 2, min_books=2) == ['brand']
+  assert words_crossing_min_books({'brand': {1, 2}}, ['brand'], 3, min_books=2) == []
+
+
+def test_analyze_run_progress_same_book_twice_does_not_find():
+  run = _make_run('new new', spc=12.0 / 80.0)
+  p = analyze_run_progress(
+    run, {}, prior_sources={}, run_source_id=7, min_books=2)
+  assert p.new_words == []
+
+
+def test_analyze_run_progress_second_book_finds_word():
+  run = _make_run('brand', spc=12.0 / 80.0)
+  p = analyze_run_progress(
+    run, {}, prior_sources={'brand': {1}}, run_source_id=2, min_books=2)
+  assert p.new_words == ['brand']
 
 
 def test_new_word_spans_only_new_common():
@@ -145,23 +159,17 @@ def test_analyze_run_progress_improved_and_new_common():
     'brand': _bl(1, 2),   # improves
   }
   p = analyze_run_progress(
-    run, baselines, prior_counts={'brand': 1}, min_count=WORD_ANALYSIS_MIN_COUNT)
+    run, baselines, prior_sources={'brand': {1}}, run_source_id=2,
+    min_books=WORD_ANALYSIS_MIN_COUNT)
   assert p.known == 3
   assert p.improved == 2  # fast + brand
   assert p.new_words == ['brand']
 
 
-def test_analyze_run_progress_two_shots_in_one_lesson_cross_floor():
-  run = _make_run('new new', spc=12.0 / 80.0)
-  p = analyze_run_progress(run, {}, prior_counts={}, min_count=2)
-  assert p.new_words == ['new']
-  assert run_word_sample_counts(run)['new'] == 2
-
-
 def test_analyze_run_progress_skips_new_common_when_disabled():
   run = _make_run('brand brand', spc=12.0 / 80.0)
   p = analyze_run_progress(
-    run, {}, prior_counts={}, min_count=2, include_new_common=False)
+    run, {}, prior_sources={}, run_source_id=1, min_books=2, include_new_common=False)
   assert p.new_words == []
 
 
@@ -190,7 +198,8 @@ def test_format_progress_html_zero_improved_is_red():
 
 def test_format_progress_html_new_common_words_orange():
   p = analyze_run_progress(
-    _make_run('brand brand', spc=0.1), {}, prior_counts={}, min_count=2)
+    _make_run('brand', spc=0.1), {}, prior_sources={'brand': {1}},
+    run_source_id=2, min_books=2)
   html = format_progress_html(p)
   assert PROGRESS_ORANGE in html
   assert 'You found' in html
@@ -230,19 +239,23 @@ def test_fetch_word_baselines_case_sensitive():
   assert baselines['lady']['wpm'] == 40.0
 
 
-def test_fetch_word_counted_totals_ignores_weakspot_drills():
+def test_fetch_word_book_sources_ignores_weakspot_and_null():
+  from typing_program.stats_query import fetch_word_book_sources
   conn = _test_db(); now = time.time()
+  conn.execute('insert into source (name, disabled, discount) values (?,?,?)', ('A', None, None))
+  conn.execute('insert into source (name, disabled, discount) values (?,?,?)', ('B', None, None))
   conn.execute('insert into source (name, disabled, discount) values (?,?,?)', ('<Weakspot>', 1, 1))
-  ws = conn.execute('select rowid from source where name=?', ('<Weakspot>',)).fetchone()[0]
+  a, b, ws = [r[0] for r in conn.execute('select rowid from source').fetchall()]
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     [
-      (now, 'real', 2, 0.2, 1, 0, 1.0, None),
+      (now, 'real', 2, 0.2, 1, 0, 1.0, a),
+      (now, 'real', 2, 0.2, 1, 0, 1.0, b),
       (now, 'real', 2, 0.2, 0, 0, 1.0, ws),
-      (now, 'drillonly', 2, 0.2, 0, 0, 1.0, ws),
+      (now, 'orphan', 2, 0.2, 2, 0, 1.0, None),
     ])
-  totals = fetch_word_counted_totals(conn, ['real', 'drillonly', 'missing'])
-  assert totals == {'real': 1, 'drillonly': 0}
+  sources = fetch_word_book_sources(conn, ['real', 'orphan', 'missing'])
+  assert sources == {'real': {a, b}}
 
 
 def test_format_progress_html_improved_green():

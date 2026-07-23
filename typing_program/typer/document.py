@@ -150,7 +150,7 @@ class LessonDocument(QTextDocument):
     self._pre_start_paused = False
     self._follow_lost = False
     self._word_baselines = {}
-    self._word_prior_counts = {}
+    self._word_prior_sources = {}
     self._word_spans = []
     self._progress_badges = []
     self.style_progress = text_style(kerning=False, color=QBrush(QColor(PROGRESS_GREEN)))
@@ -171,7 +171,7 @@ class LessonDocument(QTextDocument):
     self._follow_lost = False
     self._progress_badges = []
     self._word_baselines = {}
-    self._word_prior_counts = {}
+    self._word_prior_sources = {}
     self._word_spans = []
     self._read_ahead_preview = False
     self._read_ahead_revealed = set()
@@ -706,8 +706,8 @@ class LessonDocument(QTextDocument):
   def set_word_baselines(self, baselines):
     self._word_baselines = dict(baselines or {})
 
-  def set_word_prior_counts(self, counts):
-    self._word_prior_counts = dict(counts or {})
+  def set_word_prior_sources(self, sources):
+    self._word_prior_sources = {w: set(s) for w, s in (sources or {}).items()}
     self._word_spans = word_spans(self._match_text) if self._match_text else []
 
   def progress_badges(self):

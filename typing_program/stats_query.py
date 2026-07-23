@@ -4,6 +4,10 @@ Corpus rows (non-discounted sources) grow the known-word floor and damage.
 Drill rows (<Weakspot>, discounted) keep real sample counts/mistakes so they
 raise perfect rate, but never unlock new known words on their own.
 Legacy drill rows with count=0 still count as one drill sample each.
+
+Words unlock ("found") only after counted samples from N distinct books/sources —
+repeating a word in the same book does not unlock it. Keys/trigrams/biwords still
+use corpus sample count as their list floor.
 """
 
 # Legacy: omit discounted sources entirely (heatmap, etc.).
@@ -13,6 +17,9 @@ _STAT_IS_COUNTED = "(coalesce(src.discount, 0) = 0)"
 # Discounted samples: prefer real count; legacy count=0 rows count as one sample.
 _DRILL_SAMPLES = f"(case when not {_STAT_IS_COUNTED} then (case when st.count > 0 then st.count else 1 end) else 0 end)"
 _DRILL_MISTAKES = f"(case when not {_STAT_IS_COUNTED} then st.mistakes else 0 end)"
+# Distinct counted books (sources) for the known-word / "found" floor.
+_COUNTED_BOOKS = (
+  f"count(distinct case when {_STAT_IS_COUNTED} and st.source is not null then st.source end)")
 
 STATS_AGG_SUBQUERY = f"""select data,
   agg_median(time) as time,
@@ -20,7 +27,8 @@ STATS_AGG_SUBQUERY = f"""select data,
   sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) as corpus,
   sum(case when {_STAT_IS_COUNTED} then st.mistakes else 0 end) as corpus_mistakes,
   sum({_DRILL_SAMPLES}) as drilled,
-  sum({_DRILL_MISTAKES}) as drill_mistakes
+  sum({_DRILL_MISTAKES}) as drill_mistakes,
+  {_COUNTED_BOOKS} as books
   from statistic as st
   left join source as src on st.source = src.rowid
   where st.w >= ? and st.type = ?
@@ -35,13 +43,23 @@ RAW_TARGETS_SQL = f"""select data,
   where st.w >= ? and st.type = ?
   group by data having sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) >= ?"""
 
-# Row: data, wpm, viscosity, corpus, drilled, perfect, damage. Known floor = corpus only.
+RAW_WORD_TARGETS_SQL = f"""select data,
+  agg_median(time) as t,
+  sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) as total,
+  sum(case when {_STAT_IS_COUNTED} then st.mistakes else 0 end) as misses
+  from statistic as st
+  left join source as src on st.source = src.rowid
+  where st.w >= ? and st.type = ?
+  group by data having {_COUNTED_BOOKS} >= ?"""
+
+# Row: data, wpm, viscosity, corpus, drilled, perfect, damage.
+# Floor predicate is corpus >= ? (keys/trigrams/biwords) or books >= ? (words).
 ANALYSIS_OUTER_SQL = """select data, 12.0/time as wpm,
   viscosity, corpus, drilled,
   (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
   corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where corpus >= ?
+  where %s
   order by %s limit %d"""
 
 ANALYSIS_SEARCH_OUTER_SQL = """select data, 12.0/time as wpm,
@@ -49,7 +67,7 @@ ANALYSIS_SEARCH_OUTER_SQL = """select data, 12.0/time as wpm,
   (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
   corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where corpus >= ? and %s
+  where %s and %s
   order by %s"""
 
 # Heatmap WPM uses the same median-time pool as Analysis; damage uses counted rows only.
@@ -66,12 +84,12 @@ SPEED_STATS_SQL = f"""select data,
 UNIQUE_TYPED_SQL = """select count(distinct data) from statistic
   where w >= ? and type = ?"""
 
-COUNT_TYPED_MIN_SQL = f"""select count(*) from (
+COUNT_WORD_BOOKS_MIN_SQL = f"""select count(*) from (
   select data from statistic as st
   left join source as src on st.source = src.rowid
   where st.w >= ? and st.type = ?
   group by data
-  having sum(case when {_STAT_IS_COUNTED} then st.count else 0 end) >= ?
+  having {_COUNTED_BOOKS} >= ?
 )"""
 
 STAT_TYPE_CHAR = 0
@@ -115,7 +133,7 @@ OBLIVION_POOL_SQL = """select data, 12.0/time as wpm,
   (corpus - corpus_mistakes) + max(0, drilled - drill_mistakes) as perfect,
   corpus*time*time*(1.0+corpus_mistakes/nullif(corpus,0)) as damage
   from (%s)
-  where corpus >= ? and round(12.0/time, 1) < ?
+  where %s and round(12.0/time, 1) < ?
   order by wpm asc"""
 
 SPEED_STATS_ALL_TIME_SQL = f"""select data,
@@ -164,11 +182,23 @@ def analysis_order_sql(order):
 
 
 def analysis_min_count(stat_type, configured):
-  """Words/biwords in Performance Analysis need at least WORD_ANALYSIS_MIN_COUNT completions."""
+  """Words need ≥N distinct books; biwords need ≥N corpus samples; both floor at WORD_ANALYSIS_MIN_COUNT."""
   n = int(configured or 1)
   if stat_type in (STAT_TYPE_WORD, STAT_TYPE_BIWORD):
     return max(n, WORD_ANALYSIS_MIN_COUNT)
   return n
+
+
+def analysis_floor_sql(stat_type):
+  """WHERE-clause fragment for the analysis pool floor (bind one floor int)."""
+  if stat_type == STAT_TYPE_WORD:
+    return 'books >= ?'
+  return 'corpus >= ?'
+
+
+def raw_targets_sql(stat_type):
+  """Weak-target pull SQL; words use distinct-book floor, others corpus count."""
+  return RAW_WORD_TARGETS_SQL if stat_type == STAT_TYPE_WORD else RAW_TARGETS_SQL
 
 
 def analysis_search_data_clause(stat_type):
@@ -182,7 +212,8 @@ def fetch_analysis_search(db, hist_cutoff, stat_type, min_count, term, order):
   if not term:
     return []
   clause = analysis_search_data_clause(stat_type)
-  sql = ANALYSIS_SEARCH_OUTER_SQL % (STATS_AGG_SUBQUERY, clause, analysis_order_sql(order))
+  sql = ANALYSIS_SEARCH_OUTER_SQL % (
+    STATS_AGG_SUBQUERY, analysis_floor_sql(stat_type), clause, analysis_order_sql(order))
   return db.execute(sql, (hist_cutoff, stat_type, analysis_min_count(stat_type, min_count), term)).fetchall()
 
 
@@ -222,25 +253,29 @@ def count_unique_typed(db, hist_cutoff, stat_type):
 
 
 def count_analysis_words(db, hist_cutoff):
-  """Distinct words with enough completions to appear in Performance Analysis."""
+  """Distinct words typed in enough different books to appear in Performance Analysis."""
   row = db.execute(
-    COUNT_TYPED_MIN_SQL, (hist_cutoff, STAT_TYPE_WORD, WORD_ANALYSIS_MIN_COUNT)).fetchone()
+    COUNT_WORD_BOOKS_MIN_SQL, (hist_cutoff, STAT_TYPE_WORD, WORD_ANALYSIS_MIN_COUNT)).fetchone()
   return int(row[0]) if row else 0
 
 
-def fetch_word_counted_totals(db, words, hist_cutoff=ALL_TIME_HIST):
-  """Counted sample totals per word (same floor basis as Performance Analysis)."""
+def fetch_word_book_sources(db, words, hist_cutoff=ALL_TIME_HIST):
+  """Distinct counted source ids per word (books that unlock 'found' / common words)."""
   if not words:
     return {}
   qs = ','.join('?' * len(words))
   rows = db.execute(
-    '''select st.data, sum(case when %s then st.count else 0 end)
+    '''select st.data, st.source
     from statistic as st
     left join source as src on st.source = src.rowid
     where st.w >= ? and st.type = ? and st.data in (%s)
-    group by st.data''' % (_STAT_IS_COUNTED, qs),
+      and %s and st.source is not null
+    group by st.data, st.source''' % (qs, _STAT_IS_COUNTED),
     (hist_cutoff, STAT_TYPE_WORD, *words)).fetchall()
-  return {data: int(total or 0) for data, total in rows}
+  out = {}
+  for data, source in rows:
+    out.setdefault(data, set()).add(int(source))
+  return out
 
 
 def fetch_word_perfect_baselines(db, words, hist_cutoff=ALL_TIME_HIST):
@@ -319,7 +354,7 @@ OVERALL_WORD_PERFECT_SQL = """select
   sum((corpus - corpus_mistakes) + max(0, drilled - drill_mistakes)),
   sum(corpus + drilled)
   from (%s)
-  where corpus >= ?"""
+  where books >= ?"""
 
 
 def overall_word_perfect_rate(db, hist_cutoff=ALL_TIME_HIST, min_count=WORD_ANALYSIS_MIN_COUNT):
@@ -434,8 +469,8 @@ def sample_stat_rows(rows, n, rng=None):
 
 
 def fetch_oblivion_pool(db, hist_cutoff, stat_type, oblivion_wpm=30, min_count=1):
-  """Slow items under oblivion_wpm; same count floor as Performance Analysis."""
-  sql = OBLIVION_POOL_SQL % STATS_AGG_SUBQUERY
+  """Slow items under oblivion_wpm; same floor as Performance Analysis."""
+  sql = OBLIVION_POOL_SQL % (STATS_AGG_SUBQUERY, analysis_floor_sql(stat_type))
   floor = analysis_min_count(stat_type, min_count)
   return db.execute(sql, (hist_cutoff, stat_type, floor, oblivion_wpm)).fetchall()
 
@@ -450,7 +485,8 @@ def fetch_oblivion_picks(db, hist_cutoff, stat_type, n=FOCUS_DRILL_PICK_COUNT,
 
 
 def fetch_analysis_top(db, hist_cutoff, stat_type, order, limit, min_count=1):
-  sql = ANALYSIS_OUTER_SQL % (STATS_AGG_SUBQUERY, analysis_order_sql(order), limit)
+  sql = ANALYSIS_OUTER_SQL % (
+    STATS_AGG_SUBQUERY, analysis_floor_sql(stat_type), analysis_order_sql(order), limit)
   return db.execute(sql, (hist_cutoff, stat_type, analysis_min_count(stat_type, min_count))).fetchall()
 
 
