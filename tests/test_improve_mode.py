@@ -43,15 +43,39 @@ def _test_db():
   return conn
 
 
+def _add_source(conn, name, discount=None):
+  conn.execute('insert into source (name, discount) values (?,?)', (name, discount))
+  return conn.execute('select rowid from source where name=?', (name,)).fetchone()[0]
+
+
+def _two_books(conn):
+  return _add_source(conn, 'BookA'), _add_source(conn, 'BookB')
+
+
+def _found_word_rows(now, words, books=None):
+  """words: (data, time, count, mistakes, viscosity). Split each across 2 books."""
+  # books created by caller via _two_books when None not allowed here — require books.
+  a, b = books
+  out = []
+  for data, t, count, mist, visc in words:
+    c1 = max(1, int(count) - 1) if count >= 2 else int(count)
+    c2 = int(count) - c1
+    out.append((now, data, STAT_TYPE_WORD, t, c1, mist, visc, a))
+    if c2 > 0:
+      out.append((now, data, STAT_TYPE_WORD, t, c2, 0, visc, b))
+  return out
+
+
 def _seed_words(conn, now):
+  books = _two_books(conn)
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    [
-      (now, 'slow', STAT_TYPE_WORD, 12.0 / 20.0, 10, 0, 5.0, None),
-      (now, 'mid', STAT_TYPE_WORD, 12.0 / 60.0, 10, 0, 12.0, None),
-      (now, 'fast', STAT_TYPE_WORD, 12.0 / 120.0, 10, 0, 2.0, None),
-      (now, 'risky', STAT_TYPE_WORD, 12.0 / 80.0, 10, 5, 3.0, None),
-    ])
+    _found_word_rows(now, [
+      ('slow', 12.0 / 20.0, 10, 0, 5.0),
+      ('mid', 12.0 / 60.0, 10, 0, 12.0),
+      ('fast', 12.0 / 120.0, 10, 0, 2.0),
+      ('risky', 12.0 / 80.0, 10, 5, 3.0),
+    ], books))
 
 
 def test_improve_submode_labels_trigrams_second_after_normal():
@@ -95,14 +119,14 @@ def test_improve_submode_slowest_samples_from_slowest_pool():
 
 def test_improve_submode_samples_five_from_bottom_twenty():
   conn = _test_db(); now = 1e9
-  rows = []
+  books = _two_books(conn)
+  words = []
   for i in range(30):
-    # Lower i → slower WPM so w0..w19 are the slowest 20.
     wpm = 10 + i
-    rows.append((now, 'w%02d' % i, STAT_TYPE_WORD, 12.0 / wpm, 10, 0, 1.0, None))
+    words.append(('w%02d' % i, 12.0 / wpm, 10, 0, 1.0))
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    rows)
+    _found_word_rows(now, words, books))
   picks = fetch_slowest_picks(conn, 0, STAT_TYPE_WORD, n=5, min_count=1, pool_size=20, rng=random.Random(1))
   assert len(picks) == 5
   names = {r[0] for r in picks}
@@ -124,13 +148,14 @@ def test_improve_submode_hesitant_samples_high_viscosity_pool():
 
 def test_improve_submode_damage_includes_highest_damage_in_pool():
   conn = _test_db(); now = 1e9
+  books = _two_books(conn)
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    [
-      (now, 'risky', STAT_TYPE_WORD, 12.0 / 40.0, 20, 10, 1.0, None),
-      (now, 'ok', STAT_TYPE_WORD, 12.0 / 80.0, 20, 1, 1.0, None),
-      (now, 'fine', STAT_TYPE_WORD, 12.0 / 100.0, 20, 0, 1.0, None),
-    ])
+    _found_word_rows(now, [
+      ('risky', 12.0 / 40.0, 20, 10, 1.0),
+      ('ok', 12.0 / 80.0, 20, 1, 1.0),
+      ('fine', 12.0 / 100.0, 20, 0, 1.0),
+    ], books))
   picks = fetch_improve_submode_targets(
     conn, IMPROVE_SUBMODE_DAMAGE, 0, 1, n=3, rng=random.Random(0))
   assert {t[1] for t in picks} == {'risky', 'ok', 'fine'}
@@ -140,14 +165,15 @@ def test_improve_submode_damage_includes_highest_damage_in_pool():
 def test_improve_submode_accuracy_samples_lowest_perfect_pct_pool():
   """Accuracy focus drill picks from the worst perfect-rate words."""
   conn = _test_db(); now = 1e9
+  books = _two_books(conn)
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    [
-      (now, 'typoish', STAT_TYPE_WORD, 12.0 / 80.0, 10, 8, 1.0, None),  # 20% perfect
-      (now, 'shaky', STAT_TYPE_WORD, 12.0 / 80.0, 10, 5, 1.0, None),    # 50%
-      (now, 'solid', STAT_TYPE_WORD, 12.0 / 80.0, 10, 0, 1.0, None),    # 100%
-      (now, 'ok', STAT_TYPE_WORD, 12.0 / 80.0, 10, 2, 1.0, None),       # 80%
-    ])
+    _found_word_rows(now, [
+      ('typoish', 12.0 / 80.0, 10, 8, 1.0),  # 20% perfect
+      ('shaky', 12.0 / 80.0, 10, 5, 1.0),    # 50%
+      ('solid', 12.0 / 80.0, 10, 0, 1.0),    # 100%
+      ('ok', 12.0 / 80.0, 10, 2, 1.0),       # 80%
+    ], books))
   # Pool of worst 3 by perfect % → typoish, shaky, ok; sample all 3.
   picks = fetch_improve_submode_targets(
     conn, IMPROVE_SUBMODE_ACCURACY, 0, 1, n=3, pool_size=3, rng=random.Random(0))
@@ -158,14 +184,14 @@ def test_improve_submode_accuracy_samples_lowest_perfect_pct_pool():
 
 def test_fetch_accuracy_picks_samples_from_lowest_perfect_pool():
   conn = _test_db(); now = 1e9
-  rows = []
+  books = _two_books(conn)
+  words = []
   for i in range(30):
-    # Lower i → more mistakes → lower perfect %.
     mistakes = 9 - (i // 4)  # w0..w3 have 9 mistakes, …
-    rows.append((now, 'w%02d' % i, STAT_TYPE_WORD, 12.0 / 80.0, 10, max(0, mistakes), 1.0, None))
+    words.append(('w%02d' % i, 12.0 / 80.0, 10, max(0, mistakes), 1.0))
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    rows)
+    _found_word_rows(now, words, books))
   picks = fetch_accuracy_picks(conn, 0, STAT_TYPE_WORD, n=5, min_count=1, pool_size=20, rng=random.Random(1))
   assert len(picks) == 5
   names = {r[0] for r in picks}
@@ -192,9 +218,10 @@ def test_oblivion_submode_hidden_when_no_words():
 
 def test_oblivion_submode_available_with_one_word():
   conn = _test_db(); now = 1e9
-  conn.execute(
+  books = _two_books(conn)
+  conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
-    (now, 'slow', STAT_TYPE_WORD, 12.0 / 20.0, 10, 0, 1.0, None))
+    _found_word_rows(now, [('slow', 12.0 / 20.0, 10, 0, 1.0)], books))
   assert oblivion_submode_available(conn, 0, 1)
   assert next_improve_submode(IMPROVE_SUBMODE_TRIGRAMS, conn, 0, 1) == IMPROVE_SUBMODE_OBLIVION
 
@@ -202,33 +229,37 @@ def test_oblivion_submode_available_with_one_word():
 def test_focus_drill_submodes_exclude_words_below_analysis_min_count():
   """Holy N: focus drills never pull words that would be hidden from Performance Analysis."""
   conn = _test_db(); now = 1e9
-  # One-shot typo (count 1) is very slow; real word (count 2+) is mid-speed.
+  a, b = _two_books(conn)
+  # One book only = not found; two books = found.
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     [
-      (now, 'typo', STAT_TYPE_WORD, 12.0 / 8.0, 1, 1, 50.0, None),
-      (now, 'real', STAT_TYPE_WORD, 12.0 / 25.0, WORD_ANALYSIS_MIN_COUNT, 0, 20.0, None),
-      (now, 'solid', STAT_TYPE_WORD, 12.0 / 30.0, 10, 2, 15.0, None),
+      (now, 'typo', STAT_TYPE_WORD, 12.0 / 8.0, 1, 1, 50.0, a),
+      (now, 'real', STAT_TYPE_WORD, 12.0 / 25.0, 1, 0, 20.0, a),
+      (now, 'real', STAT_TYPE_WORD, 12.0 / 25.0, 1, 0, 20.0, b),
+      (now, 'solid', STAT_TYPE_WORD, 12.0 / 30.0, 9, 2, 15.0, a),
+      (now, 'solid', STAT_TYPE_WORD, 12.0 / 30.0, 1, 0, 15.0, b),
     ])
-  # Even if caller passes min_count=1, words still floor at WORD_ANALYSIS_MIN_COUNT.
   for submode in (
       IMPROVE_SUBMODE_OBLIVION, IMPROVE_SUBMODE_SLOWEST,
       IMPROVE_SUBMODE_HESITANT, IMPROVE_SUBMODE_ACCURACY, IMPROVE_SUBMODE_DAMAGE):
     picks = fetch_improve_submode_targets(conn, submode, 0, 1, n=3)
     names = {t[1] for t in picks}
-    assert 'typo' not in names, f'{submode} pulled one-shot word'
+    assert 'typo' not in names, f'{submode} pulled one-book word'
     assert names <= {'real', 'solid'}
     assert picks  # at least one eligible word
 
 
 def test_fetch_weak_targets_excludes_words_below_analysis_min_count():
   conn = _test_db(); now = 1e9
+  a, b = _two_books(conn)
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     [
-      (now, 'once', STAT_TYPE_WORD, 1.0, 1, 0, 1.0, None),
-      (now, 'often', STAT_TYPE_WORD, 0.5, WORD_ANALYSIS_MIN_COUNT, 0, 1.0, None),
-      (now, 'x', 0, 0.5, 1, 0, 1.0, None),  # chars still allow count 1
+      (now, 'once', STAT_TYPE_WORD, 1.0, 1, 0, 1.0, a),
+      (now, 'often', STAT_TYPE_WORD, 0.5, 1, 0, 1.0, a),
+      (now, 'often', STAT_TYPE_WORD, 0.5, 1, 0, 1.0, b),
+      (now, 'x', 0, 0.5, 1, 0, 1.0, a),  # chars still allow count 1
     ])
   targets = fetch_weak_targets(conn, hist=0, min_count=1, per_type=5)
   words = [t[1] for t in targets if t[0] == 'word']
@@ -240,11 +271,12 @@ def test_fetch_weak_targets_excludes_words_below_analysis_min_count():
 
 def test_improve_submode_always_picks_words_not_trigrams():
   conn = _test_db(); now = 1e9
+  books = _two_books(conn)
   conn.executemany(
     'insert into statistic (w,data,type,time,count,mistakes,viscosity,source) values (?,?,?,?,?,?,?,?)',
     [
-      (now, 'ol,', 1, 12.0 / 10.0, 10, 0, 1.0, None),
-      (now, 'slowword', STAT_TYPE_WORD, 12.0 / 15.0, 10, 0, 1.0, None),
+      (now, 'ol,', 1, 12.0 / 10.0, 10, 0, 1.0, books[0]),
+      *_found_word_rows(now, [('slowword', 12.0 / 15.0, 10, 0, 1.0)], books),
     ])
   picks = fetch_improve_submode_targets(
     conn, IMPROVE_SUBMODE_SLOWEST, 0, 1, n=5, rng=random.Random(0))

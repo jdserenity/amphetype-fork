@@ -10,8 +10,7 @@ import random
 import re
 from collections import defaultdict
 
-from typing_program.stats_query import ALL_TIME_HIST, RAW_TARGETS_SQL, analysis_min_count
-
+from typing_program.stats_query import ALL_TIME_HIST, analysis_min_count, raw_targets_sql
 # A target is (kind, data, weight); kind in {'char','trigram','word','biword'}.
 TYPE_TAGS = {0: 'char', 1: 'trigram', 2: 'word'}  # weakspot fetch; biwords are Analysis-only
 ANALYSIS_WHAT_KINDS = ('char', 'trigram', 'word', 'biword')
@@ -24,9 +23,6 @@ _TRAIL_PUNCT = '.,!?;:'   # punctuation that naturally trails a word
 _OPEN_PUNCT = '"(\''       # punctuation that naturally leads a word
 CAND_CAP = 150             # cap dictionary candidates considered per slot
 _WORD_RE = re.compile(r"\w+(?:['-]\w+)*")
-
-# Raw aggregates per item; scoring done in Python (sqlite lacks log()).
-RAW_SQL = RAW_TARGETS_SQL
 
 
 def is_practice_word(w):
@@ -788,12 +784,12 @@ def build_focus_lesson(targets, dict_words=None, wordlist_path=None, min_chars=8
 def fetch_weak_targets(conn, hist=ALL_TIME_HIST, min_count=1, per_type=15):
   """Pull weak chars/trigrams/words, scored by slowness (dominant) and frequency.
 
-  Words use the same count floor as Performance Analysis (analysis_min_count).
+  Words use the same distinct-book floor as Performance Analysis (analysis_min_count).
   """
   targets = []
   for tp, tag in TYPE_TAGS.items():
     floor = analysis_min_count(tp, min_count)
-    rows = conn.execute(RAW_SQL, (hist, tp, floor)).fetchall()
+    rows = conn.execute(raw_targets_sql(tp), (hist, tp, floor)).fetchall()
     scored = []
     for data, t, total, misses in rows:
       s = score_target(t, total, misses)
@@ -807,7 +803,7 @@ def fetch_weak_targets(conn, hist=ALL_TIME_HIST, min_count=1, per_type=15):
 
 def fetch_weak_trigram_targets(conn, hist=ALL_TIME_HIST, min_count=1, limit=30):
   """Top weak trigrams only (damage score), for improve-trigrams gibberish lessons."""
-  rows = conn.execute(RAW_SQL, (hist, 1, min_count)).fetchall()  # type 1 = trigram
+  rows = conn.execute(raw_targets_sql(1), (hist, 1, min_count)).fetchall()  # type 1 = trigram
   scored = []
   for data, t, total, misses in rows:
     s = score_target(t, total, misses)

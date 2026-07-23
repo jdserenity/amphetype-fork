@@ -505,6 +505,7 @@ class TyperOptions(QWidget):
       ["Page background (behind lesson)", S('background_color').button(), None],
       ['Paragraph margin (px)', S('para_margin').spin_box(0, 100), None],
       ['Line spacing', S('para_lineheight').spin_box(0.6, 4.0, 0.05), None],
+      ["Limit analysis list to", SettingsEdit("analysis_many"), "items.", None],
       TyperInputOptions(S),
       TyperSoundOptions(S),
       TyperColors(C),

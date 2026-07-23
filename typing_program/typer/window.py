@@ -25,7 +25,7 @@ from typing_program.lesson_placeholders import (
   BOOK_EMPTY_LABEL, CORPUS_EMPTY_LABEL, IMPROVE_EMPTY_LABEL, IMPROVE_SUBMODE_EMPTY_LABEL,
 )
 from typing_program.stats_query import (
-  ALL_TIME_HIST, STAT_TYPE_WORD, analysis_min_count, fetch_word_counted_totals,
+  ALL_TIME_HIST, STAT_TYPE_WORD, analysis_min_count, fetch_word_book_sources,
   fetch_word_perfect_baselines,
 )
 from typing_program.read_ahead import (
@@ -1007,7 +1007,7 @@ class TyperWindow(QWidget):
   def _load_word_baselines(self, match_text):
     words = lesson_words(match_text)
     self._doc.set_word_baselines(fetch_word_perfect_baselines(self.DB, words))
-    self._doc.set_word_prior_counts(fetch_word_counted_totals(self.DB, words))
+    self._doc.set_word_prior_sources(fetch_word_book_sources(self.DB, words))
 
   def _clear_awaiting(self):
     self._awaiting_next = False
@@ -1022,11 +1022,14 @@ class TyperWindow(QWidget):
     # Improve modes (normal + focus drills) never gather counted word samples, so they
     # cannot mint "new common words" for the analysis pool — hide that feedback entirely.
     show_new_common = self._mode != MODE_IMPROVE
-    min_count = analysis_min_count(STAT_TYPE_WORD, Settings.get('analysis_count'))
+    min_books = analysis_min_count(STAT_TYPE_WORD, Settings.get('analysis_count'))
+    srcid = None
+    if self._current_lesson is not None:
+      srcid = self._current_lesson[1]
     progress = analyze_run_progress(
       run, baselines, match_text,
-      prior_counts=self._doc._word_prior_counts, min_count=min_count,
-      include_new_common=show_new_common)
+      prior_sources=self._doc._word_prior_sources, run_source_id=srcid,
+      min_books=min_books, include_new_common=show_new_common)
     if show_new_common:
       self._doc.apply_new_word_styles(run, progress.new_words)
     self._doc.apply_improved_word_styles(run, baselines)

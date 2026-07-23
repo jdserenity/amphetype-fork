@@ -3,7 +3,7 @@
 import pytest
 
 from typing_program.PerformanceAnalysis import PerformanceAnalysis
-from typing_program.StatWidgets import StringStats, WordModel, AnalysisSortCombo, AnalysisCountEdit
+from typing_program.StatWidgets import StringStats, WordModel, AnalysisSortCombo
 from typing_program.stats_query import STAT_TYPE_WORD
 
 
@@ -117,8 +117,8 @@ def test_performance_analysis_is_stats_only(qapp):
 
 def test_string_stats_search_on_toolbar_row(qapp):
   st = StringStats()
-  # Search shares the Show / sorted-by row (four rows total, not five).
-  assert st.layout().count() == 4
+  # Search shares the Show / sorted-by row (three rows: toolbar, corpus msg, list).
+  assert st.layout().count() == 3
 
 
 def test_string_stats_has_no_lesson_generator_button(qapp):
@@ -201,25 +201,18 @@ def test_string_stats_improved_blank_when_count_is_one(qapp, monkeypatch):
   assert st.model.words[0][2] is None
 
 
-def test_analysis_count_edit_clamps_to_two(qapp, monkeypatch):
-  store = {'analysis_count': 1}
+def test_typer_options_has_analysis_list_limit(qapp):
+  from typing_program.Config import TyperOptions, SettingsEdit
+  w = TyperOptions()
+  edits = w.findChildren(SettingsEdit)
+  assert any(e.setting == 'analysis_many' for e in edits)
 
-  def fake_get(key):
-    return store.get(key, 0)
 
-  def fake_set(key, val):
-    store[key] = val
-
-  monkeypatch.setattr('typing_program.StatWidgets.Settings.get', fake_get)
-  monkeypatch.setattr('typing_program.StatWidgets.Settings.set', fake_set)
-  edit = AnalysisCountEdit()
-  assert store['analysis_count'] == 2
-  edit.setText('1')
-  edit.updateVal()
-  assert store['analysis_count'] == 2
-  edit.setText('3')
-  edit.updateVal()
-  assert store['analysis_count'] == 3
+def test_string_stats_has_no_limit_or_min_count_row(qapp):
+  st = StringStats()
+  from typing_program.Config import SettingsEdit
+  edits = st.findChildren(SettingsEdit)
+  assert not any(e.setting in ('analysis_many', 'analysis_count') for e in edits)
 
 
 def test_main_window_title(qapp):
@@ -256,7 +249,7 @@ def test_main_window_has_performance_analysis_tab(qapp):
   w = MainWindow()
   tabs = w._tabs
   labels = [tabs.tabText(i) for i in range(tabs.count())]
-  assert labels == ["Typer", "Performance Analysis", "Preferences"]
+  assert labels == ["Typer", "Performance Analysis", "Setup"]
 
 
 def test_string_stats_search_shows_all_matches(qapp, monkeypatch):
