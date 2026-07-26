@@ -54,7 +54,7 @@ scaffold/         # agent docs (this file)
 |------|-------|-------------------|
 | improve | 0 (default) | Weakspot lesson (`WeakSpot.py` + `WeakSpotLessons.py`); submode via `typer/improve_submode` |
 | book | 1 | `book_mode.py` — chapters/chunks, progress in `book_progress` / `book_lesson_done`. **Every finished chunk** calls `BookLessonBuilder.on_chunk_completed` (marks done + advances `book_progress` to next chunk/chapter) — not only chapter ends. Mid-chapter advances used to skip the save and reopened the same place. |
-| corpus | 2 | `TextManager.nextText`; re-click corpus → another text |
+| corpus | 2 | `TextManager.nextText` → `corpus_select.pick_corpus_text`: pick a random eligible **book** (source), then a random passage from it; books rotate without replacement until every eligible book has been used (`app_meta.corpus_used_sources`), then the pool refills. Re-click corpus → another text. |
 
 Improve submodes: normal | trigrams | oblivion | slowest | hesitant | accuracy | damage (`improve_mode.py`). **trigrams** (index 1): raw weak-trigram soup via `fetch_weak_trigram_targets` + `build_trigram_gibberish_lesson` — no dictionary words, not a focus drill. Other non-normal = focus drills on **words**: take worst `FOCUS_DRILL_POOL_SIZE` (20) in category, random-sample `FOCUS_DRILL_PICK_COUNT` (5) — or fewer if the user has not typed that many eligible words yet; single-word pool ⇒ that word only. All word picks gated by `analysis_min_count`. **accuracy** = lowest perfect % (`perfect_pct asc` / `fetch_accuracy_picks`). **Oblivion** = display WPM (1 decimal, same as PA) **&lt; 32** (`OBLIVION_WPM`; 32 is red, ≤31.9 purple); omitted from the submode cycle when its pool is empty (`oblivion_submode_available` / `next_improve_submode`). Auto focus drills **re-sample targets every finish/new** (`_load_improve_lesson`); PA-started drills keep the chosen targets and only re-shuffle the lesson. Focus text: `build_focus_lesson` uses equal-weight `allocate_repeats` + plain `rng.shuffle` (adjacent repeats allowed — true random order). Focus size prefs: `focus_min_chars` / `focus_max_chars` (default 80–300). **trigrams** lesson join collapses consecutive spaces so leading/trailing spaces inside trigrams never produce `  ` runs.
 
@@ -176,6 +176,7 @@ Tests: `python -m pytest tests/ -q` (pytest-qt for GUI).
 | Stats I/O | `timingtuple.py`, `stats_query.py`, `Data.py` |
 | Analysis UI | `PerformanceAnalysis.py`, `progress_card.py` |
 | Corpus find | `corpus_find.py`, `text_index.py` |
+| Corpus pick | `corpus_select.py` (`pick_corpus_text`; used books in `app_meta`) |
 | Gutenberg | `gutenberg/` (US `pg_catalog` only), Sources tab |
 | Bulk text import | `import_texts.py`; Sources GUI (`TextManager`) inserts with `index=False` then `backfill_corpus_index` once |
 | License/update | `license.py`, `updater.py` |
