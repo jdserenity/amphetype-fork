@@ -56,8 +56,6 @@ class TextManager(QWidget):
 
   defaultText = ("", 0, "")
 
-  _RANDOM_SAMPLE = 50
-
   def __init__(self, *args):
     super(TextManager, self).__init__(*args)
 
@@ -211,13 +209,8 @@ class TextManager(QWidget):
     self.model.reset()
 
   def nextText(self):
-    v = DB.execute(
-      "select id,source,text from text where disabled is null order by random() limit %d"
-      % self._RANDOM_SAMPLE).fetchall()
-    if len(v) == 0:
-      v = None
-    else:
-      v = v[0]
+    from typing_program.corpus_select import pick_corpus_text
+    v = pick_corpus_text(DB)
     if v is None:
       v = self.defaultText
     self.emit_text(v)
