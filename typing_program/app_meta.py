@@ -55,3 +55,11 @@ def set_app_meta_float(db, key, value):
     on conflict(key) do update set value=excluded.value
   """, (key, repr(float(value))))
   db.commit()
+
+
+def set_app_meta_raw(db, key, value):
+  db.execute("""
+    insert into app_meta (key, value) values (?,?)
+    on conflict(key) do update set value=excluded.value
+  """, (key, str(value)))
+  db.commit()
