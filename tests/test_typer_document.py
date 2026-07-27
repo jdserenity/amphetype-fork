@@ -188,6 +188,46 @@ def test_trailing_whitespace_auto_completes_after_last_letter(qapp):
   assert doc._run.text == "hello "
 
 
+def test_set_text_normalizes_curly_quotes(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text('don\u2019t say \u201chello\u201d')
+  assert doc._match_text == 'don\'t say "hello"'
+  for ch in doc._match_text:
+    doc.insert(ch)
+  assert doc.is_finished()
+
+
+def test_typing_straight_apostrophe_against_curly_source(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text('it\u2019s')
+  for ch in "it's":
+    doc.insert(ch)
+  assert doc.is_finished()
+
+
+def test_accents_kept_in_lesson_and_match_when_typed(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text('caf\u00e9')
+  assert doc._match_text == 'caf\u00e9'
+  doc.insert('c')
+  doc.insert('a')
+  doc.insert('f')
+  doc.insert('\u00e9')
+  assert doc.is_finished()
+
+
+def test_umlaut_is_one_match_slot(qapp):
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text('\u00fcber')
+  assert doc._match_text == '\u00fcber'
+  doc.insert('\u00fc')
+  assert doc._run.index == 1
+  assert doc._run[0].char == '\u00fc'
+  for ch in 'ber':
+    doc.insert(ch)
+  assert doc.is_finished()
+
+
 def test_insert_error_blocks_in_non_lenient(qapp):
     doc = LessonDocument(QFont("Arial", 12))
     doc.set_text("abc")
@@ -305,6 +345,18 @@ class _FakeTyperSettings:
 
     def get(self, k, default=None):
         return self._vals.get(k, default)
+
+
+def test_widget_types_accent_against_accent_in_lesson(qapp):
+  from typing_program.typer import TyperWidget
+  w = TyperWidget(_FakeTyperSettings())
+  doc = LessonDocument(QFont("Arial", 12))
+  doc.set_text('caf\u00e9')
+  w.setLesson(doc)
+  for ch in 'caf':
+    w.insert(ch)
+  w.insert('\u00e9')
+  assert doc.is_finished()
 
 
 def test_heatmap_mode_switch_leaves_typed_chars_alone(qapp):
