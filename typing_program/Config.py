@@ -396,29 +396,9 @@ class TyperInputOptions(QGroupBox):
                 checked=S['overwrite_mode'],
                 toggled=S('overwrite_mode').set,
                 toolTip="""In <b>overwrite mode</b> input will overwrite text in the buffer, no matter if correct or not. If turned off (insert mode) input will work more like real-world typing, but might be more distracting."""),
-      QCheckBox("Lenient mode (NB! Read tooltip!)",
-                checked=S['lenient_mode'], toggled=S('lenient_mode').set,
-                toolTip="""In <b>lenient mode</b> past errors will not
-                block further progress.
-                This means you can complete texts without fully matching it.<br />
-
-
-                Note that combining this with <b>overwrite mode</b> means you can
-                skip text input without having to type any of the letters.
-                (last letter of the entire text <i>must</i> be typed correctly though).
-                For example the text might expect "this" but you type "tihd" and then continue as normal.
-                In normal circumstances these mistyped "garbage" words will <b>NOT</b> be included in your statistics!
-                This will <b>skew your statistics</b>, because errors normally have the biggest impact
-                on typing speed.
-                This means that less statistical data will be collected.<br />
-
-                It's thus recommended to not combine this with <i>overwrite mode</i> unless you have a strong preference."""),
       QCheckBox('Wait for <SPACE> before start',
                 checked=S['require_space'], toggled=S('require_space').set,
                 toolTip="""Require user to press <i>spacebar</i> before accepting input. Note that turning this off means that the first letter, word, and trigraph of every lesson cannot be timed with 100% accuracy (a median will be used)."""),
-      QCheckBox('Prevent backspacing over correct input',
-                checked=S['limit_backspace'], toggled=S('limit_backspace').set,
-                toolTip="""Turning this on will prevent backspace from going back over any correct input. Works best for overwrite mode."""),
       ]))
 
 class TyperSoundOptions(QGroupBox):
@@ -493,8 +473,6 @@ class TyperOptions(QWidget):
     S = Settings.typer_settings
     C = Settings.typer_colors
     self.setLayout(FBoxLayout([
-      "These options apply to the inline typer (the default).",
-      "Most options under <i>General Options</i> also affect it.",
       QCheckBox('Show progress bar while typing',
                 checked=S['show_progress'], toggled=S('show_progress').set),
       ["Page background (behind lesson)", S('background_color').button(), None],
