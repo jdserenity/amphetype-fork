@@ -1,79 +1,35 @@
+"""Lesson document: type-on-top matching, run lifecycle, word-progress styles."""
+
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from typing_program.settings import *
-from typing_program.timingtuple import RunStats, IDLE_THRESHOLD
-from typing_program.Config import Settings
-from typing_program.speed_heatmap import book_return_role, char_heatmap_colors, fetch_speed_stats, mode_stat_type, PROGRESS_GREEN, PROGRESS_ORANGE
-from typing_program.read_ahead import (
-  hidden_char_indices, hidden_word_indices, word_index_at, READ_AHEAD_OFF,
-)
-from typing_program.Data import Statistic
+from typing_program.quote_text import normalize_quotes
+from typing_program.timingtuple import RunStats
+from typing_program.speed_heatmap import book_return_role, PROGRESS_GREEN, PROGRESS_ORANGE
+from typing_program.read_ahead import READ_AHEAD_OFF
 from typing_program.word_progress import (
-  improved_word_spans, new_word_spans, word_perfect_rate_improves,
-  word_spans, word_wpm_from_slice,
+  improved_word_spans, new_word_spans, word_perfect_rate_improves, word_spans,
 )
 from typing_program import timer
 import logging as log
+import unicodedata
 
-from typing_program.typer.styles import TYPER_CANVAS_DEFAULT
+from typing_program.typer.text_format import (
+  RETURN_CHAR, PARA_SEP, LINE_SEP, _NO_FILL_STYLE_ATTRS,
+  Cursor, text_style, block_style, text_props,
+)
+from typing_program.typer.book_typing import BookTypingMixin
+from typing_program.typer.lesson_display import LessonDisplayMixin
 
-RETURN_CHAR = '⏎' # '↵'
-PARA_SEP = '\u2029'
-LINE_SEP = '\u2028'
-
-# Lesson text backgrounds only for error highlighting; untyped/correct/inactive stay clear.
-_NO_FILL_STYLE_ATTRS = frozenset({'untyped', 'correct', 'inactive'})
-
-### TEXTDOCUMENT
-
-text_props = dict(
-  underline=QTextCharFormat.FontUnderline,
-  color=QTextCharFormat.ForegroundBrush,
-  background=QTextCharFormat.BackgroundBrush,
-  kerning=QTextCharFormat.FontKerning,
-  overline=QTextCharFormat.FontOverline,
-  italic=QTextCharFormat.FontItalic)
-
-def text_style(*args, **kwargs):
-  res = QTextCharFormat()
-  for a in args:
-    res.setProperty(text_props[a], True)
-  for k,v in kwargs.items():
-    res.setProperty(text_props[k], v)
-  return res
-
-def block_style(*args, **kwargs):
-  b = QTextBlockFormat()
-  b.setTopMargin(20.0)
-  b.setBottomMargin(20.0)
-  return b
+# Re-export for `from typing_program.typer.document import …`
+__all__ = [
+  'RETURN_CHAR', 'PARA_SEP', 'LINE_SEP', '_NO_FILL_STYLE_ATTRS',
+  'Cursor', 'LessonDocument', 'text_style', 'block_style', 'text_props',
+]
 
 
-class Cursor(QTextCursor):
-  def __init__(self, doc_or_cursor, position=None, select=None, fixed=False, **kwargs):
-    super().__init__(doc_or_cursor, **kwargs)
-    self.setKeepPositionOnInsert(fixed)
-    if position is not None:
-      if isinstance(position, tuple):
-        self.setPosition(position[0])
-        self.setPosition(position[1], self.KeepAnchor)
-      else:
-        self.setPosition(position)
-    if select is not None:
-      self.movePosition(select, self.KeepAnchor)
-
-  def nextChar(self):
-    return self.document().characterAt(self.position())
-
-  def __repr__(self):
-    if self.hasSelection():
-      return f'({self.position()}/a={self.anchor()}/t="{self.selectedText()}")'
-    return f'({self.position()})'
-
-
-class LessonDocument(QTextDocument):
+class LessonDocument(BookTypingMixin, LessonDisplayMixin, QTextDocument):
   style_untyped = text_style(kerning=False, color=QBrush(QColor('#ffffff')))
   style_error = text_style(kerning=False,
                            background=QBrush(QColor('firebrick')),
@@ -129,8 +85,6 @@ class LessonDocument(QTextDocument):
 
   def __init__(self, font, *args, **kwargs):
     super().__init__(*args, undoRedoEnabled=False, **kwargs)
-    # f = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-    # f.setPointSize(16)
     self.setDefaultFont(font)
     self.setDocumentMargin(28)  # breathing room now that the editor frame is gone
     self._speed_heatmap_enabled = False
@@ -190,41 +144,20 @@ class LessonDocument(QTextDocument):
     c.insertText(msg or '', self.style_inactive)
     self.cursor = Cursor(self, position=0)
 
-  def _book_plain_display(self, text):
-    import re
-    return re.sub(r'\n\n+', '\n', (text or '').replace('\r\n', '\n').replace('\r', '\n'))
-
-  def set_book_chapter(self, full_text, chunks, chunk_index, auto_returns=True):
-    self._book_auto_returns = auto_returns
-    self._book_chunks = chunks
-    self._book_chunk_index = int(chunk_index)
-    before = self._book_plain_display(''.join(chunks[:chunk_index]))
-    active = chunks[chunk_index]
-    after = self._book_plain_display(''.join(chunks[chunk_index + 1:]))
-    self.set_text(active, prologue=before, epilogue=after, book_mode=True)
-
-  def advance_book_chunk(self):
-    if not self.has_next_book_chunk():
-      return False
-    self.set_book_chapter(
-      ''.join(self._book_chunks), self._book_chunks, self._book_chunk_index + 1, self._book_auto_returns)
-    return True
-
-  def has_next_book_chunk(self):
-    return bool(self._book_chunks) and self._book_chunk_index + 1 < len(self._book_chunks)
-
   def set_text(self, text, prologue='', epilogue='', book_mode=False):
     if not book_mode:
       self._book_auto_returns = False
+    # Curly quotes → keyboard ' / "; accents and other Unicode stay.
+    text = normalize_quotes(text if text is not None else '')
+    prologue = normalize_quotes(prologue or '')
+    epilogue = normalize_quotes(epilogue or '')
     self._curtext = (text, prologue, epilogue)
 
-    text = text if text is not None else ''
-
     self.clear()
-    
+
     c = Cursor(self)
     c.setBlockFormat(self.style_block)
-    
+
     c.insertText(prologue, self.style_inactive)
     pos = c.position()
     c.insertText(epilogue, self.style_inactive)
@@ -232,11 +165,11 @@ class LessonDocument(QTextDocument):
     self._original_text = text
     self._match_text = self.sanitize(text)
     self._display_text = self._make_display_text(self._match_text)
-    
+
     self._start = Cursor(self, position=pos, fixed=True)
     self._end = Cursor(self, position=pos)
     self.cursor = Cursor(self, position=pos)
-    
+
     self.reset()
 
   def reset(self):
@@ -258,98 +191,6 @@ class LessonDocument(QTextDocument):
     self._refresh_read_ahead()
     self.ready.emit(self._match_text)
 
-  def _reveal_read_ahead_word_at(self, match_index):
-    if not self._read_ahead_mode or self.read_ahead_preview_pending():
-      return
-    wi = word_index_at(self._match_text, match_index)
-    if wi in hidden_word_indices(self._match_text, match_index, self._read_ahead_mode):
-      self._read_ahead_revealed.add(wi)
-
-  def read_ahead_preview_pending(self):
-    return bool(self._read_ahead_mode) and self.is_ready() and self._read_ahead_preview
-
-  def dismiss_read_ahead_preview(self):
-    if not self.read_ahead_preview_pending():
-      return False
-    self._read_ahead_preview = False
-    self._refresh_read_ahead()
-    return True
-
-  def set_page_background(self, color):
-    self._page_bg = QColor(color)
-    self.style_hidden.setForeground(QBrush(self._page_bg))
-    self.style_hidden_return.setForeground(QBrush(self._page_bg))
-    self._refresh_read_ahead()
-
-  def set_read_ahead_mode(self, mode):
-    self._read_ahead_mode = mode
-    if self.is_ready() and mode:
-      self._read_ahead_preview = True
-    elif not mode:
-      self._read_ahead_preview = False
-    self._refresh_read_ahead()
-
-  def _read_ahead_hidden_indices(self):
-    if self._match_text is None or self.read_ahead_preview_pending():
-      return set()
-    pos = self._run.index if self._run is not None else 0
-    return hidden_char_indices(self._match_text, pos, self._read_ahead_mode, self._read_ahead_revealed)
-
-  def _heatmap_colors(self):
-    if not self._speed_heatmap_enabled or not self._display_text:
-      return []
-    key = (self._display_text, self._speed_heatmap_mode, id(self._speed_heatmap_stats))
-    if self._heatmap_colors_cache_key != key:
-      self._heatmap_colors_cache_key = key
-      self._heatmap_colors_cache = char_heatmap_colors(
-        self._display_text, self._speed_heatmap_mode, self._speed_heatmap_stats, self._match_text,
-        return_char=RETURN_CHAR, book_returns=self._book_auto_returns)
-    return self._heatmap_colors_cache
-
-  def _needs_untyped_style_refresh(self):
-    return bool(self._read_ahead_mode)
-
-  def _refresh_untyped_styles(self):
-    if not self._needs_untyped_style_refresh():
-      return
-    self._refresh_read_ahead()
-
-  def _refresh_read_ahead(self, force=False):
-    if self._match_text is None:
-      return
-    if not force and not self._read_ahead_mode and not self._speed_heatmap_enabled and not self._book_auto_returns:
-      return
-    pos = self._run.index if self._run is not None else 0
-    hidden = self._read_ahead_hidden_indices()
-    colors = self._heatmap_colors() if self._speed_heatmap_enabled else []
-    base = self._start.position()
-    mi = 0; di = base
-    c = Cursor(self)
-    c.beginEditBlock()
-    while mi < len(self._match_text):
-      n = self._match_display_width(mi)
-      if mi >= pos:
-        for j in range(n):
-          disp_i = di + j - base
-          if (self._book_auto_returns and j == 0 and self._match_text[mi] == RETURN_CHAR
-              and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter'
-              and self._book_para_enter_revealed(mi)):
-            break
-          if (self._book_auto_returns and j == 0 and self._match_text[mi] == RETURN_CHAR
-              and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter'):
-            style = self.style_hidden_return
-          elif self._read_ahead_mode and mi in hidden:
-            style = self.style_hidden
-          else:
-            style = QTextCharFormat(self.style_untyped)
-            if colors and disp_i < len(colors) and colors[disp_i] is not None:
-              style.setForeground(QBrush(colors[disp_i]))
-          c.setPosition(di + j)
-          c.movePosition(c.NextCharacter, c.KeepAnchor)
-          c.setCharFormat(style)
-      di += n; mi += 1
-    c.endEditBlock()
-
   def active_region(self):
     c = Cursor(self, position=self._start.position())
     c.setPosition(self._end.position(), c.KeepAnchor)
@@ -360,171 +201,6 @@ class LessonDocument(QTextDocument):
     text = text.replace('\r', '\n')
     text = text.replace('\n', RETURN_CHAR)
     return text
-
-  def _make_display_text(self, match_text):
-    if self._book_auto_returns:
-      out = []; i = 0
-      while i < len(match_text):
-        if match_text[i] == RETURN_CHAR:
-          role = book_return_role(match_text, i, RETURN_CHAR)
-          if role == 'soft_nl':
-            out.append('\n'); i += 1
-          elif role == 'para_enter':
-            out.append(RETURN_CHAR + '\n'); i += 1
-            while i < len(match_text) and book_return_role(match_text, i, RETURN_CHAR) == 'para_tail':
-              i += 1
-          else:
-            i += 1
-        else:
-          out.append(match_text[i]); i += 1
-      return ''.join(out)
-    return match_text.replace(RETURN_CHAR, RETURN_CHAR + '\n')
-
-  def _match_display_width(self, mi):
-    if mi >= len(self._match_text):
-      return 0
-    if self._match_text[mi] == RETURN_CHAR:
-      if self._book_auto_returns:
-        role = book_return_role(self._match_text, mi, RETURN_CHAR)
-        if role == 'soft_nl':
-          return 1
-        if role == 'para_enter':
-          return 2
-        return 0
-      return 2
-    return 1
-
-  def _display_span(self, mi):
-    base = self._start.position()
-    di = base
-    for i in range(mi):
-      di += self._match_display_width(i)
-    n = self._match_display_width(mi)
-    return di, n
-
-  def _style_match_index(self, mi, style):
-    di, n = self._display_span(mi)
-    c = Cursor(self)
-    for j in range(n):
-      c.setPosition(di + j)
-      c.movePosition(c.NextCharacter, c.KeepAnchor)
-      c.setCharFormat(style)
-
-  def _cursor_to_match_index(self, mi):
-    if mi >= len(self._match_text):
-      self.cursor.setPosition(self._end.position())
-      return
-    self.cursor.setPosition(self._display_span(mi)[0])
-
-  def _consume_auto_returns(self):
-    while self._run and not self._run.is_complete() and self._run.current and self._run.current.char == RETURN_CHAR:
-      mi = self._run.index
-      if self._book_auto_returns and book_return_role(self._match_text, mi, RETURN_CHAR) == 'para_enter':
-        break
-      self._run.visit(True)
-      self._run.advance(True)
-      self._style_match_index(mi, self.style_correct)
-      self._cursor_to_match_index(self._run.index)
-      self.progress.emit(self._run.index)
-
-  def _consume_trailing_whitespace(self):
-    """Auto-complete trailing whitespace so the last letter ends the lesson."""
-    while self._run and not self._run.is_complete() and self._run.current:
-      rest = self._match_text[self._run.index:]
-      if not rest or not all(c.isspace() for c in rest):
-        break
-      mi = self._run.index
-      self._run.visit(True)
-      self._run.advance(True)
-      self._style_match_index(mi, self.style_correct)
-      self._cursor_to_match_index(self._run.index)
-      self.progress.emit(mi)
-
-  def _book_para_enter_index(self):
-    if not self._book_auto_returns or not self._run or not self._run.current:
-      return None
-    mi = self._run.index
-    if self._run.current.char != RETURN_CHAR:
-      return None
-    if book_return_role(self._match_text, mi, RETURN_CHAR) != 'para_enter':
-      return None
-    return mi
-
-  def _book_para_enter_revealed(self, mi):
-    if self._book_para_enter_index() != mi:
-      return False
-    di, _ = self._display_span(mi)
-    if self.characterAt(di) != RETURN_CHAR:
-      return True
-    return self._first_error is not None and self._first_error.position() == di
-
-  def _book_para_enter_glyph_replaced(self, mi):
-    return self._book_para_enter_revealed(mi)
-
-  def _restore_book_para_enter_untyped(self, mi):
-    di, _ = self._display_span(mi)
-    c = Cursor(self, position=di)
-    c.setPosition(di + 1, c.KeepAnchor)
-    c.insertText(RETURN_CHAR, self.style_hidden_return)
-    self._cursor_to_match_index(mi)
-
-  def _finish_book_insert(self):
-    if self.is_finished():
-      self.completed.emit(self._run)
-    else:
-      self._refresh_untyped_styles()
-      self.sig_position.emit(self.cursor)
-
-  def _insert_book_para_enter(self, char, lenient=False):
-    """Type (or recover) the hidden paragraph break — only the first display glyph is mutable."""
-    mi = self._book_para_enter_index()
-    assert mi is not None
-    correct = char == RETURN_CHAR
-    di, _ = self._display_span(mi)
-    c = Cursor(self, position=di)
-    c.setPosition(di + 1, c.KeepAnchor)
-
-    if self._first_error is not None:
-      if not correct:
-        self._reveal_read_ahead_word_at(mi)
-        self._run.visit(False)
-        c.insertText(RETURN_CHAR, self.style_error)
-        self._finish_book_insert()
-        self.key_typed.emit(False)
-        return
-      self._run.visit(True)
-      self.progress.emit(mi)
-      c.insertText(RETURN_CHAR, self.style_hidden_return)
-      self._first_error = None
-      self._run.advance(True)
-      self._cursor_to_match_index(self._run.index)
-      self._consume_auto_returns()
-      self._consume_trailing_whitespace()
-      self._finish_book_insert()
-      self.key_typed.emit(True)
-      return
-
-    if not correct:
-      self._reveal_read_ahead_word_at(mi)
-      self._run.visit(False)
-      self._run.current.errors += char
-      if not lenient:
-        self._first_error = Cursor(self, position=di, fixed=True)
-      c.insertText(RETURN_CHAR, self.style_error)
-      self._cursor_to_match_index(mi)
-      self._finish_book_insert()
-      self.key_typed.emit(False)
-      return
-
-    self._run.visit(True)
-    self.progress.emit(mi)
-    c.insertText(RETURN_CHAR, self.style_hidden_return)
-    self._run.advance(True)
-    self._cursor_to_match_index(self._run.index)
-    self._consume_auto_returns()
-    self._consume_trailing_whitespace()
-    self._finish_book_insert()
-    self.key_typed.emit(True)
 
   def is_running(self):
     """True if a lesson has started but not yet completed."""
@@ -576,7 +252,7 @@ class LessonDocument(QTextDocument):
 
   def start(self):
     """Switches to running state (warm start)."""
-    assert self.is_ready()      
+    assert self.is_ready()
     self._run = RunStats.make(self._match_text, timer())
     self.started.emit()
 
@@ -585,6 +261,22 @@ class LessonDocument(QTextDocument):
       return
     if self.is_paused():
       return
+    if not char:
+      return
+
+    # Quotes only: ’ → ' so keystrokes match lesson text. Accents pass through.
+    if char != RETURN_CHAR:
+      char = normalize_quotes(char)
+      if not char:
+        return
+      if len(char) > 1:
+        for c in char:
+          self.insert(c, overwrite=overwrite, lenient=lenient)
+        return
+      # Ignore lone combining marks from dead keys (composed é arrives via IME).
+      if unicodedata.category(char) == 'Mn':
+        return
+
     if self.read_ahead_preview_pending():
       self.dismiss_read_ahead_preview()
     if self._run is None:
@@ -650,6 +342,7 @@ class LessonDocument(QTextDocument):
     self.key_typed.emit(correct)
 
   def actual_insert(self, char, style, overwrite=True):
+    # One match slot ↔ one display glyph. Callers must pass a single character.
     self.cursor.insertText(char, style)
     if overwrite:
       self.cursor.deleteChar()
@@ -696,7 +389,7 @@ class LessonDocument(QTextDocument):
         self.cursor.insertText(c, self.style_untyped)
         self.cursor.movePosition(QTextCursor.PreviousCharacter)
       self.cursor.deletePreviousChar()
-    
+
     if self._first_error and self.cursor <= self._first_error:
       self._first_error = None
 
@@ -752,11 +445,3 @@ class LessonDocument(QTextDocument):
         for j in range(start, end):
           self._style_match_index(j, self.style_progress)
       return
-
-  def set_speed_heatmap(self, enabled, mode, stats):
-    self._speed_heatmap_enabled = enabled
-    self._speed_heatmap_mode = mode
-    self._speed_heatmap_stats = stats or {}
-    self._heatmap_colors_cache_key = None
-    self._refresh_read_ahead(force=True)
-

@@ -25,8 +25,8 @@ setup(
   ],
 
   packages=['typing_program', 'typing_program.Widgets', 'typing_program.gutenberg'],
-  install_requires=['PyQt5', 'translitcodec', 'editdistance', 'certifi'],
-  extras_require={
+  install_requires=['PyQt5', 'editdistance', 'certifi'],
+/  extras_require={
     'test': ['pytest', 'pytest-qt'],
   },
   python_requires='>=3.6', # I use f-strings liberally, carelessly, and licentiously.

@@ -5,10 +5,7 @@ from typing_program.QtUtil import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 
-import os
-import pickle
 from pathlib import Path
-import logging as log
 
 from typing_program.settings import FSettings
 from typing_program.legacy_data import DEFAULT_DB_FILENAME, migrate_legacy_settings, resolve_database_path
@@ -36,8 +33,6 @@ class AppSettings(FSettings, metaclass=SettingsMeta):
     "typer_font": str(QFont("Arial", 18).toString()),
     "qt_style": "", # Will be set in __init__().
     "qt_css": "<none>",
-
-    "text_force_ascii": False,
     
     "min_chars": 220,
     "max_chars": 600,
@@ -550,14 +545,11 @@ class GeneralOptions(QWidget):
     self.setLayout(AppBoxLayout([
       ["Typer font is", self.font_lbl, AppButton("Change...", self.setFont), None],
       ["Version", QLabel(__version__), AppButton("Check for updates…", self.open_updates), None],
-      None,
-      [SettingsCheckBox("text_force_ascii", 'Force unicode to plain ASCII'), ('(‘fancy’ “quotes” → "normal" quotes, <code>æ</code> → <code>ae</code>, etc.)', 1)],
       SettingsCheckBox('auto_review', "Automatically review slow and mistyped words after texts."),
       SettingsCheckBox('show_session_timer', "Show focused session timer in the top-right corner."),
       SettingsCheckBox('use_lesson_stats', "Save key/trigram/word statistics from generated lessons."),
       SettingsCheckBox('req_space', "Make SPACE mandatory before each session",
                         toolTip="""This is generally recommended because otherwise the timing of the very first character has to be inferred artificially (a median is used)."""),
-      None,
       ["Try to limit texts and lessons to between", SettingsEdit("min_chars"),
         "and", SettingsEdit("max_chars"), "characters.", None],
       ["Try to limit focus drills to between", SettingsEdit("focus_min_chars"),
@@ -571,9 +563,7 @@ class GeneralOptions(QWidget):
       ["When grouping by sitting on the Performance Analysis tab, consider results more than",
         SettingsEdit('minutes_in_sitting'), "minutes away to be part of a different sitting.", None],
       ["Group by", SettingsEdit('def_group_by'), "results when displaying last scores and showing last results on the Typer tab.", None],
-      ["When smoothing out the graph, display a running average of", SettingsEdit('dampen_average'), "values", None],
-      None,
-      ["QT5 style is", self.style_box, 'and CSS theme is', SelectCSSBox(), None],
+      ["When smoothing out the graph, display a running average of", SettingsEdit('dampen_average'), "values", None]
     ]))
 
     self.updateFont()
