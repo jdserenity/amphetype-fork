@@ -313,12 +313,37 @@ class TyperWidget(QTextEdit):
       self.backspace(word=by_word)
     elif evt.key() == Qt.Key_Enter or evt.key() == Qt.Key_Return:
       self.insert(RETURN_CHAR)
-    elif evt.text() and ord(evt.text()) >= 32:
-      self.insert(evt.text())
+    elif evt.text():
+      # One printable char per call. Multi-char / composed input uses inputMethodEvent.
+      t = evt.text()
+      if len(t) == 1 and ord(t) >= 32:
+        self.insert(t)
+      elif len(t) > 1:
+        for ch in t:
+          if ord(ch) >= 32:
+            self.insert(ch)
+      else:
+        evt.ignore()
+        return
     else:
       evt.ignore()
       return
 
+    evt.accept()
+
+  def inputMethodEvent(self, evt):
+    """Dead keys / IME: only commit finished characters; ignore in-progress accents."""
+    if not self._lesson or self._lesson.is_finished() or self._lesson.is_paused():
+      evt.ignore()
+      return
+    commit = evt.commitString()
+    if commit:
+      for ch in commit:
+        if ord(ch) >= 32:
+          self.insert(ch)
+      evt.accept()
+      return
+    # Pre-edit (composing) string — don't paint half-made accents into the lesson.
     evt.accept()
 
   def insert(self, char):
