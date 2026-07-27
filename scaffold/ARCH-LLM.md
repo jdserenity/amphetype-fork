@@ -43,7 +43,8 @@ scaffold/         # agent docs (this file)
 - Skip license: `--skip-license` / `TYPING_PROGRAM_SKIP_LICENSE=1`
 - Main window: `mainwindow.py` / `main.py` — wires Typer, Performance Analysis, Preferences, session timer. Preferences content is a `QStackedWidget` (no nested tab bar); a `QTabBar` (`_prefs_bar`) on the main strip shows General / Typer / Sources only while Preferences is selected
 - Auto-review: `auto_review.py` (`AutoReview`) — Typer `wantReview` → review lesson text → `TextManager.newReview` when Preferences `auto_review` is on
-- Typer core: `typer/` package (`document.py`, `widget.py`, `window.py`, …) — facade re-exports `LessonDocument`, `TyperWidget`, `TyperWindow` from `typing_program.typer`
+- Typer core: `typer/` package (`document.py` + `text_format.py` / `book_typing.py` / `lesson_display.py`, `widget.py`, `window.py`, …) — facade re-exports `LessonDocument`, `TyperWidget`, `TyperWindow` from `typing_program.typer`
+
 - Timing/stats collect: `timingtuple.py` (`RunStats`, `collect_run_stat_rows`, `collect_focus_drill_stat_rows`)
 - Analysis queries: `stats_query.py`
 - Settings defaults: `Config.py`
@@ -77,7 +78,7 @@ Empty lessons: `lesson_placeholders.py` (non-typable canvas messages).
 ## Typer behavior
 
 - **Backgrounds (two layers):** `TyperWindow` chrome `#4a4a4a` (`TYPER_CHROME_COLOR`); `#TyperCanvas` = `typer/background_color` (default `#383838`) — same rect as ESC pause overlay, darker than chrome, not near-black. Do not paint page color on the whole window. Lesson `QTextEdit` transparent on canvas. `_applyBackground` + `WA_StyledBackground`. Main tab `::pane` transparent.
-- Document: type on top of target; styles untyped/correct/error/blocked.
+- Document: type on top of target; styles untyped/correct/error/blocked. Curly quotes/apostrophes always normalize to keyboard `'` / `"` via `quote_text.normalize_quotes` in `LessonDocument.set_text` / `insert` (accents kept — `café` stays `café`). Accents/IME: `TyperWidget.inputMethodEvent` commits finished chars only; lone combining marks ignored.
 - ESC pause: Continue / New / Restart overlay; `RunStats.pause`/`resume`.
 - Footer order (left): improve [+submode] · corpus · book · read ahead [+level] · **Block ⌫** · heatmap [+kind + legend] · **follow** [+WPM] · source title.
 - **Read ahead** (`read_ahead.py`): off default; levels normal/hard/easy; hide upcoming words after first keystroke; mistype reveals current word only. Prefs: `read_ahead_enabled`, `typer/read_ahead_level`.
@@ -165,7 +166,8 @@ Tests: `python -m pytest tests/ -q` (pytest-qt for GUI).
 
 | Concern | Module(s) |
 |---------|-----------|
-| Typer UI/doc | `typer/` (`document`, `widget`, `window`; import via `typing_program.typer`) |
+| Typer UI/doc | `typer/` (`document`, `text_format`, `book_typing`, `lesson_display`, `widget`, `window`; import via `typing_program.typer`) |
+| Quote normalize | `quote_text.py` (`normalize_quotes`) — curly → `'"` only; accents unchanged |
 | Block ⌫ | `block_bkspc.py` |
 | Read ahead | `read_ahead.py` |
 | Heatmap | `speed_heatmap.py` |
