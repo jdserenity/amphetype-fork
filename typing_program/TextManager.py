@@ -1,7 +1,5 @@
 import logging as log
-import os.path as path
 import shutil
-import time
 import hashlib
 from pathlib import Path
 
@@ -14,7 +12,6 @@ from typing_program.gutenberg.paths import texts_dir
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-
 
 
 class SourceModel(AppModel):
@@ -45,7 +42,6 @@ class SourceModel(AppModel):
         left join (select text_id,count(*) as count,agg_median(wpm) as m from result group by text_id) as r
           on (t.id = r.text_id)
         order by t.rowid""", (r[0], ))))
-
 
 
 class TextManager(QWidget):
@@ -93,8 +89,6 @@ class TextManager(QWidget):
           ], 1),
           [(self.gutenberg, 1)],
         ], QBoxLayout.LeftToRight))
-
-    Settings.signal_for('text_force_ascii').connect(self.nextText)
 
   def showEvent(self, event):
     super().showEvent(event)
@@ -333,24 +327,4 @@ class TextManager(QWidget):
 
   def emit_text(self, v):
     log.info("setting new text id=%s length=%d source=%s", v[0], len(v[2]), v[1])
-    if Settings.get('text_force_ascii'):
-      tid, tsrc, ttxt = v
-      v = (tid, tsrc, force_ascii(ttxt))
     self.setText.emit(v)
-
-
-_bothered = False
-def force_ascii(txt):
-  try:
-    import translitcodec
-    import codecs
-    return codecs.encode(txt, 'translit/long')
-  except ImportError:
-    # What do we do here?
-    global _bothered
-    if not _bothered:
-      QMessageBox.information(
-        None, "Missing Module",
-        "Module <code>translitcodec</code> needed to translate unicode to ascii.\nTry running <code>pip install translitcodec</code>.")
-    _bothered = True
-    return txt.encode('ascii', errors='replace').decode()

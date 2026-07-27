@@ -874,15 +874,11 @@ class TyperWindow(QWidget):
     tid, srcid, meta = lesson
     body = meta['full_text']
     chunks = meta['chunks']
-    if self._settings.get('text_force_ascii'):
-      from typing_program.TextManager import force_ascii
-      body = force_ascii(body)
-      chunks = [force_ascii(c) for c in chunks]
-      meta = dict(meta, full_text=body, chunks=chunks)
     self._book_meta = meta
     active = chunks[meta['chunk_index']]
     self._current_lesson = (tid, srcid, active)
     self._update_book_footer(meta)
+    # Quotes normalized inside LessonDocument.set_text; accents kept.
     self._doc.set_book_chapter(body, chunks, meta['chunk_index'], auto_returns=True)
     self._activate_loaded_lesson(len(active), center=True)
 
